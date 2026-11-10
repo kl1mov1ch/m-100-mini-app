@@ -1,0 +1,570 @@
+{
+  "source": "Демонстрационный справочник",
+  "positions": [
+    {
+      "id": "excel-5",
+      "name": "Демонстрационная работа 5",
+      "section": "Учебный раздел",
+      "unit": "шт",
+      "planned": 1000,
+      "rate": 10,
+      "source_row": 5
+    },
+    {
+      "id": "excel-6",
+      "name": "Демонстрационная работа 6",
+      "section": "Учебный раздел",
+      "unit": "шт",
+      "planned": 1000,
+      "rate": 10,
+      "source_row": 6
+    },
+    {
+      "id": "excel-7",
+      "name": "Демонстрационная работа 7",
+      "section": "Учебный раздел",
+      "unit": "шт",
+      "planned": 1000,
+      "rate": 10,
+      "source_row": 7
+    },
+    {
+      "id": "excel-8",
+      "name": "Демонстрационная работа 8",
+      "section": "Учебный раздел",
+      "unit": "шт",
+      "planned": 1000,
+      "rate": 10,
+      "source_row": 8
+    },
+    {
+      "id": "excel-9",
+      "name": "Демонстрационная работа 9",
+      "section": "Учебный раздел",
+      "unit": "шт",
+      "planned": 1000,
+      "rate": 10,
+      "source_row": 9
+    },
+    {
+      "id": "excel-10",
+      "name": "Демонстрационная работа 10",
+      "section": "Учебный раздел",
+      "unit": "шт",
+      "planned": 1000,
+      "rate": 10,
+      "source_row": 10
+    },
+    {
+      "id": "excel-11",
+      "name": "Демонстрационная работа 11",
+      "section": "Учебный раздел",
+      "unit": "шт",
+      "planned": 1000,
+      "rate": 10,
+      "source_row": 11
+    },
+    {
+      "id": "excel-12",
+      "name": "Демонстрационная работа 12",
+      "section": "Учебный раздел",
+      "unit": "шт",
+      "planned": 1000,
+      "rate": 10,
+      "source_row": 12
+    },
+    {
+      "id": "excel-13",
+      "name": "Демонстрационная работа 13",
+      "section": "Учебный раздел",
+      "unit": "шт",
+      "planned": 1000,
+      "rate": 10,
+      "source_row": 13
+    },
+    {
+      "id": "excel-14",
+      "name": "Демонстрационная работа 14",
+      "section": "Учебный раздел",
+      "unit": "шт",
+      "planned": 1000,
+      "rate": 10,
+      "source_row": 14
+    },
+    {
+      "id": "excel-15",
+      "name": "Демонстрационная работа 15",
+      "section": "Учебный раздел",
+      "unit": "шт",
+      "planned": 1000,
+      "rate": 10,
+      "source_row": 15
+    },
+    {
+      "id": "excel-16",
+      "name": "Демонстрационная работа 16",
+      "section": "Учебный раздел",
+      "unit": "шт",
+      "planned": 1000,
+      "rate": 10,
+      "source_row": 16
+    },
+    {
+      "id": "excel-17",
+      "name": "Фреонопровод медный Д6,35",
+      "section": "Учебный раздел",
+      "unit": "м",
+      "planned": 265,
+      "rate": 10,
+      "source_row": 17
+    },
+    {
+      "id": "excel-18",
+      "name": "Фреонопровод медный Д9,52",
+      "section": "Учебный раздел",
+      "unit": "м",
+      "planned": 1000,
+      "rate": 10,
+      "source_row": 18
+    },
+    {
+      "id": "excel-19",
+      "name": "Демонстрационная работа 19",
+      "section": "Учебный раздел",
+      "unit": "шт",
+      "planned": 1000,
+      "rate": 10,
+      "source_row": 19
+    },
+    {
+      "id": "excel-20",
+      "name": "Теплоизоляция Д6,35",
+      "section": "Учебный раздел",
+      "unit": "м",
+      "planned": 1000,
+      "rate": 10,
+      "source_row": 20
+    },
+    {
+      "id": "excel-21",
+      "name": "Теплоизоляция Д9,52",
+      "section": "Учебный раздел",
+      "unit": "м",
+      "planned": 1000,
+      "rate": 10,
+      "source_row": 21
+    },
+    {
+      "id": "excel-22",
+      "name": "Демонстрационная работа 22",
+      "section": "Учебный раздел",
+      "unit": "шт",
+      "planned": 1000,
+      "rate": 10,
+      "source_row": 22
+    },
+    {
+      "id": "excel-23",
+      "name": "Демонстрационная работа 23",
+      "section": "Учебный раздел",
+      "unit": "шт",
+      "planned": 1000,
+      "rate": 10,
+      "source_row": 23
+    },
+    {
+      "id": "excel-24",
+      "name": "Демонстрационная работа 24",
+      "section": "Учебный раздел",
+      "unit": "шт",
+      "planned": 1000,
+      "rate": 10,
+      "source_row": 24
+    },
+    {
+      "id": "excel-25",
+      "name": "Демонстрационная работа 25",
+      "section": "Учебный раздел",
+      "unit": "шт",
+      "planned": 1000,
+      "rate": 10,
+      "source_row": 25
+    },
+    {
+      "id": "excel-26",
+      "name": "Демонстрационная работа 26",
+      "section": "Учебный раздел",
+      "unit": "шт",
+      "planned": 1000,
+      "rate": 10,
+      "source_row": 26
+    },
+    {
+      "id": "excel-27",
+      "name": "Демонстрационная работа 27",
+      "section": "Учебный раздел",
+      "unit": "шт",
+      "planned": 1000,
+      "rate": 10,
+      "source_row": 27
+    },
+    {
+      "id": "excel-28",
+      "name": "Демонстрационная работа 28",
+      "section": "Учебный раздел",
+      "unit": "шт",
+      "planned": 1000,
+      "rate": 10,
+      "source_row": 28
+    },
+    {
+      "id": "excel-29",
+      "name": "Демонстрационная работа 29",
+      "section": "Учебный раздел",
+      "unit": "шт",
+      "planned": 1000,
+      "rate": 10,
+      "source_row": 29
+    },
+    {
+      "id": "excel-30",
+      "name": "Демонстрационная работа 30",
+      "section": "Учебный раздел",
+      "unit": "шт",
+      "planned": 1000,
+      "rate": 10,
+      "source_row": 30
+    },
+    {
+      "id": "excel-31",
+      "name": "Демонстрационная работа 31",
+      "section": "Учебный раздел",
+      "unit": "шт",
+      "planned": 1000,
+      "rate": 10,
+      "source_row": 31
+    },
+    {
+      "id": "excel-32",
+      "name": "Демонстрационная работа 32",
+      "section": "Учебный раздел",
+      "unit": "шт",
+      "planned": 1000,
+      "rate": 10,
+      "source_row": 32
+    },
+    {
+      "id": "excel-33",
+      "name": "Демонстрационная работа 33",
+      "section": "Учебный раздел",
+      "unit": "шт",
+      "planned": 1000,
+      "rate": 10,
+      "source_row": 33
+    },
+    {
+      "id": "excel-34",
+      "name": "Демонстрационная работа 34",
+      "section": "Учебный раздел",
+      "unit": "шт",
+      "planned": 1000,
+      "rate": 10,
+      "source_row": 34
+    },
+    {
+      "id": "excel-35",
+      "name": "Демонстрационная работа 35",
+      "section": "Учебный раздел",
+      "unit": "шт",
+      "planned": 1000,
+      "rate": 10,
+      "source_row": 35
+    },
+    {
+      "id": "excel-36",
+      "name": "Демонстрационная работа 36",
+      "section": "Учебный раздел",
+      "unit": "шт",
+      "planned": 1000,
+      "rate": 10,
+      "source_row": 36
+    },
+    {
+      "id": "excel-37",
+      "name": "Демонстрационная работа 37",
+      "section": "Учебный раздел",
+      "unit": "шт",
+      "planned": 1000,
+      "rate": 10,
+      "source_row": 37
+    },
+    {
+      "id": "excel-38",
+      "name": "Демонстрационная работа 38",
+      "section": "Учебный раздел",
+      "unit": "шт",
+      "planned": 1000,
+      "rate": 10,
+      "source_row": 38
+    },
+    {
+      "id": "excel-39",
+      "name": "Демонстрационная работа 39",
+      "section": "Учебный раздел",
+      "unit": "шт",
+      "planned": 1000,
+      "rate": 10,
+      "source_row": 39
+    },
+    {
+      "id": "excel-40",
+      "name": "Демонстрационная работа 40",
+      "section": "Учебный раздел",
+      "unit": "шт",
+      "planned": 1000,
+      "rate": 10,
+      "source_row": 40
+    },
+    {
+      "id": "excel-41",
+      "name": "Демонстрационная работа 41",
+      "section": "Учебный раздел",
+      "unit": "шт",
+      "planned": 1000,
+      "rate": 10,
+      "source_row": 41
+    },
+    {
+      "id": "excel-42",
+      "name": "Демонстрационная работа 42",
+      "section": "Учебный раздел",
+      "unit": "шт",
+      "planned": 1000,
+      "rate": 10,
+      "source_row": 42
+    },
+    {
+      "id": "excel-43",
+      "name": "Демонстрационная работа 43",
+      "section": "Учебный раздел",
+      "unit": "шт",
+      "planned": 1000,
+      "rate": 10,
+      "source_row": 43
+    },
+    {
+      "id": "excel-44",
+      "name": "Хомут под фреон",
+      "section": "Учебный раздел",
+      "unit": "шт",
+      "planned": 1000,
+      "rate": 10,
+      "source_row": 44
+    },
+    {
+      "id": "excel-45",
+      "name": "Хомут под дренаж",
+      "section": "Учебный раздел",
+      "unit": "шт",
+      "planned": 1000,
+      "rate": 10,
+      "source_row": 45
+    },
+    {
+      "id": "excel-46",
+      "name": "Демонстрационная работа 46",
+      "section": "Учебный раздел",
+      "unit": "шт",
+      "planned": 1000,
+      "rate": 10,
+      "source_row": 46
+    },
+    {
+      "id": "excel-47",
+      "name": "Демонстрационная работа 47",
+      "section": "Учебный раздел",
+      "unit": "шт",
+      "planned": 1000,
+      "rate": 10,
+      "source_row": 47
+    },
+    {
+      "id": "excel-48",
+      "name": "Демонстрационная работа 48",
+      "section": "Учебный раздел",
+      "unit": "шт",
+      "planned": 1000,
+      "rate": 10,
+      "source_row": 48
+    },
+    {
+      "id": "excel-49",
+      "name": "Демонстрационная работа 49",
+      "section": "Учебный раздел",
+      "unit": "шт",
+      "planned": 1000,
+      "rate": 10,
+      "source_row": 49
+    },
+    {
+      "id": "excel-50",
+      "name": "Демонстрационная работа 50",
+      "section": "Учебный раздел",
+      "unit": "шт",
+      "planned": 1000,
+      "rate": 10,
+      "source_row": 50
+    },
+    {
+      "id": "excel-51",
+      "name": "Демонстрационная работа 51",
+      "section": "Учебный раздел",
+      "unit": "шт",
+      "planned": 1000,
+      "rate": 10,
+      "source_row": 51
+    },
+    {
+      "id": "excel-52",
+      "name": "Демонстрационная работа 52",
+      "section": "Учебный раздел",
+      "unit": "шт",
+      "planned": 1000,
+      "rate": 10,
+      "source_row": 52
+    },
+    {
+      "id": "excel-53",
+      "name": "Демонстрационная работа 53",
+      "section": "Учебный раздел",
+      "unit": "шт",
+      "planned": 1000,
+      "rate": 10,
+      "source_row": 53
+    },
+    {
+      "id": "excel-54",
+      "name": "Демонстрационная работа 54",
+      "section": "Учебный раздел",
+      "unit": "шт",
+      "planned": 1000,
+      "rate": 10,
+      "source_row": 54
+    },
+    {
+      "id": "excel-55",
+      "name": "Кабель 3х2,5",
+      "section": "Учебный раздел",
+      "unit": "м",
+      "planned": 1000,
+      "rate": 10,
+      "source_row": 55
+    },
+    {
+      "id": "excel-56",
+      "name": "Демонстрационная работа 56",
+      "section": "Учебный раздел",
+      "unit": "шт",
+      "planned": 1000,
+      "rate": 10,
+      "source_row": 56
+    },
+    {
+      "id": "excel-57",
+      "name": "Демонстрационная работа 57",
+      "section": "Учебный раздел",
+      "unit": "шт",
+      "planned": 1000,
+      "rate": 10,
+      "source_row": 57
+    },
+    {
+      "id": "excel-58",
+      "name": "Демонстрационная работа 58",
+      "section": "Учебный раздел",
+      "unit": "шт",
+      "planned": 1000,
+      "rate": 10,
+      "source_row": 58
+    },
+    {
+      "id": "excel-59",
+      "name": "Демонстрационная работа 59",
+      "section": "Учебный раздел",
+      "unit": "шт",
+      "planned": 1000,
+      "rate": 10,
+      "source_row": 59
+    },
+    {
+      "id": "excel-60",
+      "name": "Демонстрационная работа 60",
+      "section": "Учебный раздел",
+      "unit": "шт",
+      "planned": 1000,
+      "rate": 10,
+      "source_row": 60
+    },
+    {
+      "id": "excel-61",
+      "name": "Демонстрационная работа 61",
+      "section": "Учебный раздел",
+      "unit": "шт",
+      "planned": 1000,
+      "rate": 10,
+      "source_row": 61
+    },
+    {
+      "id": "excel-62",
+      "name": "Демонстрационная работа 62",
+      "section": "Учебный раздел",
+      "unit": "шт",
+      "planned": 1000,
+      "rate": 10,
+      "source_row": 62
+    },
+    {
+      "id": "excel-63",
+      "name": "Демонстрационная работа 63",
+      "section": "Учебный раздел",
+      "unit": "шт",
+      "planned": 1000,
+      "rate": 10,
+      "source_row": 63
+    },
+    {
+      "id": "excel-64",
+      "name": "Демонстрационная работа 64",
+      "section": "Учебный раздел",
+      "unit": "шт",
+      "planned": 1000,
+      "rate": 10,
+      "source_row": 64
+    },
+    {
+      "id": "excel-65",
+      "name": "Демонстрационная работа 65",
+      "section": "Учебный раздел",
+      "unit": "шт",
+      "planned": 1000,
+      "rate": 10,
+      "source_row": 65
+    },
+    {
+      "id": "excel-71",
+      "name": "Прокладка силовых кабелей на скобах",
+      "section": "Учебный раздел",
+      "unit": "м",
+      "planned": 1000,
+      "rate": 10,
+      "source_row": 71
+    }
+  ],
+  "entries": [
+    {
+      "item_id": "excel-17",
+      "date": "2025-01-01",
+      "quantity": 140
+    }
+  ]
+}

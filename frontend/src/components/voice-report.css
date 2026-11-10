@@ -1,0 +1,232 @@
+.voice-report-drawer .ant-drawer-content-wrapper {
+	height: auto !important;
+	max-height: 86dvh;
+	max-width: 620px;
+	margin: 0 auto;
+	right: 0;
+	left: 0;
+}
+.voice-report-drawer .ant-drawer-content {
+	border-radius: 25px 25px 0 0;
+	background: #fff;
+	max-height: 86dvh;
+	overflow: hidden;
+}
+.voice-report-drawer .ant-drawer-body {
+	padding: 12px 24px calc(20px + env(safe-area-inset-bottom));
+	overflow-x: hidden;
+}
+.voice-sheet-handle {
+	width: 35px;
+	height: 4px;
+	border-radius: 5px;
+	background: #dce4f0;
+	margin: 0 auto 12px;
+}
+.voice-sheet-heading {
+	display: flex;
+	justify-content: space-between;
+	gap: 15px;
+	align-items: center;
+	margin-bottom: 12px;
+	font-size: 11px;
+	color: #9aacc4;
+}
+.voice-sheet-heading > span {
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.voice-sheet-heading > button {
+	display: grid;
+	place-items: center;
+	height: 26px;
+	width: 26px;
+	border: 0;
+	background: none;
+	color: #b2bfd2;
+	padding: 0;
+	flex-shrink: 0;
+}
+.voice-sheet-text.ant-input {
+	border: 1px solid #e0e7f2;
+	border-radius: 14px;
+	background: #fafbfe;
+	padding: 16px 17px;
+	font-size: 13px;
+	line-height: 1.9;
+	color: #526d92;
+	resize: none;
+}
+.voice-sheet-text.ant-input::placeholder {
+	color: #b0bed2;
+}
+.voice-example-link {
+	display: flex;
+	gap: 5px;
+	align-items: center;
+	border: 0;
+	background: none;
+	color: #9eb4d3;
+	font-size: 9px;
+	padding: 0;
+	margin: 10px 2px 0;
+}
+.voice-microphone-area {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	padding: 23px 0 3px;
+}
+.voice-microphone {
+	height: 74px;
+	width: 74px;
+	border-radius: 50%;
+	border: 0;
+	display: grid;
+	place-items: center;
+	background: #2563eb;
+	color: #fff;
+	box-shadow:
+		0 0 0 7px #f1f6ff,
+		0 5px 15px #2563eb18;
+}
+.voice-microphone:hover {
+	background: #1d58d3;
+}
+.voice-microphone.recording {
+	background: #e17b81;
+	box-shadow: 0 0 0 7px #fff1f2;
+	animation: microphone-pulse 1.5s ease-in-out infinite;
+}
+.voice-microphone:disabled {
+	background: #79a3f2;
+	cursor: wait;
+}
+.voice-microphone-area > span {
+	font-size: 10px;
+	color: #9fb1ca;
+	margin-top: 18px;
+}
+.voice-microphone-area .ant-btn {
+	font-size: 9px;
+	color: #b0bfd5;
+	height: 29px;
+	margin-top: 3px;
+}
+.voice-recognition-results {
+	margin-top: 18px;
+	padding-top: 15px;
+	border-top: 1px solid #edf1f8;
+}
+.voice-recognition-heading {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	font-size: 10px;
+	color: #9cb1cf;
+	margin-bottom: 11px;
+}
+.voice-recognition-heading b {
+	font-weight: 500;
+}
+.voice-recognized-list {
+	max-height: 230px;
+	overflow-y: auto;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	margin-bottom: 13px;
+}
+.voice-recognized-card {
+	border: 1px solid #e5ebf5;
+	border-radius: 9px;
+	padding: 12px;
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	gap: 15px;
+	background: #fcfdff;
+}
+.voice-recognized-card > span {
+	flex: 1;
+	min-width: 0;
+}
+.voice-recognized-card b {
+	display: block;
+	font-size: 11px;
+	line-height: 1.7;
+	font-weight: 500;
+	color: #7893b5;
+	overflow-wrap: anywhere;
+}
+.voice-recognized-card small {
+	display: block;
+	font-size: 9px;
+	line-height: 1.7;
+	color: #b3a06c;
+	margin-top: 4px;
+}
+.voice-recognized-card > strong {
+	font-size: 12px;
+	font-weight: 550;
+	color: #789ac5;
+	white-space: nowrap;
+}
+.voice-recognition-results > .ant-btn {
+	font-size: 12px;
+	height: 46px;
+}
+@keyframes microphone-pulse {
+	50% {
+		box-shadow: 0 0 0 11px #fff4f4;
+	}
+}
+@media (max-width: 600px) {
+	.voice-report-drawer .ant-drawer-body {
+		padding: 11px 18px calc(17px + env(safe-area-inset-bottom));
+	}
+	.voice-sheet-heading {
+		font-size: 10px;
+		margin-bottom: 10px;
+	}
+	.voice-sheet-text.ant-input {
+		font-size: 12px;
+		padding: 14px;
+		min-height: 104px;
+	}
+	.voice-example-link {
+		font-size: 8px;
+		margin-top: 9px;
+	}
+	.voice-microphone-area {
+		padding-top: 24px;
+	}
+	.voice-microphone {
+		height: 69px;
+		width: 69px;
+	}
+	.voice-microphone svg {
+		width: 28px;
+	}
+	.voice-microphone-area > span {
+		font-size: 9px;
+		margin-top: 17px;
+	}
+	.voice-microphone-area .ant-btn {
+		font-size: 8px;
+	}
+	.voice-recognized-card {
+		padding: 11px;
+		gap: 10px;
+	}
+	.voice-recognized-card b {
+		font-size: 10px;
+	}
+	.voice-recognized-card > strong {
+		font-size: 11px;
+	}
+	.voice-recognition-results > .ant-btn {
+		font-size: 11px;
+	}
+}

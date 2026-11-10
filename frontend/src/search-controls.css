@@ -1,0 +1,99 @@
+.live-search-controls {
+	position: sticky;
+	top: -20px;
+	z-index: 5;
+	background: #f9fbff;
+	padding: 20px 0 1px;
+	margin-top: -20px;
+	transition:
+		transform 0.18s ease,
+		opacity 0.18s ease;
+	will-change: transform;
+}
+.live-search-controls.is-hidden {
+	transform: translateY(-105%);
+	pointer-events: none;
+	opacity: 0;
+}
+.live-search-controls .search-meta {
+	margin-bottom: 14px;
+}
+.voice-context {
+	display: flex;
+	align-items: center;
+	gap: 7px;
+	color: #8aa6ca;
+	font-size: 10px;
+	margin-bottom: 14px;
+}
+.voice-context > span:first-of-type {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.voice-context > span:last-child {
+	font-size: 9px;
+	color: #a8b9d1;
+}
+.report-example {
+	background: #f0f5ff;
+	border: 1px solid #e1eafb;
+	border-radius: 7px;
+	padding: 7px 9px;
+	color: #85a2cb;
+	font-size: 9px;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin-top: 9px;
+}
+.text-report-field {
+	position: relative;
+}
+.text-report-field > .ant-btn {
+	height: 42px;
+	font-size: 11px;
+}
+.voice-upload-actions {
+	display: flex;
+	gap: 9px;
+	align-items: center;
+	justify-content: space-between;
+	margin-top: 11px;
+}
+.voice-upload-actions .ant-btn {
+	font-size: 10px;
+}
+.voice-upload-actions .voice-file .ant-btn {
+	color: #92aacb;
+	font-size: 9px;
+}
+.recording-indicator {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 10px;
+	color: #ad7777;
+}
+.recording-indicator > span {
+	width: 6px;
+	height: 6px;
+	background: #d88888;
+	border-radius: 50%;
+	animation: recording-pulse 1s infinite;
+}
+.audio-transcribing {
+	font-size: 10px;
+	color: #849fc6;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin-top: 12px;
+}
+@keyframes recording-pulse {
+	50% {
+		opacity: 0.4;
+	}
+}

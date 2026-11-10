@@ -1,0 +1,447 @@
+import { Alert, Button, Input, InputNumber, Modal, Select, Tabs, Tag } from 'antd';
+import { Check, FileSpreadsheet, Search, Settings2, TriangleAlert } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import type { WorkspaceView } from '../App';
+import dayjs from '../lib/date';
+import { Money, nf, unit } from '../lib/format';
+import type { ImportWarning, Position, TableFixPayload } from '../types';
+import { DatePicker } from './ResponsiveDatePicker';
+import './table-import.css';
+
+export function TableImportModal({ workspace }: { workspace: WorkspaceView }) {
+	const {
+		preview,
+		setPreview,
+		mapping,
+		setMapping,
+		ack,
+		setAck,
+		busy,
+		reviewImport,
+		commitImport,
+		applyImportChanges,
+		data,
+		openSettings,
+	} = workspace;
+	const [tab, setTab] = useState('issues');
+	const [query, setQuery] = useState('');
+	const [values, setValues] = useState<Record<string, string | number | null>>({});
+	const [strategies, setStrategies] = useState<Record<string, string>>({});
+	const [replacementDates, setReplacementDates] = useState<Record<string, string>>({});
+	const [editing, setEditing] = useState<string | null>(null);
+	useEffect(() => {
+		setTab(
+			preview?.warnings.some((warning) => warning.severity !== 'info') ? 'issues' : 'positions',
+		);
+		setQuery('');
+		setValues({});
+		setEditing(null);
+	}, [preview?.token]);
+	if (!preview) return null;
+	const problems = preview.warnings.filter((warning) => warning.severity !== 'info');
+	const positions = preview.positions.filter((position) =>
+		`${position.name} ${position.source_row}`.toLowerCase().includes(query.toLowerCase()),
+	);
+	const setValue = (key: string, value: string | number | null) =>
+		setValues((current) => ({ ...current, [key]: value }));
+	const fixCell = (warning: ImportWarning, value: string | number | null) => {
+		if (warning.sheet && warning.cell)
+			void applyImportChanges({ edits: [{ sheet: warning.sheet, cell: warning.cell, value }] });
+	};
+	const savePosition = (position: Position) => {
+		const sheet = mapping.find((sheet) => sheet.name === position.source_sheet);
+		if (!sheet) return;
+		const changes: NonNullable<TableFixPayload['edits']> = [];
+		for (const field of ['rate', 'planned', 'unit'] as const) {
+			const key = position.id + ':' + field;
+			const column = sheet.mapping[field];
+			if (column && values[key] !== undefined) {
+				let number = column;
+				let letter = '';
+				while (number > 0) {
+					number--;
+					letter = String.fromCharCode(65 + (number % 26)) + letter;
+					number = Math.floor(number / 26);
+				}
+				changes.push({ sheet: sheet.name, cell: letter + position.source_row, value: values[key] });
+			}
+		}
+		if (changes.length) void applyImportChanges({ edits: changes });
+		setEditing(null);
+	};
+	const issueCards = (
+		<div className="import-issue-list">
+			{!problems.length && (
+				<Alert
+					type="success"
+					showIcon
+					message="Неоднозначностей нет. Таблица готова к подтверждению."
+				/>
+			)}
+			{problems.map((warning) => {
+				const singularCell = warning.cell && /^[A-Z]+\d+$/.test(warning.cell);
+				return (
+					<section
+						className={'table-issue ' + (ack.includes(warning.id) ? 'acknowledged' : '')}
+						key={warning.id}
+					>
+						<div className="table-issue-title">
+							<TriangleAlert size={16} />
+							<b>{warning.field || 'Проверка данных'}</b>
+							{warning.cell && <code>{warning.cell}</code>}
+						</div>
+						<div className="table-issue-location">
+							{warning.sheet && `Лист «${warning.sheet}»`}
+							{warning.row && ` · строка ${warning.row}`}
+							{warning.column && ` · столбец ${warning.column}`}
+						</div>
+						{warning.position_name && (
+							<strong className="table-issue-position">{warning.position_name}</strong>
+						)}
+						<p>{warning.message}</p>
+						{warning.value && (
+							<div className="table-issue-value">
+								<span>В ячейке</span>
+								<b>{warning.value}</b>
+							</div>
+						)}
+						{warning.fix && <p className="table-issue-help">{warning.fix}</p>}
+						{singularCell && warning.sheet && (
+							<div className="table-cell-fix">
+								<div>
+									{warning.field === 'Единица измерения' ? (
+										<Select
+											allowClear
+											placeholder="Ед. изм."
+											value={values[warning.id] || undefined}
+											onChange={(value) => setValue(warning.id, value)}
+											options={['м', 'шт', 'кг', 'компл', 'сист'].map((value) => ({
+												value,
+												label: unit(value),
+											}))}
+										/>
+									) : (
+										<InputNumber
+											min={0}
+											placeholder="Новое значение"
+											value={
+												typeof values[warning.id] === 'number'
+													? (values[warning.id] as number)
+													: null
+											}
+											onChange={(value) => setValue(warning.id, value)}
+										/>
+									)}
+									<Button
+										type="primary"
+										loading={busy}
+										disabled={values[warning.id] === undefined || values[warning.id] === null}
+										onClick={() => fixCell(warning, values[warning.id])}
+									>
+										Исправить
+									</Button>
+								</div>
+								{warning.field !== 'Единица измерения' && (
+									<Button
+										type="text"
+										size="small"
+										loading={busy}
+										onClick={() => fixCell(warning, 0)}
+									>
+										Поставить 0 в ячейке
+									</Button>
+								)}
+							</div>
+						)}
+						{warning.duplicates?.map((group) => {
+							const key = warning.id + group.date;
+							const strategy = strategies[key] || 'sum';
+							return (
+								<div className="duplicate-fix" key={group.date}>
+									<label>
+										{dayjs(group.date).format('D MMMM YYYY')} · {group.cells.join(', ')}
+									</label>
+									<Select
+										value={strategy}
+										onChange={(value) => setStrategies((current) => ({ ...current, [key]: value }))}
+										options={[
+											{ value: 'sum', label: 'Объединить объёмы, убрать повтор даты' },
+											{ value: 'keep_first', label: 'Оставить первый столбец, очистить дубликаты' },
+											{ value: 'rename', label: 'Назначить последнему столбцу другую дату' },
+										]}
+									/>
+									{strategy === 'rename' && (
+										<DatePicker
+											value={dayjs(replacementDates[key] || group.date)}
+											onChange={(value) =>
+												value &&
+												setReplacementDates((current) => ({
+													...current,
+													[key]: value.format('YYYY-MM-DD'),
+												}))
+											}
+										/>
+									)}
+									<Button
+										loading={busy}
+										onClick={() =>
+											void applyImportChanges({
+												duplicates: [
+													{
+														sheet: warning.sheet!,
+														date: group.date,
+														strategy,
+														...(strategy === 'rename'
+															? { new_date: replacementDates[key] || group.date }
+															: {}),
+													},
+												],
+											})
+										}
+									>
+										Применить исправление
+									</Button>
+								</div>
+							);
+						})}
+						<Button
+							size="small"
+							type={ack.includes(warning.id) ? 'primary' : 'default'}
+							icon={ack.includes(warning.id) ? <Check size={13} /> : undefined}
+							onClick={() =>
+								setAck((current) =>
+									current.includes(warning.id)
+										? current.filter((id) => id !== warning.id)
+										: [...current, warning.id],
+								)
+							}
+						>
+							{ack.includes(warning.id)
+								? 'Подтверждено'
+								: warning.confirmation_label || 'Проверено, подтверждаю'}
+						</Button>
+					</section>
+				);
+			})}
+			{preview.warnings
+				.filter((warning) => warning.severity === 'info')
+				.map((warning) => (
+					<Alert key={warning.id} type="info" showIcon message={warning.message} />
+				))}
+		</div>
+	);
+	const positionCards = (
+		<div className="import-position-list">
+			<Input
+				aria-label="Поиск в импортируемой таблице"
+				value={query}
+				allowClear
+				onChange={(event) => setQuery(event.target.value)}
+				prefix={<Search size={16} />}
+				placeholder="Найти работу или строку…"
+			/>
+			{positions.map((position) => (
+				<section className="import-position-card" key={position.id}>
+					<div className="import-position-title">
+						<span>{position.source_row}</span>
+						<b>{position.name}</b>
+						<Button
+							type="text"
+							size="small"
+							aria-label={'Изменить строку ' + position.source_row}
+							icon={<Settings2 size={16} />}
+							onClick={() => setEditing(editing === position.id ? null : position.id)}
+						/>
+					</div>
+					<div className="import-position-values">
+						<span>
+							План{' '}
+							<b>
+								{nf.format(position.planned)} {unit(position.unit)}
+							</b>
+						</span>
+						<span>
+							Расценка{' '}
+							<b>
+								<Money value={position.rate} />
+							</b>
+						</span>
+						<span>
+							Лист <b>{position.source_sheet}</b>
+						</span>
+					</div>
+					{editing === position.id && (
+						<div className="position-inline-editor">
+							<label>
+								План
+								<InputNumber
+									min={0}
+									value={
+										values[position.id + ':planned'] === undefined
+											? position.planned
+											: (values[position.id + ':planned'] as number)
+									}
+									onChange={(value) => setValue(position.id + ':planned', value)}
+								/>
+							</label>
+							<label>
+								Расценка
+								<InputNumber
+									min={0}
+									value={
+										values[position.id + ':rate'] === undefined
+											? position.rate
+											: (values[position.id + ':rate'] as number)
+									}
+									onChange={(value) => setValue(position.id + ':rate', value)}
+								/>
+							</label>
+							<label>
+								Единица
+								<Input
+									value={String(values[position.id + ':unit'] ?? position.unit)}
+									onChange={(event) => setValue(position.id + ':unit', event.target.value)}
+								/>
+							</label>
+							<Button type="primary" loading={busy} onClick={() => savePosition(position)}>
+								Сохранить ячейки
+							</Button>
+						</div>
+					)}
+				</section>
+			))}
+		</div>
+	);
+	const columns = (
+		<div className="import-mapping-list">
+			{mapping.map((sheet, index) => (
+				<section className="import-mapping-card" key={sheet.name}>
+					<h3>{sheet.name}</h3>
+					<label>
+						Строка заголовков
+						<InputNumber
+							min={1}
+							value={sheet.header_row}
+							onChange={(value) =>
+								setMapping((current) =>
+									current.map((item, otherIndex) =>
+										otherIndex === index ? { ...item, header_row: value || 1 } : item,
+									),
+								)
+							}
+						/>
+					</label>
+					<label>
+						Строка дат
+						<InputNumber
+							min={1}
+							value={sheet.date_row}
+							onChange={(value) =>
+								setMapping((current) =>
+									current.map((item, otherIndex) =>
+										otherIndex === index ? { ...item, date_row: value || 1 } : item,
+									),
+								)
+							}
+						/>
+					</label>
+					{Object.entries({
+						name: 'Название работы',
+						unit: 'Единица измерения',
+						planned: 'Плановый объём',
+						rate: 'Расценка',
+						completed: 'Выполнено ранее',
+						section: 'Раздел',
+					}).map(([field, label]) => (
+						<label key={field}>
+							{label}
+							<Select
+								allowClear
+								value={sheet.mapping[field] || undefined}
+								placeholder="Не указан"
+								onChange={(column) =>
+									setMapping((current) =>
+										current.map((item, otherIndex) =>
+											otherIndex === index
+												? { ...item, mapping: { ...item.mapping, [field]: column || null } }
+												: item,
+										),
+									)
+								}
+								options={sheet.columns.map((column) => ({
+									value: column.index,
+									label: column.label,
+								}))}
+							/>
+						</label>
+					))}
+				</section>
+			))}
+			<Button block loading={busy} onClick={reviewImport}>
+				Перепроверить структуру
+			</Button>
+		</div>
+	);
+	return (
+		<Modal
+			className="table-import-modal"
+			title="Таблица объекта"
+			width={780}
+			open
+			onCancel={() => setPreview(null)}
+			footer={
+				<div className="table-import-footer">
+					<span>
+						{preview.positions.length} работ · {preview.sheets.length} листов
+					</span>
+					<Button
+						type="primary"
+						loading={busy}
+						disabled={problems.some((warning) => !ack.includes(warning.id))}
+						onClick={commitImport}
+					>
+						Подтвердить таблицу
+					</Button>
+				</div>
+			}
+		>
+			<div className="import-file-heading">
+				<span>
+					<FileSpreadsheet size={22} />
+				</span>
+				<div>
+					<b>{preview.name}</b>
+					<small>{preview.source === 'bitrix' ? 'Связана с Битрикс24' : 'Загруженный файл'}</small>
+				</div>
+				{preview.source === 'bitrix' && !data?.config.has_webhook && (
+					<Button
+						size="small"
+						onClick={() => {
+							setPreview(null);
+							openSettings();
+						}}
+					>
+						Включить запись
+					</Button>
+				)}
+			</div>
+			<Tabs
+				activeKey={tab}
+				onChange={setTab}
+				items={[
+					{
+						key: 'issues',
+						label: <>Проверка {problems.length > 0 && <Tag color="gold">{problems.length}</Tag>}</>,
+						children: issueCards,
+					},
+					{
+						key: 'positions',
+						label: `Все работы (${preview.positions.length})`,
+						children: positionCards,
+					},
+					{ key: 'columns', label: 'Столбцы', children: columns },
+				]}
+			/>
+		</Modal>
+	);
+}

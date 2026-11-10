@@ -1,0 +1,284 @@
+.object-table-select {
+	width: 100%;
+	font-size: 12px;
+	margin-bottom: 5px;
+}
+.object-table-card {
+	background: #fff;
+	border: 1px solid #cbdcf9;
+	border-radius: 16px;
+	padding: 22px;
+	margin: 0 0 19px;
+	box-shadow: 0 3px 16px #315c9205;
+}
+.object-table-card-top {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+}
+.object-table-card-top > .object-table-file-icon {
+	height: 43px;
+	width: 43px;
+	display: grid;
+	place-items: center;
+	border-radius: 12px;
+	background: #edf4ff;
+	color: #5c8ed8;
+	flex-shrink: 0;
+}
+.object-table-card-top > div {
+	flex: 1;
+	min-width: 0;
+}
+.object-table-card-top b {
+	font-size: 14px;
+	line-height: 1.7;
+	color: #375f95;
+	font-weight: 600;
+	display: block;
+	overflow-wrap: anywhere;
+}
+.object-table-card-top small {
+	display: block;
+	font-size: 10px;
+	color: #8aa0c0;
+	margin-top: 4px;
+}
+.object-table-card-top .ant-tag {
+	font-size: 10px;
+	margin: 0;
+}
+.object-table-binding {
+	display: flex;
+	align-items: center;
+	gap: 11px;
+	padding: 15px;
+	background: #f4f8ff;
+	border-radius: 10px;
+	margin-top: 18px;
+	color: #7da0cf;
+}
+.object-table-binding > div {
+	flex: 1;
+	min-width: 0;
+}
+.object-table-binding b {
+	display: block;
+	font-size: 12px;
+	font-weight: 600;
+	color: #5d7fab;
+	overflow-wrap: anywhere;
+	line-height: 1.6;
+}
+.object-table-binding span {
+	display: block;
+	font-size: 10px;
+	color: #98adca;
+	margin-top: 4px;
+}
+.object-table-modes {
+	display: flex;
+	justify-content: space-between;
+	gap: 12px;
+	margin: 17px 0;
+	font-size: 10px;
+	color: #94a8c4;
+}
+.object-table-modes b {
+	font-size: 10px;
+	font-weight: 500;
+	color: #6f91c0;
+}
+.object-table-card-actions {
+	display: flex;
+	gap: 10px;
+}
+.object-table-card-actions .ant-btn {
+	flex: 1;
+	font-size: 11px;
+	gap: 6px;
+}
+.table-check-result {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	border: 1px solid #dce8fb;
+	background: #f5f9ff;
+	border-radius: 10px;
+	padding: 13px;
+	margin: 14px 0;
+}
+.table-check-result b {
+	font-size: 11px;
+	font-weight: 600;
+	color: #6c8ab3;
+	line-height: 1.7;
+}
+.table-check-result span {
+	font-size: 9px;
+	color: #a0b3cd;
+}
+.table-check-result small {
+	font-size: 10px;
+	line-height: 1.8;
+	color: #a08a50;
+}
+.table-check-result.failed {
+	background: #fff6f3;
+	border-color: #ecd3c9;
+}
+.table-check-result.failed b {
+	color: #b58874;
+}
+.table-check-issues {
+	font-size: 12px;
+	color: #775819;
+}
+.table-check-issues summary {
+	cursor: pointer;
+	padding: 5px 0;
+	font-weight: 600;
+}
+.table-check-issues ul {
+	list-style: none;
+	padding: 0;
+	margin: 10px 0;
+}
+.table-check-issues li {
+	display: grid;
+	gap: 5px;
+	padding: 12px;
+	margin-bottom: 8px;
+	border: 1px solid #f0d891;
+	border-radius: 10px;
+	background: #fff9e9;
+	overflow-wrap: anywhere;
+}
+.table-check-issues li span,
+.table-check-issues li small {
+	font-size: 12px;
+	color: #725b2b;
+	line-height: 1.5;
+}
+.table-check-issues .ant-btn {
+	width: 100%;
+}
+.calendar-work-legend {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 7px;
+	font-size: 10px;
+	color: #7a95bc;
+	line-height: 30px;
+}
+.calendar-work-legend > i {
+	height: 13px;
+	width: 13px;
+	border: 1px solid #6f9fe7;
+	border-radius: 4px;
+}
+.ant-picker-dropdown .has-work-on-date {
+	box-shadow: inset 0 0 0 1.5px #75a4ed;
+	border-radius: 7px !important;
+	font-weight: 600;
+}
+.ant-picker-dropdown .ant-picker-cell-selected .has-work-on-date {
+	box-shadow: inset 0 0 0 2px #bcd5ff;
+}
+.ant-picker-dropdown .ant-picker-cell:not(.ant-picker-cell-in-view) .has-work-on-date {
+	box-shadow: inset 0 0 0 1px #c8d8f0;
+	color: #a3b8d7;
+}
+@media (min-width: 900px) {
+	.object-table-card {
+		max-width: 620px;
+		margin-left: auto;
+		margin-right: auto;
+	}
+}
+@media (max-width: 600px) {
+	.object-table-card {
+		padding: 20px 17px;
+	}
+	.object-table-card-top {
+		gap: 10px;
+	}
+	.object-table-card-top > .object-table-file-icon {
+		width: 35px;
+		height: 35px;
+	}
+	.object-table-card-top b {
+		font-size: 12px;
+	}
+	.object-table-card-top small {
+		font-size: 9px;
+	}
+	.object-table-card-top .ant-tag {
+		font-size: 9px;
+	}
+	.object-table-binding {
+		padding: 13px;
+	}
+	.object-table-binding b {
+		font-size: 11px;
+	}
+	.object-table-binding span {
+		font-size: 9px;
+	}
+	.object-table-modes {
+		font-size: 9px;
+		gap: 8px;
+	}
+	.object-table-modes b {
+		font-size: 9px;
+	}
+	.object-table-card-actions {
+		flex-direction: column;
+		gap: 8px;
+	}
+	.object-table-card-actions .ant-btn {
+		font-size: 11px;
+		flex: auto;
+	}
+	.calendar-work-legend {
+		font-size: 9px;
+		line-height: 28px;
+	}
+}
+.object-table-card-top b {
+	font-size: 14px;
+	color: #254b80;
+}
+.object-table-card-top small,
+.object-table-binding span,
+.table-check-result span {
+	font-size: 12px;
+	color: #62758f;
+}
+.object-table-card-top .ant-tag {
+	font-size: 11px;
+	padding: 2px 7px;
+	white-space: nowrap;
+}
+.object-table-binding b {
+	font-size: 14px;
+	color: #254b80;
+}
+.object-table-modes {
+	flex-wrap: wrap;
+	font-size: 12px;
+	color: #62758f;
+}
+.object-table-modes b {
+	font-size: 12px;
+	color: #315988;
+}
+.table-check-result b {
+	font-size: 13px;
+	color: #315988;
+}
+.object-table-card-actions .ant-btn {
+	font-size: 14px;
+	min-height: 44px;
+}

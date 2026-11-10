@@ -1,0 +1,165 @@
+import csv
+import io
+import json
+from datetime import date
+
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import Response
+
+from .. import matcher, store, workspaces
+from ..clock import now, today
+from ..reporting import ai_settings, get_report, history, report_changes, safe_config
+from ..schemas import ParseBody, SaveBody
+from ..synchronization import send_day
+
+router = APIRouter()
+
+
+@router.get("/api/bootstrap")
+def bootstrap(request: Request):
+    with store.connect() as db:
+        return {
+            "positions": store.positions(db),
+            "history": history(db),
+            "config": safe_config(db),
+            "report": get_report(db, today()),
+            "project": workspaces.public_project(request.state.project),
+        }
+
+
+@router.get("/api/report/{day}")
+def report(day: date):
+    with store.connect() as db:
+        return get_report(db, day.isoformat())
+
+
+@router.get("/api/changes")
+def changes():
+    with store.connect() as db:
+        return [
+            {**dict(r), "payload": json.loads(r["payload"])}
+            for r in db.execute("SELECT * FROM audit ORDER BY id DESC LIMIT 100")
+        ]
+
+
+@router.post("/api/parse")
+async def parse(body: ParseBody):
+    with store.connect() as db:
+        ps = store.positions(db)
+        settings = ai_settings(db)
+    return await matcher.parse(body.text, ps, settings)
+
+
+@router.post("/api/search")
+async def search(body: ParseBody):
+    with store.connect() as db:
+        ps = store.positions(db)
+        settings = ai_settings(db)
+    return await matcher.search(body.text, ps, settings, body.local_only)
+
+
+@router.post("/api/reports")
+async def save(request: Request, body: SaveBody):
+    day = body.date.isoformat()
+    if day > today():
+        raise HTTPException(422, "Дата выполнения не может быть в будущем")
+    if len({l.item_id for l in body.lines}) != len(body.lines):
+        raise HTTPException(422, "Объедините повторяющиеся позиции")
+    with store.connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        before = get_report(db, day)
+        if before["revision"] != body.revision:
+            raise HTTPException(409, "Отчёт изменился в другом окне. Откройте его заново.")
+        ps = {p["id"]: p for p in store.positions(db)}
+        old = {l["item_id"]: l["quantity"] for l in before["lines"]}
+        for line in body.lines:
+            if line.item_id not in ps:
+                raise HTTPException(422, "Позиция отсутствует в справочнике")
+            if (
+                line.quantity > ps[line.item_id]["remaining"] + old.get(line.item_id, 0) + 1e-8
+                and not body.allow_exceed
+            ):
+                raise HTTPException(
+                    422, "Объём превышает остаток. Подтвердите фактическое выполнение."
+                )
+        delta = report_changes(before, body, ps)
+        changed = (
+            bool(delta["lines"])
+            or before["crew_count"] != body.crew_count
+            or before["revision"] == 0
+            or before["text"] != body.text
+        )
+        if not changed:
+            return {**before, "changed": False, "changes": delta}
+        event = {
+            "before": before,
+            "changes": delta,
+            "actor_id": request.state.user["telegram_id"],
+            "actor_name": request.state.user["name"],
+        }
+        db.execute(
+            "INSERT INTO audit(date,payload,created_at) VALUES(?,?,?)",
+            (day, json.dumps(event, ensure_ascii=False), now()),
+        )
+        db.execute("DELETE FROM entries WHERE date=?", (day,))
+        db.executemany(
+            "INSERT INTO entries VALUES(?,?,?)",
+            [(l.item_id, day, l.quantity) for l in body.lines],
+        )
+        db.execute(
+            """INSERT INTO reports(date,revision,text,updated_at,sync_status,crew_count,author_id,sync_error) VALUES(?,?,?,?,?,?,?,?)
+          ON CONFLICT(date) DO UPDATE SET revision=excluded.revision,text=excluded.text,updated_at=excluded.updated_at,sync_status=excluded.sync_status,crew_count=excluded.crew_count,author_id=excluded.author_id,sync_error='' """,
+            (
+                day,
+                body.revision + 1,
+                body.text,
+                now(),
+                "pending",
+                body.crew_count,
+                request.state.user["telegram_id"],
+                "",
+            ),
+        )
+    await send_day(request.state.project, day)
+    with store.connect() as db:
+        return {**get_report(db, day), "changed": True, "changes": delta}
+
+
+@router.get("/api/export.csv")
+def export():
+    out = io.StringIO(newline="")
+    writer = csv.writer(out, delimiter=";")
+    writer.writerow(
+        [
+            "Дата",
+            "Работа",
+            "Ед. изм.",
+            "Объём",
+            "Расценка BYN",
+            "Сумма BYN",
+            "Работников",
+        ]
+    )
+    with store.connect() as db:
+        for r in db.execute(
+            "SELECT e.date,p.name,p.unit,e.quantity,p.rate,round(e.quantity*p.rate,2),r.crew_count FROM entries e JOIN positions p ON p.id=e.item_id LEFT JOIN reports r ON r.date=e.date ORDER BY e.date DESC,p.source_row"
+        ):
+            writer.writerow(
+                [
+                    "'" + v if isinstance(v, str) and v.startswith(("=", "+", "-", "@")) else v
+                    for v in r
+                ]
+            )
+    return Response(
+        "\ufeff" + out.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": "attachment; filename=reports.csv"},
+    )
+
+
+@router.post("/api/bitrix/sync/{day}")
+async def sync(request: Request, day: date):
+    with store.connect() as db:
+        if not get_report(db, day.isoformat())["revision"]:
+            raise HTTPException(400, "Сначала подтвердите отчёт")
+    return await send_day(request.state.project, day.isoformat())
