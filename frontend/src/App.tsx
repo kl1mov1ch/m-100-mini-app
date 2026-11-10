@@ -40,8 +40,12 @@ import { ObjectsPage } from './pages/ObjectsPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { TeamPage } from './pages/TeamPage';
+import { RemindersPage } from './pages/RemindersPage';
+import './reports.css';
 import './search-controls.css';
 import './telegram.css';
+import './mobile-refinements.css';
+import './bottom-sheets.css';
 import type { HistoryRow, Project, Session } from './types';
 export type WorkspaceView = ReturnType<typeof useWorkspace> & {
 	session: Session;
@@ -134,7 +138,15 @@ export function WorkspaceApp() {
 				<div className="header-user">
 					<span>{session.user.name}</span>
 					<button className="profile-button" onClick={openSettings} aria-label="Профиль">
-						{session.user.name[0]}
+						{session.user.avatar_url ? (
+							<img
+								src={session.user.avatar_url}
+								alt="Ваш аватар Telegram"
+								referrerPolicy="no-referrer"
+							/>
+						) : (
+							session.user.name[0]
+						)}
 					</button>
 				</div>
 			</header>
@@ -154,6 +166,7 @@ export function WorkspaceApp() {
 					{page === 'changes' && <ChangesPage workspace={workspace} />}
 					{page === 'more' && <SettingsPage workspace={workspace} />}
 					{page === 'team' && <TeamPage workspace={workspace} />}
+					{page === 'reminders' && <RemindersPage workspace={workspace} />}
 				</main>
 			</div>
 			<nav className="bottom-nav">
@@ -326,8 +339,11 @@ export function renderApp() {
 					colorPrimary: '#2563eb',
 					colorInfo: '#2563eb',
 					colorText: '#172b4d',
-					colorTextSecondary: '#7a879d',
-					colorBorder: '#dfe6f1',
+					colorTextSecondary: '#566b87',
+					colorBorder: '#c7d5e9',
+					colorSuccess: '#16834a',
+					colorWarning: '#c88e00',
+					colorError: '#c53244',
 					borderRadius: 12,
 					fontFamily: 'Inter, "Segoe UI", Arial, sans-serif',
 					controlHeight: 46,
@@ -338,7 +354,7 @@ export function renderApp() {
 				},
 			}}
 		>
-			<AntApp>
+			<AntApp message={{ maxCount: 2 }}>
 				<WorkspaceApp />
 			</AntApp>
 		</ConfigProvider>,

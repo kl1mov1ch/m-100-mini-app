@@ -1,4 +1,4 @@
-import { Button, Tag } from 'antd';
+import { Avatar, Button, Tag } from 'antd';
 import 'dayjs/locale/ru';
 import { ArrowLeft, Plus, Settings2 } from 'lucide-react';
 
@@ -41,7 +41,9 @@ export function TeamPage({ workspace }: { workspace: WorkspaceView }) {
 			<div className="team-list">
 				{users.map((u) => (
 					<section className="team-card" key={u.telegram_id}>
-						<span className="user-avatar">{u.name[0]}</span>
+						<Avatar size={42} src={u.avatar_url}>
+							{u.name[0]}
+						</Avatar>
 						<div>
 							<b>{u.name}</b>
 							<small>

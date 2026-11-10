@@ -180,7 +180,7 @@ def discover(content):
     sheets = []
     warnings = []
     for s in w:
-        if s.title == "Расчёт бригады":
+        if s.title in ("Расчёт бригады", "Итоги объекта"):
             continue
         if not any(cell.value is not None for row in s for cell in row):
             continue
@@ -516,20 +516,9 @@ def patch(content, day, lines, catalogue, mappings):
             while any(s.cell(r, col).value is not None for r in range(1, s.max_row + 1)):
                 col += 1
             # Refuse to silently put a date outside existing cumulative formula ranges.
-            for p in catalogue:
-                if p.get("source_sheet") != s.title:
-                    continue
-                for cell in s[p["source_row"]]:
-                    formula = str(cell.value or "")
-                    for end in re.findall(r":\$?([A-Z]+)\$?\d+", formula):
-                        if (
-                            formula.startswith("=")
-                            and dates
-                            and openpyxl.utils.column_index_from_string(end) < col
-                        ):
-                            raise ValueError(
-                                "Новая дата выходит за диапазон итоговых формул. Расширьте формулы в исходной таблице."
-                            )
+            from .workbook_calculation import extend_day_ranges
+
+            extend_day_ranges(s, col, list(dates))
             if col > 1:
                 for r in range(1, s.max_row + 1):
                     s.cell(r, col)._style = copy(s.cell(r, col - 1)._style)

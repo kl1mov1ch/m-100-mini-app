@@ -11,6 +11,7 @@ export function DatePicker({
 	return (
 		<AntDatePicker
 			{...props}
+			inputReadOnly
 			cellRender={(current, info) => {
 				if (
 					info.type !== 'date' ||

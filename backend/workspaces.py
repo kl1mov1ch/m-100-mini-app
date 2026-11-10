@@ -38,13 +38,22 @@ def init():
         CREATE TABLE IF NOT EXISTS users(telegram_id TEXT PRIMARY KEY,name TEXT NOT NULL,role TEXT NOT NULL,enabled INTEGER NOT NULL DEFAULT 1);
         CREATE TABLE IF NOT EXISTS projects(id TEXT PRIMARY KEY,owner_id TEXT NOT NULL,name TEXT NOT NULL,db_path TEXT NOT NULL UNIQUE,created_at TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS shared_settings(key TEXT PRIMARY KEY,value TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS reminder_deliveries(telegram_id TEXT, day TEXT, run_key TEXT, status TEXT, error TEXT, created_at TEXT, PRIMARY KEY(telegram_id,day,run_key));
         """)
+        columns = {row["name"] for row in db.execute("PRAGMA table_info(users)")}
+        for column, definition in (
+            ("avatar_url", "TEXT NOT NULL DEFAULT ''"),
+            ("username", "TEXT NOT NULL DEFAULT ''"),
+            ("custom_name", "INTEGER NOT NULL DEFAULT 0"),
+        ):
+            if column not in columns:
+                db.execute(f"ALTER TABLE users ADD COLUMN {column} {definition}")
         identities = admins()
         if os.getenv("APP_ENV", "development") == "development":
             identities = ["local-admin", *identities]
         for ident in identities:
             db.execute(
-                "INSERT INTO users VALUES(?,?,'admin',1) ON CONFLICT(telegram_id) DO UPDATE SET role='admin',enabled=1",
+                "INSERT INTO users(telegram_id,name,role,enabled) VALUES(?,?,'admin',1) ON CONFLICT(telegram_id) DO UPDATE SET role='admin',enabled=1",
                 (ident, "Администратор"),
             )
         if (

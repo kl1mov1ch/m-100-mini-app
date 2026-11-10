@@ -3,6 +3,7 @@ export const previewUser = new URLSearchParams(location.search).get('as');
 export function headers(project?: string) {
 	return {
 		'X-Telegram-Init-Data': window.Telegram?.WebApp?.initData || '',
+		'X-View-Mode': localStorage.getItem('view-mode') || 'admin',
 		...(project ? { 'X-Project-Id': project } : {}),
 		...(previewUser ? { 'X-Preview-User': previewUser } : {}),
 	};

@@ -71,12 +71,37 @@ async def access(request: Request, call_next):
                 if not ident:
                     raise HTTPException(401, "Откройте приложение через Telegram")
             request.state.user = workspaces.user(ident)
-            unscoped = ("/api/session", "/api/projects", "/api/admin", "/api/ai")
+            request.state.actual_user = request.state.user.copy()
+            if (
+                request.state.user["role"] == "admin"
+                and request.headers.get("X-View-Mode") == "master"
+            ):
+                request.state.user = {**request.state.user, "role": "master"}
+            unscoped = (
+                "/api/session",
+                "/api/projects",
+                "/api/admin",
+                "/api/ai",
+                "/api/analytics",
+                "/api/profile",
+            )
             if not any(
                 request.url.path == p or request.url.path.startswith(p + "/") for p in unscoped
             ):
                 p = workspaces.project(request.state.user, request.headers.get("X-Project-Id"))
                 request.state.project = p
+                modifying_report = request.method == "POST" and (
+                    request.url.path == "/api/reports"
+                    or request.url.path.startswith(("/api/imports/", "/api/bitrix/"))
+                )
+                if (
+                    modifying_report
+                    and request.state.user["role"] == "admin"
+                    and p["owner_id"] != ident
+                ):
+                    raise HTTPException(
+                        403, "Администратор просматривает отчёты мастеров без изменения"
+                    )
                 token = store.CURRENT_DATABASE.set(p["db_path"])
         return await call_next(request)
     except HTTPException as e:

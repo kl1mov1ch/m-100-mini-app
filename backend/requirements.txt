@@ -9,3 +9,4 @@ python-multipart>=0.0.20,<1
 faster-whisper>=1.2,<2
 av>=14,<17
 tzdata>=2025.1
+numpy>=1.26,<2.3

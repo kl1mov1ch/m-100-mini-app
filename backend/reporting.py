@@ -107,6 +107,8 @@ def project_summary(p, selected_date=None):
             "today_amount": current["amount"] if current else 0,
             "today_crew": current["crew_count"] if current else None,
             "today_per_person": current["per_person"] if current else 0,
+            "today_positions": current["positions"] if current else 0,
+            "today_confirmed": bool(current and current["revision"] > 0),
             "total_amount": round(sum(r["amount"] for r in rows), 2),
             "work_dates": [row["date"] for row in rows if row["positions"] > 0],
             "pending": db.execute(

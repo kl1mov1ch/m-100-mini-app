@@ -1,0 +1,215 @@
+.ant-message {
+	top: auto !important;
+	bottom: calc(90px + var(--app-safe-bottom, 0px)) !important;
+	padding: 0 12px !important;
+	max-width: 100%;
+}
+.ant-message .ant-message-notice-content {
+	max-width: min(440px, calc(100vw - 32px));
+	text-align: left;
+	font-size: 14px;
+	line-height: 1.5;
+	border: 1px solid #d7e3f3;
+	box-shadow: 0 6px 24px #142e5630;
+	border-radius: 14px;
+}
+.ant-message-warning .anticon,
+.ant-alert-warning .ant-alert-icon {
+	color: #be8100 !important;
+}
+.ant-alert-warning {
+	background: #fff7d6;
+	border-color: #e8bd45;
+	color: #674900;
+}
+.ant-alert-warning .ant-alert-message,
+.ant-alert-warning .ant-alert-description {
+	color: #674900;
+}
+.ant-message-success .anticon {
+	color: #15834b !important;
+}
+.ant-message-error .anticon {
+	color: #c5313e !important;
+}
+.ant-btn {
+	font-weight: 600;
+}
+.ant-btn-default {
+	border-color: #b5c9e5;
+	color: #28496e;
+}
+.ant-input,
+.ant-input-number-input,
+.ant-select-selection-item {
+	color: #183553 !important;
+}
+.ant-input::placeholder,
+.ant-input-number-input::placeholder {
+	color: #667d9a;
+}
+.settings-card label,
+.settings-current,
+.account-card small,
+.linked-table-info > span,
+.linked-table-info small,
+.work-card-foot,
+.history-main small,
+.history-bottom,
+.profile-mode-help,
+.role-label {
+	color: #526a88;
+}
+.settings-card label {
+	font-size: 13px;
+}
+.settings-current {
+	font-size: 13px;
+	line-height: 1.6;
+}
+.overline {
+	color: #587092;
+	font-weight: 700;
+}
+.history-main b,
+.work-name b {
+	color: #193a60;
+}
+.work-name small {
+	color: #526a88;
+	font-size: 12px;
+}
+.report-metrics > div:nth-child(1) {
+	background: #e7f7ed;
+	border-color: #b4dbc4;
+}
+.report-metrics > div:nth-child(1) strong {
+	color: #14613c;
+}
+.report-metrics > div:nth-child(2) {
+	background: #eaf2ff;
+	border-color: #c0d4f3;
+}
+.report-metrics > div:nth-child(3) {
+	background: #f2edff;
+	border-color: #d5c7f1;
+}
+.report-metrics > div:nth-child(3) strong {
+	color: #6743a1;
+}
+.report-metrics > div:nth-child(4) {
+	background: #fff5dc;
+	border-color: #e8d5a3;
+}
+.report-metrics > div:nth-child(4) strong {
+	color: #8b6009;
+}
+.report-metrics span,
+.report-metrics small {
+	color: #445e7b;
+}
+.overview-hero {
+	background: linear-gradient(125deg, #1558cb, #08697a);
+}
+.overview-hero small {
+	color: #e5f2ff;
+	font-size: 13px;
+}
+.overview-statistics span {
+	color: #edf7ff;
+	font-size: 12px;
+}
+.overview-statistics b {
+	font-size: 22px;
+}
+.overview-hero > .overview-statistics {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 12px;
+}
+.overview-hero > .overview-statistics > span {
+	color: #edf7ff;
+	font-size: 12px;
+}
+.table-check-result.has-issues {
+	background: #fff8dd;
+	border-color: #e6c65d;
+}
+.table-check-result.has-issues > b {
+	color: #775600;
+}
+.table-check-result.success {
+	background: #e9f7ee;
+	border-color: #b1d9c2;
+}
+.table-check-result.success > b {
+	color: #16623d;
+}
+.table-check-result.failed {
+	background: #fff0f0;
+	border-color: #e8adb2;
+}
+.table-check-result.failed > b {
+	color: #a12e3c;
+}
+.needs-review,
+.table-issue {
+	border-color: #e5bd49;
+}
+.plain-icon[aria-label^='Удалить'] {
+	color: #bc3541;
+	background: #fff1f1;
+}
+.bottom-nav > button {
+	color: #526b8c;
+}
+.bottom-nav > button.active {
+	color: #1256ce;
+	font-weight: 700;
+}
+.field-help-button {
+	width: 26px;
+	height: 26px;
+	font-size: 15px;
+}
+.admin-work-row > div span {
+	font-size: 14px;
+	color: #445e7b;
+}
+.history-main,
+.history-finance > span {
+	min-width: 0;
+}
+.history-main b,
+.history-main small {
+	overflow-wrap: anywhere;
+}
+@media (max-width: 600px) {
+	.bottom-nav > button {
+		font-size: 11px;
+	}
+	.history-bottom {
+		font-size: 12px;
+	}
+	.history-finance strong {
+		font-size: 22px;
+	}
+	.ant-btn {
+		min-height: 42px;
+	}
+	.ant-btn-sm {
+		min-height: 34px;
+	}
+	.context-bar {
+		gap: 8px;
+	}
+	.role-label {
+		font-size: 11px;
+	}
+	.page-title h1 {
+		font-size: 28px;
+	}
+	.page-title .ant-picker {
+		max-width: 150px;
+	}
+}

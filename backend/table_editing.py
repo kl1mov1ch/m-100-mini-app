@@ -171,6 +171,11 @@ async def edit_table(request: Request, body: TableChanges):
         )
     try:
         updated, changes = apply_changes(original, metadata["sheets"], body.edits, body.duplicates)
+        from .workbook_calculation import recalculate
+
+        updated = recalculate(
+            updated, tables.extract(updated, metadata["sheets"])["positions"], metadata["sheets"]
+        )
     except ValueError as error:
         raise HTTPException(422, str(error))
     async with table_lock(request.state.project):

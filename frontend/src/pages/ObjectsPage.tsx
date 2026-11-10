@@ -59,6 +59,21 @@ export function ObjectsPage({ workspace }: { workspace: WorkspaceView }) {
 				<span className="hero-glyph">
 					<Building2 size={57} strokeWidth={1} />
 				</span>
+				<div className="overview-statistics">
+					<span>
+						<b>{projects.reduce((sum, item) => sum + item.today_positions, 0)}</b>Работ за день
+					</span>
+					<span>
+						<b>{projects.reduce((sum, item) => sum + (item.today_crew || 0), 0)}</b>Работников
+					</span>
+					<span>
+						<b>
+							{projects.filter((item) => item.today_confirmed).length} /{' '}
+							{projects.filter((item) => item.positions > 0).length}
+						</b>
+						Отчётов сдано
+					</span>
+				</div>
 			</div>
 			{isAdmin && (
 				<div className="admin-report-filters">

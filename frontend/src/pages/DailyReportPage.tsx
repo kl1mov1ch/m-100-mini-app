@@ -8,7 +8,9 @@ import type { WorkspaceView } from '../App';
 import { LinkedTable } from '../components/LinkedTable';
 import { Status } from '../components/SyncStatus';
 import { Money, nf, shortName, unit } from '../lib/format';
+import { AdminDailyReport } from '../components/AdminDailyReport';
 export function DailyReportPage({ workspace }: { workspace: WorkspaceView }) {
+	if (workspace.isAdmin) return <AdminDailyReport workspace={workspace} />;
 	const {
 		session,
 		data,

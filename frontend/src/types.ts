@@ -3,6 +3,8 @@ export type User = {
 	name: string;
 	role: string;
 	enabled: number;
+	avatar_url?: string;
+	username?: string;
 	projects?: number;
 };
 export type Project = {
@@ -14,6 +16,8 @@ export type Project = {
 	today_amount: number;
 	today_crew: number | null;
 	today_per_person: number;
+	today_positions: number;
+	today_confirmed: boolean;
 	total_amount: number;
 	pending: number;
 	connected: boolean;
@@ -110,6 +114,8 @@ export type Session = {
 	today: string;
 	selected_date: string;
 	ai_connected: boolean;
+	can_switch_role: boolean;
+	view_mode: string;
 };
 export type Suggestion = { item_id: string; reason: string };
 export type SearchResult = {

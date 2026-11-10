@@ -197,6 +197,14 @@ export function useWorkspace() {
 		setPage('today');
 		if (id !== project) setDay(selectedDay);
 	};
+	const openHistoryReport = (objectId: string, reportDay: string) => {
+		if (objectId === project) void changeDay(reportDay);
+		else {
+			setDay(reportDay);
+			setProject(objectId);
+		}
+		setPage('today');
+	};
 	const addLine = (id: string) => {
 		if (replaceIndex !== null)
 			setLines((ls) => ls.map((l, i) => (i === replaceIndex ? { ...l, item_id: id } : l)));
@@ -588,6 +596,7 @@ export function useWorkspace() {
 		}
 	};
 	return {
+		openHistoryReport,
 		checkingConnection,
 		checkConnection,
 		switchSettingsProject,

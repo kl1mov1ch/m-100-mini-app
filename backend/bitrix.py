@@ -121,10 +121,16 @@ def read_workbook(content, mappings=None):
 
 
 def patch_workbook(content, day, lines, catalogue, payroll=None, mappings=None):
+    from .workbook_calculation import recalculate
+
     if mappings:
         from .tables import patch
 
-        return add_payroll(patch(content, day, lines, catalogue, mappings), day, payroll)
+        return recalculate(
+            add_payroll(patch(content, day, lines, catalogue, mappings), day, payroll),
+            catalogue,
+            mappings,
+        )
     book = openpyxl.load_workbook(io.BytesIO(content))
     info = read_workbook(content)
     sheet = book[info["sheet"]]
@@ -170,8 +176,9 @@ def patch_workbook(content, day, lines, catalogue, payroll=None, mappings=None):
         # Do not overwrite non-date content in a prospective column.
         while any(sheet.cell(r, col).value is not None for r in range(1, sheet.max_row + 1)):
             col += 1
-        if col > 104:
-            raise ValueError("Дата выходит за диапазон формул J:CZ. Требуется расширение шаблона.")
+        from .workbook_calculation import extend_day_ranges
+
+        extend_day_ranges(sheet, col, existing)
         for r in range(1, sheet.max_row + 1):
             src, dest = sheet.cell(r, max(10, col - 1)), sheet.cell(r, col)
             dest._style = copy(src._style)
@@ -219,7 +226,7 @@ def patch_workbook(content, day, lines, catalogue, payroll=None, mappings=None):
     book.calculation = CalcProperties(calcId=191029, fullCalcOnLoad=True)
     out = io.BytesIO()
     book.save(out)
-    return out.getvalue()
+    return recalculate(out.getvalue(), catalogue)
 
 
 def validate_webhook(webhook):
@@ -290,6 +297,9 @@ async def upload_day(
     if not result:
         raise ValueError("Битрикс не подтвердил загрузку версии")
     verified, _ = await download_rest(webhook, file_id)
+    from .workbook_calculation import verify_calculations
+
+    verify_calculations(patched, verified)
     parsed = read_workbook(verified, mappings)
     actual = {}
     for e in parsed["entries"]:
