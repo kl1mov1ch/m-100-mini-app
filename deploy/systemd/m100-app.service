@@ -1,0 +1,25 @@
+[Unit]
+Description=Work Journal Telegram Mini App
+After=network-online.target m100-link.service
+Wants=network-online.target m100-link.service
+
+[Service]
+User=m100
+Group=m100
+WorkingDirectory=/var/miniApp/m-100
+EnvironmentFile=/var/miniApp/m-100/deploy/secrets/app.env
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/var/miniApp/m-100/.venv/bin/python -m uvicorn backend.app:app --host 127.0.0.1 --port 8000 --workers 1 --no-proxy-headers
+Restart=always
+RestartSec=5
+TimeoutStopSec=60
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/miniApp/m-100/data
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

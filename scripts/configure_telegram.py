@@ -16,7 +16,9 @@ async def configure_bot(url=None):
     token = os.getenv("TELEGRAM_BOT_TOKEN", "")
     if not token:
         raise ValueError("Сохраните токен бота в .env или TELEGRAM_BOT_TOKEN_FILE")
-    async with httpx.AsyncClient(timeout=20) as client:
+    async with httpx.AsyncClient(
+        timeout=20, proxy=os.getenv("TELEGRAM_PROXY_URL") or None
+    ) as client:
         response = await client.post(f"https://api.telegram.org/bot{token}/getMe")
         payload = response.json()
         if not payload.get("ok"):

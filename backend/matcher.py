@@ -220,7 +220,7 @@ async def complete(system, text, settings=None):
     }
     if "api.deepseek.com" in cfg["base"]:
         payload["thinking"] = {"type": "disabled"}
-    async with httpx.AsyncClient(timeout=45) as client:
+    async with httpx.AsyncClient(timeout=45, proxy=os.getenv("LLM_PROXY_URL") or None) as client:
         r = await client.post(
             cfg["base"].rstrip("/") + "/chat/completions",
             headers={"Authorization": "Bearer " + cfg["key"]},

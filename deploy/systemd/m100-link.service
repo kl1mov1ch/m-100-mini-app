@@ -1,0 +1,19 @@
+[Unit]
+Description=Work Journal private link to Germany
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+User=m100-tunnel
+Group=m100-tunnel
+ExecStart=/usr/bin/ssh -NT -D 127.0.0.1:40001 -L 127.0.0.1:8767:127.0.0.1:8766 -i /var/miniApp/m-100/deploy/secrets/link_ed25519 -o BatchMode=yes -o IdentitiesOnly=yes -o PasswordAuthentication=no -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/var/miniApp/m-100/deploy/secrets/known_hosts -o ExitOnForwardFailure=yes -o ServerAliveInterval=20 -o ServerAliveCountMax=3 -o ConnectTimeout=15 m100-link@109.69.58.85
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

@@ -35,3 +35,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: docker build -t work-journal:check .
+      - name: Check production startup and Telegram access
+        run: |
+          docker run -d --name journal-test -p 127.0.0.1:8000:8000 -e APP_ENV=production -e TELEGRAM_BOT_TOKEN=123:test-token -e TELEGRAM_ADMIN_IDS=12345 -e APP_ALLOWED_ORIGINS=https://app.example.com work-journal:check
+          for attempt in $(seq 1 30); do
+            if curl --fail http://127.0.0.1:8000/healthz; then break; fi
+            sleep 2
+          done
+          curl --fail http://127.0.0.1:8000/healthz
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/api/session)" = 401
+          docker stop journal-test
+      - name: Validate HTTP and HTTPS Nginx configurations
+        run: |
+          docker run --rm -v "$PWD/deploy/nginx.http.conf:/etc/nginx/conf.d/default.conf:ro" nginx:1.28-alpine nginx -t
+          mkdir -p /tmp/journal-certs/live/app.example.com
+          openssl req -x509 -newkey rsa:2048 -nodes -keyout /tmp/journal-certs/live/app.example.com/privkey.pem -out /tmp/journal-certs/live/app.example.com/fullchain.pem -days 1 -subj /CN=app.example.com
+          sed 's/APP_DOMAIN/app.example.com/g' deploy/nginx.https.conf.template > /tmp/journal-nginx.conf
+          docker run --rm --add-host app:127.0.0.1 -v /tmp/journal-nginx.conf:/etc/nginx/conf.d/default.conf:ro -v /tmp/journal-certs:/etc/letsencrypt:ro nginx:1.28-alpine nginx -t
+          docker run --rm certbot/certbot:v5.1.0 --version

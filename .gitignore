@@ -32,5 +32,6 @@ deploy/secrets/
 deploy/certbot/
 deploy/nginx.conf
 backups/
+.runtime/
 *.pem
 *.key

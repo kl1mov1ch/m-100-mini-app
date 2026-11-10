@@ -3,6 +3,7 @@ import io
 import os
 import threading
 
+import httpx
 from fastapi import APIRouter, HTTPException, Request
 
 from . import store
@@ -70,6 +71,18 @@ async def transcribe(request: Request):
     if not content or len(content) > 20 * 1024 * 1024:
         raise HTTPException(422, "Размер аудио должен быть от 1 байта до 20 МБ")
     try:
+        remote_url = os.getenv("WHISPER_REMOTE_URL")
+        if remote_url:
+            async with httpx.AsyncClient(timeout=360) as client:
+                response = await client.post(
+                    remote_url.rstrip("/") + "/transcribe",
+                    headers={"Authorization": "Bearer " + os.environ["SPEECH_SHARED_TOKEN"]},
+                    files={"file": ("voice.bin", content, "application/octet-stream")},
+                )
+                if response.status_code == 422:
+                    raise ValueError(response.json().get("detail", "Речь не распознана"))
+                response.raise_for_status()
+                return {"text": response.json()["text"], "engine": "whisper-private"}
         transcript = await asyncio.to_thread(recognize_audio, content)
         return {"text": transcript, "engine": "whisper-local"}
     except ValueError as error:

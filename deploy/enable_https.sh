@@ -17,7 +17,8 @@ mkdir -p deploy/certbot/www deploy/certbot/conf
 docker compose up -d --no-deps nginx
 docker compose --profile certificate run --rm certbot certonly --webroot -w /var/www/certbot --email "$email" --agree-tos --no-eff-email -d "$domain"
 sed "s/APP_DOMAIN/$domain/g" deploy/nginx.https.conf.template > deploy/nginx.conf
-docker compose up -d --build app
+docker compose up -d --build --wait app
 docker compose exec -T nginx nginx -t
 docker compose exec -T nginx nginx -s reload
+curl --fail --retry 5 --retry-delay 2 "https://$domain/healthz"
 printf 'HTTPS подготовлен: https://%s\n' "$domain"
