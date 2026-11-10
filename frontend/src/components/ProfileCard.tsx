@@ -1,7 +1,8 @@
-import { App, Avatar, Button, Input, Segmented } from 'antd';
+import { App, Button, Input, Segmented } from 'antd';
 import { useState } from 'react';
 import type { WorkspaceView } from '../App';
 import { request } from '../lib/api';
+import { TelegramAvatar } from './TelegramAvatar';
 
 export function ProfileCard({ workspace }: { workspace: WorkspaceView }) {
 	const { session } = workspace;
@@ -39,9 +40,12 @@ export function ProfileCard({ workspace }: { workspace: WorkspaceView }) {
 	return (
 		<section className="settings-card profile-settings">
 			<div className="profile-intro">
-				<Avatar size={52} src={session.user.avatar_url}>
-					{session.user.name[0]}
-				</Avatar>
+				<TelegramAvatar
+					userId={session.user.telegram_id}
+					name={session.user.name}
+					source={session.user.avatar_url}
+					size={52}
+				/>
 				<div>
 					<b>{session.user.name}</b>
 					<small>{session.user.username ? '@' + session.user.username : 'Профиль Telegram'}</small>

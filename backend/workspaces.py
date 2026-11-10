@@ -4,7 +4,7 @@ import os
 import sqlite3
 import uuid
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import HTTPException
@@ -39,6 +39,7 @@ def init():
         CREATE TABLE IF NOT EXISTS projects(id TEXT PRIMARY KEY,owner_id TEXT NOT NULL,name TEXT NOT NULL,db_path TEXT NOT NULL UNIQUE,created_at TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS shared_settings(key TEXT PRIMARY KEY,value TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS reminder_deliveries(telegram_id TEXT, day TEXT, run_key TEXT, status TEXT, error TEXT, created_at TEXT, PRIMARY KEY(telegram_id,day,run_key));
+        CREATE TABLE IF NOT EXISTS profile_avatars(telegram_id TEXT PRIMARY KEY,content BLOB NOT NULL,mime TEXT NOT NULL,checked_at INTEGER NOT NULL);
         """)
         columns = {row["name"] for row in db.execute("PRAGMA table_info(users)")}
         for column, definition in (
@@ -68,7 +69,7 @@ def init():
                     identities[0],
                     "Детский сад",
                     str(store.base_path()),
-                    datetime.now(timezone.utc).isoformat(),
+                    datetime.now(UTC).isoformat(),
                 ),
             )
         database_paths = [row["db_path"] for row in db.execute("SELECT db_path FROM projects")]
@@ -126,7 +127,7 @@ def add_project(current_user, name, owner_id=None, sample=False):
     with registry() as db:
         db.execute(
             "INSERT INTO projects VALUES(?,?,?,?,?)",
-            (ident, owner_id, name, str(path), datetime.now(timezone.utc).isoformat()),
+            (ident, owner_id, name, str(path), datetime.now(UTC).isoformat()),
         )
     return project(current_user, ident)
 

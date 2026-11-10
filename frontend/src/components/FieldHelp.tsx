@@ -59,9 +59,10 @@ export function FieldHelp({ topic }: { topic: 'bitrix' | 'ai' }) {
 			<button
 				className="field-help-button"
 				type="button"
+				aria-haspopup="dialog"
 				aria-label={topic === 'bitrix' ? 'Как подключить Битрикс24' : 'Как получить AI API ключ'}
 			>
-				i
+				<span aria-hidden="true">i</span>
 			</button>
 		</Popover>
 	);

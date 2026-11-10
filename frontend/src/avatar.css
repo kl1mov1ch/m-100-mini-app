@@ -1,0 +1,40 @@
+.header-user {
+	display: flex;
+	align-items: center;
+	min-width: 0;
+	gap: 10px;
+}
+.profile-button {
+	padding: 0 !important;
+	width: 40px !important;
+	height: 40px !important;
+	min-width: 40px;
+	min-height: 40px;
+	flex: 0 0 40px;
+	aspect-ratio: 1;
+	border-radius: 50%;
+	overflow: hidden;
+	display: grid;
+	place-items: center;
+}
+.telegram-avatar {
+	display: inline-grid;
+	place-items: center;
+	flex: none;
+	aspect-ratio: 1;
+	overflow: hidden;
+	border-radius: 50%;
+	background: #e5efff;
+	color: #2355a0;
+	font-weight: 700;
+	line-height: 1;
+	vertical-align: middle;
+}
+.telegram-avatar > img {
+	display: block;
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	object-position: center;
+	border-radius: 50%;
+}

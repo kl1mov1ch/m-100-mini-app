@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { createRoot } from 'react-dom/client';
 import { ProjectLogo } from './components/ProjectLogo';
+import { TelegramAvatar } from './components/TelegramAvatar';
 import { TableImportModal } from './components/TableImportModal';
 import { VoiceReportDrawer } from './components/VoiceReportDrawer';
 
@@ -46,6 +47,7 @@ import './search-controls.css';
 import './telegram.css';
 import './mobile-refinements.css';
 import './bottom-sheets.css';
+import './avatar.css';
 import type { HistoryRow, Project, Session } from './types';
 export type WorkspaceView = ReturnType<typeof useWorkspace> & {
 	session: Session;
@@ -138,15 +140,11 @@ export function WorkspaceApp() {
 				<div className="header-user">
 					<span>{session.user.name}</span>
 					<button className="profile-button" onClick={openSettings} aria-label="Профиль">
-						{session.user.avatar_url ? (
-							<img
-								src={session.user.avatar_url}
-								alt="Ваш аватар Telegram"
-								referrerPolicy="no-referrer"
-							/>
-						) : (
-							session.user.name[0]
-						)}
+						<TelegramAvatar
+							userId={session.user.telegram_id}
+							name={session.user.name}
+							source={session.user.avatar_url}
+						/>
 					</button>
 				</div>
 			</header>

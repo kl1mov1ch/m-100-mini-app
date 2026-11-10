@@ -3,6 +3,7 @@ import { ObjectTableCard } from '../components/ObjectTableCard';
 import { openExternalLink } from '../lib/telegram';
 import { ProfileCard } from '../components/ProfileCard';
 import { FieldHelp } from '../components/FieldHelp';
+import { TelegramAvatar } from '../components/TelegramAvatar';
 import 'dayjs/locale/ru';
 import {
 	ArrowRight,
@@ -199,7 +200,11 @@ export function SettingsPage({ workspace }: { workspace: WorkspaceView }) {
 				</section>
 			)}
 			<section className="account-card">
-				<span className="profile-button">{session.user.name[0]}</span>
+				<TelegramAvatar
+					userId={session.user.telegram_id}
+					name={session.user.name}
+					source={session.user.avatar_url}
+				/>
 				<div>
 					<b>{session.user.name}</b>
 					<small>
