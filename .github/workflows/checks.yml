@@ -30,6 +30,7 @@ jobs:
         working-directory: frontend
       - run: node --experimental-strip-types scripts/check_calculation.mjs
       - run: node scripts/check_telegram.mjs
+      - run: node scripts/check_input_visibility.mjs
   container:
     runs-on: ubuntu-latest
     steps:

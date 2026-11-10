@@ -5,6 +5,7 @@ import { DatePicker } from '../components/ResponsiveDatePicker';
 import dayjs from '../lib/date';
 
 import type { WorkspaceView } from '../App';
+import { QuickReportComposer } from '../components/QuickReportComposer';
 import { Money } from '../lib/format';
 export function ObjectsPage({ workspace }: { workspace: WorkspaceView }) {
 	const {
@@ -43,7 +44,8 @@ export function ObjectsPage({ workspace }: { workspace: WorkspaceView }) {
 					Добавить
 				</Button>
 			</div>
-			<div className="overview-hero">
+			{!isAdmin && <QuickReportComposer workspace={workspace} />}
+			<div className={'overview-hero' + (!isAdmin ? ' master-overview' : '')}>
 				<div>
 					<span>
 						{summaryDate === session.today ? 'Выполнено сегодня' : 'Выполнено за выбранный день'}

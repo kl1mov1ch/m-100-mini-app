@@ -53,9 +53,10 @@ def collect(user, start=None, end=None, project_id=None, owner_id=None, sort="da
     key, reverse = sorting.get(sort, sorting["date_desc"])
     rows.sort(key=lambda row: (row[key], row["project_name"]), reverse=reverse)
     amount = sum((Decimal(str(row["amount"])) for row in rows), Decimal(0))
-    worker_days = sum(row["crew_count"] or 0 for row in rows)
+    worker_days = sum((row["crew_count"] or 0) for row in rows if row["positions"])
     known_amount = sum(
-        (Decimal(str(row["amount"])) for row in rows if row["crew_count"]), Decimal(0)
+        (Decimal(str(row["amount"])) for row in rows if row["crew_count"] and row["positions"]),
+        Decimal(0),
     )
     summary = {
         "amount": float(amount),
@@ -63,7 +64,7 @@ def collect(user, start=None, end=None, project_id=None, owner_id=None, sort="da
         "confirmed": sum(row["revision"] > 0 for row in rows),
         "positions": sum(row["positions"] for row in rows),
         "projects": len({row["project_id"] for row in rows}),
-        "days": len({row["date"] for row in rows}),
+        "days": len({row["date"] for row in rows if row["positions"]}),
         "worker_days": worker_days,
         "per_person": float(
             (known_amount / worker_days).quantize(Decimal(".01"), rounding=ROUND_HALF_UP)

@@ -1,6 +1,6 @@
 import { Alert, Button, Empty, InputNumber, Spin, Tag } from 'antd';
 import 'dayjs/locale/ru';
-import { Check, FileSpreadsheet, Mic, Plus, Trash2, Users } from 'lucide-react';
+import { Check, FileSpreadsheet, Mic, Plus, RotateCcw, Trash2, Users } from 'lucide-react';
 import { DatePicker } from '../components/ResponsiveDatePicker';
 import dayjs from '../lib/date';
 
@@ -40,6 +40,8 @@ export function DailyReportPage({ workspace }: { workspace: WorkspaceView }) {
 		confirm,
 		retry,
 		openSettings,
+		importRemote,
+		restoreDay,
 	} = workspace;
 	return !data ? (
 		<div className="empty-panel">
@@ -221,13 +223,34 @@ export function DailyReportPage({ workspace }: { workspace: WorkspaceView }) {
 			)}
 			{report && report.revision > 0 && (
 				<div className="current-status">
+					<Button
+						type="text"
+						size="small"
+						icon={<RotateCcw size={14} />}
+						disabled={busy}
+						onClick={() => void restoreDay()}
+					>
+						Вернуть к началу дня
+					</Button>
 					<Status status={report.sync_status} />
 					{report.sync_status !== 'synced' && (
 						<Button size="small" loading={busy} onClick={() => void retry(day)}>
 							Повторить отправку
 						</Button>
 					)}
-					{report.sync_status === 'error' && report.sync_error && <p>{report.sync_error}</p>}
+					{report.sync_status === 'error' && report.sync_error && (
+						<Alert
+							type="warning"
+							showIcon
+							message="Нужно проверить изменения таблицы"
+							description={report.sync_error}
+							action={
+								<Button size="small" loading={busy} onClick={() => void importRemote()}>
+									Решить в приложении
+								</Button>
+							}
+						/>
+					)}
 				</div>
 			)}
 			<div className="confirm-bar">

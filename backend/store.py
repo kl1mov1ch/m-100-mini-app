@@ -38,6 +38,7 @@ def init(path=None, seed=True):
         CREATE TABLE IF NOT EXISTS reports(date TEXT PRIMARY KEY,revision INTEGER DEFAULT 0,text TEXT,updated_at TEXT,sync_status TEXT DEFAULT 'local');
         CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY,date TEXT,payload TEXT,created_at TEXT);
         CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT);
+        CREATE TABLE IF NOT EXISTS day_snapshots(date TEXT PRIMARY KEY,payload TEXT NOT NULL,created_at TEXT NOT NULL);
         """)
         columns = {r["name"] for r in db.execute("PRAGMA table_info(reports)")}
         for column, definition in [
@@ -49,6 +50,11 @@ def init(path=None, seed=True):
         ]:
             if column not in columns:
                 db.execute(f"ALTER TABLE reports ADD COLUMN {column} {definition}")
+        db.executescript("""
+        CREATE INDEX IF NOT EXISTS entries_by_date ON entries(date,item_id);
+        CREATE INDEX IF NOT EXISTS audit_by_date ON audit(date,id);
+        CREATE INDEX IF NOT EXISTS reports_for_retry ON reports(sync_status,retry_at,date);
+        """)
         position_columns = {r["name"] for r in db.execute("PRAGMA table_info(positions)")}
         for column, definition in [
             ("source_sheet", "TEXT NOT NULL DEFAULT ''"),

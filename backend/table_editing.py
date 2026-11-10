@@ -210,7 +210,7 @@ async def edit_table(request: Request, body: TableChanges):
             except Exception:
                 raise HTTPException(
                     502,
-                    "Не удалось подтвердить изменения в Битрикс24. Откройте оригинал и повторите чтение.",
+                    "Не удалось подтвердить изменения. Повторите чтение таблицы в приложении и проверьте выделенные ячейки.",
                 )
         analysis = tables.extract(updated, metadata["sheets"])
         structural_warnings = [
@@ -241,6 +241,8 @@ async def edit_table(request: Request, body: TableChanges):
                     now(),
                 ),
             )
+    from .imports import current_reconciliation
+
     return {
         "token": body.token,
         "name": metadata["name"],
@@ -248,4 +250,5 @@ async def edit_table(request: Request, body: TableChanges):
         "saved_to_source": remote,
         **analysis,
         "warnings": metadata["warnings"],
+        "reconciliation": current_reconciliation(analysis),
     }

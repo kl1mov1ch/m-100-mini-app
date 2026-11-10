@@ -1,48 +1,17 @@
 import { Button, Drawer, Input, Upload } from 'antd';
 import { LoaderCircle, Mic, Sparkles, Square, X } from 'lucide-react';
 import type { WorkspaceView } from '../App';
-import { nf, shortName, unit } from '../lib/format';
+import { ReportDraftFields } from './ReportDraftFields';
 import './voice-report.css';
 
 const exampleReport =
 	'Сегодня проложили медь 6-ку\n15 м и 9-ку 15 м, изоляцию на них столько же, кабель 3х2,5 — 56 м, поставили 10\nхомутов под фреон.';
 
 export function VoiceReportDrawer({ workspace }: { workspace: WorkspaceView }) {
-	const {
-		textOpen,
-		setTextOpen,
-		audioInput,
-		active,
-		freeText,
-		setFreeText,
-		parsed,
-		parsing,
-		byId,
-		setLines,
-		setReportText,
-	} = workspace;
+	const { textOpen, setTextOpen, audioInput, active, freeText, setFreeText } = workspace;
 	const close = () => {
 		setTextOpen(false);
 		audioInput.stop();
-	};
-	const addRecognizedWorks = () => {
-		setLines((currentLines) => {
-			const mergedLines = currentLines.map((line) => ({ ...line }));
-			for (const recognizedLine of parsed) {
-				const existingLine = recognizedLine.item_id
-					? mergedLines.find((line) => line.item_id === recognizedLine.item_id)
-					: undefined;
-				if (existingLine && recognizedLine.quantity !== null && existingLine.quantity !== null) {
-					existingLine.quantity += recognizedLine.quantity;
-					continue;
-				}
-				mergedLines.push({ ...recognizedLine });
-			}
-			return mergedLines;
-		});
-		setReportText(freeText);
-		setTextOpen(false);
-		setFreeText('');
 	};
 	return (
 		<Drawer
@@ -76,7 +45,9 @@ export function VoiceReportDrawer({ workspace }: { workspace: WorkspaceView }) {
 					Пример сообщения
 				</button>
 			)}
-			<div className="voice-microphone-area">
+			<div
+				className={'voice-microphone-area' + (freeText && !audioInput.recording ? ' compact' : '')}
+			>
 				<button
 					className={'voice-microphone ' + (audioInput.recording ? 'recording' : '')}
 					disabled={audioInput.transcribing}
@@ -108,49 +79,7 @@ export function VoiceReportDrawer({ workspace }: { workspace: WorkspaceView }) {
 					</Button>
 				</Upload>
 			</div>
-			{(parsing || parsed.length > 0) && (
-				<div className="voice-recognition-results">
-					<div className="voice-recognition-heading">
-						<b>{parsing ? 'Подбираем работы…' : `${parsed.length} работ из сметы объекта`}</b>
-						{parsing && <LoaderCircle size={14} className="spinning" />}
-					</div>
-					<div className="voice-recognized-list">
-						{parsed.map((line, index) => {
-							const position = line.item_id ? byId[line.item_id] : null;
-							return (
-								<div
-									className={
-										'voice-recognized-card ' + (!position || !line.quantity ? 'needs-review' : '')
-									}
-									key={index}
-								>
-									<span>
-										<b>{position ? shortName(position) : line.raw || 'Уточните работу'}</b>
-										{(!position || !line.quantity) && (
-											<small>Нужно уточнить {position ? 'объём' : 'позицию'}</small>
-										)}
-									</span>
-									<strong>
-										{line.quantity ? nf.format(line.quantity) : '—'}{' '}
-										{position ? unit(position.unit) : ''}
-									</strong>
-								</div>
-							);
-						})}
-					</div>
-					{parsed.length > 0 && (
-						<Button
-							block
-							type="primary"
-							size="large"
-							disabled={parsing}
-							onClick={addRecognizedWorks}
-						>
-							Проверить карточки работ
-						</Button>
-					)}
-				</div>
-			)}
+			<ReportDraftFields workspace={workspace} />
 		</Drawer>
 	);
 }

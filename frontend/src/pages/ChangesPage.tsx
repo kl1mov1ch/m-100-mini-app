@@ -25,9 +25,13 @@ export function ChangesPage({ workspace }: { workspace: WorkspaceView }) {
 							<b>{dayjs(c.created_at).format('D MMMM, HH:mm')}</b>
 							<small>
 								{c.payload.actor_name || 'Мастер'} ·{' '}
-								{c.payload.table_changes
-									? 'исправления таблицы'
-									: 'отчёт ' + dayjs(c.date).format('DD.MM.YYYY')}
+								{c.payload.action === 'restore_day'
+									? 'возврат к началу дня'
+									: c.payload.action === 'catalogue_reconciled'
+										? 'обновление сметы'
+										: c.payload.table_changes
+											? 'исправления таблицы'
+											: 'отчёт ' + dayjs(c.date).format('DD.MM.YYYY')}
 							</small>
 						</div>
 						{c.payload.table_changes?.map((change, index) => (

@@ -49,6 +49,11 @@ def session(request: Request, date: date | None = None):
                 "UPDATE users SET avatar_url=?,username=?,name=CASE WHEN custom_name=0 AND ?<>'' THEN ? ELSE name END WHERE telegram_id=?",
                 (photo, profile.get("username", ""), name, name, request.state.user["telegram_id"]),
             )
+            if photo != request.state.user.get("avatar_url", ""):
+                database.execute(
+                    "DELETE FROM profile_avatars WHERE telegram_id=?",
+                    (request.state.user["telegram_id"],),
+                )
         refreshed = workspaces.user(request.state.user["telegram_id"])
         request.state.user = {**refreshed, "role": request.state.user["role"]}
     selected_date = date.isoformat() if date else today()

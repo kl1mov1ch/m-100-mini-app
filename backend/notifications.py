@@ -45,7 +45,8 @@ def missing_reports(day):
             if not database.execute("SELECT 1 FROM positions LIMIT 1").fetchone():
                 continue
             submitted = database.execute(
-                "SELECT 1 FROM reports WHERE date=? AND revision>0", (day,)
+                "SELECT 1 FROM reports r WHERE r.date=? AND r.revision>0 AND EXISTS(SELECT 1 FROM entries e WHERE e.date=r.date)",
+                (day,),
             ).fetchone()
         if not submitted:
             recipient = recipients.setdefault(

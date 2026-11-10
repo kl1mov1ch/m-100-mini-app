@@ -44,12 +44,47 @@ export type Position = {
 	source_row: number;
 	source_sheet?: string;
 };
+export type CatalogueReconciliation = {
+	version: string;
+	needs_confirmation: boolean;
+	notice: string;
+	report_count: number;
+	report_conflicts: {
+		date: string;
+		local_positions: number;
+		remote_positions: number;
+		lines: { item_id: string; name: string; unit: string; local: number; remote: number }[];
+	}[];
+	rows: {
+		previous: Position;
+		selected_id: string | null;
+		required: boolean;
+		changed: boolean;
+		method: string;
+		reason: string;
+	}[];
+};
+export type ReconciliationConfirmation = {
+	position_matches: Record<string, string | null>;
+	reconciliation_acknowledged: boolean;
+	reconciliation_version: string;
+	day_resolutions: Record<string, string>;
+};
 export type Line = {
 	item_id: string | null;
 	quantity: number | null;
 	raw?: string;
+	unit?: string | null;
 	reason?: string;
 	candidates?: string[];
+};
+export type ParsedReport = {
+	lines: Line[];
+	notice: string;
+	crew_count: number | null;
+	crew_ambiguous: boolean;
+	needs_ai: boolean;
+	engine: string;
 };
 export type Payroll = {
 	amount: number;
@@ -129,6 +164,7 @@ export type Change = {
 	date: string;
 	created_at: string;
 	payload: {
+		action?: string;
 		actor_name: string;
 		table_changes?: {
 			sheet: string;
@@ -159,6 +195,7 @@ export type ImportPreview = {
 	warnings: ImportWarning[];
 	positions: Position[];
 	source: 'file' | 'bitrix';
+	reconciliation?: CatalogueReconciliation | null;
 };
 export type ImportWarning = {
 	id: string;

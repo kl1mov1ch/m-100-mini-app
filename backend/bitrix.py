@@ -4,6 +4,7 @@ import base64
 import hashlib
 import io
 import json
+import math
 import re
 from copy import copy
 from datetime import datetime
@@ -14,6 +15,13 @@ import openpyxl
 from openpyxl.workbook.properties import CalcProperties
 
 PUBLIC_URL = ""
+
+
+def equal_quantities(left, right):
+    return all(
+        math.isclose(float(left.get(key, 0)), float(right.get(key, 0)), rel_tol=1e-10, abs_tol=1e-8)
+        for key in set(left) | set(right)
+    )
 
 
 def validate_public(url):
@@ -276,7 +284,7 @@ async def upload_day(
             if e["date"] == day:
                 remote[e["item_id"]] = remote.get(e["item_id"], 0) + e["quantity"]
         wanted = {l["item_id"]: l["quantity"] for l in lines}
-        if remote != baseline and remote != wanted:
+        if not equal_quantities(remote, baseline) and not equal_quantities(remote, wanted):
             raise ValueError(
                 "Объёмы дня изменены в Битрикс. Обновите таблицу и проверьте изменения перед отправкой."
             )
@@ -306,9 +314,9 @@ async def upload_day(
         if e["date"] == day:
             actual[e["item_id"]] = actual.get(e["item_id"], 0) + e["quantity"]
     expected = {l["item_id"]: l["quantity"] for l in lines}
-    if actual != expected:
+    if not equal_quantities(actual, expected):
         raise ValueError(
-            "Версия отправлена, но проверка значений не прошла. Откройте Битрикс и проверьте дату вручную."
+            "Версия отправлена, но проверка значений не прошла. Нажмите «Решить в приложении», чтобы прочитать актуальные данные и сравнить объёмы."
         )
     if payroll:
         payouts = openpyxl.load_workbook(io.BytesIO(verified), data_only=True)["Расчёт бригады"]

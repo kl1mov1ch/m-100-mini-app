@@ -358,6 +358,7 @@ def extract(content, sheets):
                 if multiple
                 else f"excel-{r}"
             )
+            ident = desc.get("position_ids", {}).get(str(r), ident)
             for field, parsed_value in [
                 ("planned", plan),
                 ("rate", rate),

@@ -62,7 +62,9 @@ def get_report(db, day):
 
 def history(db):
     result = []
-    for row in db.execute("SELECT DISTINCT date FROM entries ORDER BY date DESC").fetchall():
+    for row in db.execute(
+        "SELECT date FROM entries UNION SELECT date FROM reports ORDER BY date DESC"
+    ).fetchall():
         r = get_report(db, row[0])
         result.append(
             {
@@ -108,7 +110,9 @@ def project_summary(p, selected_date=None):
             "today_crew": current["crew_count"] if current else None,
             "today_per_person": current["per_person"] if current else 0,
             "today_positions": current["positions"] if current else 0,
-            "today_confirmed": bool(current and current["revision"] > 0),
+            "today_confirmed": bool(
+                current and current["revision"] > 0 and current["positions"] > 0
+            ),
             "total_amount": round(sum(r["amount"] for r in rows), 2),
             "work_dates": [row["date"] for row in rows if row["positions"] > 0],
             "pending": db.execute(

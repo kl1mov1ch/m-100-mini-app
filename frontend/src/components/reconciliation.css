@@ -1,0 +1,95 @@
+.reconciliation-panel {
+	display: grid;
+	gap: 12px;
+}
+.reconciliation-row {
+	display: grid;
+	gap: 10px;
+	padding: 14px;
+	border: 1px solid #d5e2f4;
+	border-radius: 16px;
+	background: #f7faff;
+	min-width: 0;
+}
+.reconciliation-row.needs-review {
+	background: #fffbeb;
+	border-color: #f0d17c;
+}
+.reconciliation-heading {
+	display: flex;
+	align-items: flex-start;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+.reconciliation-heading > svg {
+	flex: none;
+	color: #ad750d;
+	margin-top: 3px;
+}
+.reconciliation-heading > b {
+	flex: 1;
+	min-width: 0;
+}
+.reconciliation-row p {
+	margin: 0;
+	font-size: 13px;
+	line-height: 1.5;
+	color: #526580;
+}
+.reconciliation-row small,
+.reconciliation-row label {
+	font-size: 12px;
+	color: #526580;
+}
+.reconciliation-row .ant-select {
+	width: 100%;
+	min-width: 0;
+}
+.reconciliation-row .ant-select-selection-item {
+	white-space: normal;
+	line-height: 1.4;
+	padding-block: 8px;
+}
+.reconciliation-values,
+.reconciliation-day {
+	display: grid;
+	gap: 6px;
+	font-size: 12px;
+}
+.reconciliation-values > span {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: space-between;
+	gap: 5px 10px;
+}
+.reconciliation-row b,
+.reconciliation-row span {
+	overflow-wrap: anywhere;
+}
+.reconciliation-panel > .ant-checkbox-wrapper {
+	font-size: 13px;
+	line-height: 1.6;
+	padding: 10px 2px;
+}
+.reconciliation-day-line {
+	display: grid;
+	gap: 4px;
+	padding-block: 8px;
+	border-bottom: 1px solid #ebdfbb;
+}
+.reconciliation-day .ant-segmented {
+	margin-top: 8px;
+	font-size: 12px;
+}
+.current-status > .ant-alert {
+	width: 100%;
+	flex-wrap: wrap;
+	gap: 10px;
+}
+.current-status > .ant-alert .ant-alert-content {
+	min-width: 180px;
+	flex: 1;
+}
+.current-status > .ant-alert .ant-alert-action {
+	margin-left: 0;
+}

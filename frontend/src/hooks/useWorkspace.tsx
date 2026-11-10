@@ -15,7 +15,9 @@ import type {
 	ImportSheet,
 	Line,
 	Project,
+	ParsedReport,
 	Report,
+	ReconciliationConfirmation,
 	Session,
 	SpeechEngine,
 	TableFixPayload,
@@ -49,6 +51,10 @@ export function useWorkspace() {
 		[parsed, setParsed] = useState<Line[]>([]),
 		[parsing, setParsing] = useState(false),
 		[parseNote, setParseNote] = useState('');
+	const [parsedCrew, setParsedCrew] = useState<number | null>(null);
+	const [parsedCrewAmbiguous, setParsedCrewAmbiguous] = useState(false);
+	const parsedEditVersion = useRef(0);
+	const [recognizedMode, setRecognizedMode] = useState<'append' | 'replace'>('append');
 	const [projectOpen, setProjectOpen] = useState(false),
 		[objectForm, setObjectForm] = useState(false),
 		[projectName, setProjectName] = useState(''),
@@ -143,34 +149,66 @@ export function useWorkspace() {
 		return () => clearInterval(timer);
 	}, [!!session, project, summaryDate]);
 	useEffect(() => {
-		if (!textOpen || freeText.trim().length < 5) {
+		if ((!textOpen && (page !== 'objects' || isAdmin)) || freeText.trim().length < 5) {
 			setParsed([]);
+			setParsedCrew(null);
+			setParsedCrewAmbiguous(false);
+			setParsing(false);
 			return;
 		}
-		let stopped = false;
+		const controller = new AbortController();
+		let aiTimer: ReturnType<typeof setTimeout>;
+		const apply = (result: ParsedReport) => {
+			setParsed(result.lines);
+			setParseNote(result.notice);
+			setParsedCrew(result.crew_count);
+			setParsedCrewAmbiguous(result.crew_ambiguous);
+		};
 		setParsing(true);
+		parsedEditVersion.current = 0;
 		const timer = setTimeout(async () => {
 			try {
-				const r = await request<{ lines: Line[]; notice: string }>(
+				const local = await request<ParsedReport>(
 					'/parse',
-					{ text: freeText },
+					{ text: freeText, local_only: true },
 					project,
+					controller.signal,
 				);
-				if (!stopped) {
-					setParsed(r.lines);
-					setParseNote(r.notice);
+				if (controller.signal.aborted) return;
+				apply(local);
+				setParsing(false);
+				if (local.needs_ai && session?.ai_connected) {
+					aiTimer = setTimeout(async () => {
+						if (parsedEditVersion.current > 0) return;
+						setParsing(true);
+						try {
+							const improved = await request<ParsedReport>(
+								'/parse',
+								{ text: freeText },
+								project,
+								controller.signal,
+							);
+							if (!controller.signal.aborted && parsedEditVersion.current === 0) apply(improved);
+						} catch (error) {
+							if (!controller.signal.aborted) setParseNote((error as Error).message);
+						} finally {
+							if (!controller.signal.aborted) setParsing(false);
+						}
+					}, 550);
 				}
-			} catch (e) {
-				if (!stopped) setParseNote((e as Error).message);
-			} finally {
-				if (!stopped) setParsing(false);
+			} catch (error) {
+				if (!controller.signal.aborted) {
+					setParseNote((error as Error).message);
+					setParsing(false);
+				}
 			}
-		}, 900);
+		}, 250);
 		return () => {
-			stopped = true;
+			controller.abort();
 			clearTimeout(timer);
+			clearTimeout(aiTimer);
 		};
-	}, [freeText, textOpen, project]);
+	}, [freeText, textOpen, project, page, isAdmin, session?.ai_connected]);
 	const refresh = async (keep = false) => {
 		await Promise.all([loadSession(), ...(active ? [loadData(project, keep)] : [])]);
 	};
@@ -253,7 +291,7 @@ export function useWorkspace() {
 								: undefined;
 	useTelegramNavigation(telegramBack, (!!report && dirty) || (textOpen && !!freeText.trim()));
 	const valid =
-		lines.length > 0 &&
+		(lines.length > 0 || !!report?.lines.length) &&
 		lines.every((l) => l.item_id && l.quantity !== null && l.quantity > 0) &&
 		new Set(lines.map((l) => l.item_id)).size === lines.length;
 	const submit = async (allow = false) => {
@@ -319,6 +357,111 @@ export function useWorkspace() {
 			onOk: () => submit(exceeds),
 		});
 	};
+	const patchParsedLine = (index: number, patch: Partial<Line>) => {
+		parsedEditVersion.current++;
+		setParsed((current) =>
+			current.map((line, lineIndex) => (lineIndex === index ? { ...line, ...patch } : line)),
+		);
+	};
+	const removeParsedLine = (index: number) => {
+		parsedEditVersion.current++;
+		setParsed((current) => current.filter((_, lineIndex) => lineIndex !== index));
+	};
+	const updateParsedCrew = (count: number | null) => {
+		parsedEditVersion.current++;
+		setParsedCrew(count);
+		setParsedCrewAmbiguous(false);
+	};
+	const confirmParsedReport = () => {
+		if (!report || !parsed.length || parsedCrewAmbiguous) {
+			message.warning(
+				parsedCrewAmbiguous ? 'Уточните количество работников' : 'Добавьте выполненные работы',
+			);
+			return;
+		}
+		const quantities = new Map<string, number>();
+		const combined = [...(recognizedMode === 'append' ? lines : []), ...parsed];
+		for (const line of combined) {
+			if (!line.item_id || !byId[line.item_id] || !line.quantity || line.quantity <= 0) {
+				message.warning('Проверьте выделенные работы и объёмы');
+				return;
+			}
+			quantities.set(line.item_id, (quantities.get(line.item_id) || 0) + line.quantity);
+		}
+		const next = [...quantities].map(([item_id, quantity]) => ({ item_id, quantity }));
+		const nextCrew = parsedCrew || crew;
+		const nextAmount = calculateAmount(
+			next.map((line) => ({ quantity: line.quantity, rate: byId[line.item_id].rate })),
+		);
+		const exceeds = next.some(
+			(line) => line.quantity > byId[line.item_id].remaining + (oldLines[line.item_id] || 0),
+		);
+		const selection = selectionVersion.current;
+		const nextText =
+			recognizedMode === 'append' ? [reportText, freeText].filter(Boolean).join('\n') : freeText;
+		modal.confirm({
+			title: 'Проверить и отправить отчёт',
+			icon: null,
+			width: 590,
+			className: 'report-confirmation-modal',
+			content: (
+				<ReportConfirmation
+					date={day}
+					positions={byId}
+					before={oldLines}
+					after={Object.fromEntries(quantities)}
+					crewBefore={report.crew_count}
+					crewAfter={nextCrew}
+					amountBefore={report.payroll.amount}
+					amountAfter={nextAmount}
+					connected={!!data?.config.has_webhook && data?.config.source === 'bitrix'}
+					exceeds={exceeds}
+					renderMoney={(value) => <Money value={value} />}
+				/>
+			),
+			okText: 'Подтвердить и отправить',
+			cancelText: 'Исправить',
+			onOk: async () => {
+				if (selection !== selectionVersion.current)
+					throw new Error('Выбран другой объект. Проверьте отчёт заново.');
+				setBusy(true);
+				parsedEditVersion.current++;
+				try {
+					const saved = await request<Report>(
+						'/reports',
+						{
+							date: day,
+							revision: report.revision,
+							lines: next,
+							crew_count: nextCrew,
+							text: nextText,
+							allow_exceed: exceeds,
+						},
+						project,
+					);
+					setReport(saved);
+					setLines(saved.lines);
+					setCrew(saved.crew_count);
+					setReportText(saved.text || '');
+					setTextOpen(false);
+					setFreeText('');
+					await refresh(true);
+					if (saved.sync_status === 'synced')
+						message.success('Готово. Отчёт и расчёты записаны в Битрикс24');
+					else
+						message.info(
+							'Отчёт сохранён. ' + (saved.sync_error || 'Отправим, когда восстановится соединение'),
+						);
+					window.Telegram?.WebApp?.HapticFeedback?.notificationOccurred('success');
+				} catch (error) {
+					message.error((error as Error).message);
+					throw error;
+				} finally {
+					setBusy(false);
+				}
+			},
+		});
+	};
 	const retry = async (date: string) => {
 		setBusy(true);
 		try {
@@ -333,6 +476,81 @@ export function useWorkspace() {
 			message.error((e as Error).message);
 		} finally {
 			setBusy(false);
+		}
+	};
+	const restoreDay = async () => {
+		if (!report) return;
+		try {
+			const preview = await request<{ current: Report; target: Report }>(
+				'/report/' + day + '/restore-preview',
+				undefined,
+				project,
+			);
+			const version = selectionVersion.current;
+			const restoredLines = Object.fromEntries(
+				preview.target.lines.map((line) => [line.item_id, line.quantity]),
+			);
+			modal.confirm({
+				title: 'Вернуть отчёт к началу дня?',
+				icon: null,
+				width: 590,
+				className: 'report-confirmation-modal',
+				content: (
+					<>
+						<p>
+							Восстановится состояние до первого подтверждения за {dayjs(day).format('D MMMM YYYY')}
+							. Изменения останутся в истории. Другие дни сохранятся.
+						</p>
+						<ReportConfirmation
+							date={day}
+							positions={byId}
+							before={Object.fromEntries(
+								preview.current.lines.map((line) => [line.item_id, line.quantity]),
+							)}
+							after={restoredLines}
+							crewBefore={preview.current.crew_count}
+							crewAfter={preview.target.crew_count}
+							amountBefore={preview.current.payroll.amount}
+							amountAfter={preview.target.payroll.amount}
+							connected={!!data?.config.has_webhook && data?.config.source === 'bitrix'}
+							exceeds={false}
+							renderMoney={(value) => <Money value={value} />}
+						/>
+					</>
+				),
+				okText: 'Восстановить и отправить',
+				cancelText: 'Оставить как есть',
+				onOk: async () => {
+					if (version !== selectionVersion.current)
+						throw new Error('Выбран другой отчёт. Откройте восстановление заново.');
+					setBusy(true);
+					try {
+						const restored = await request<Report>(
+							'/report/' + day + '/restore',
+							{ revision: preview.current.revision },
+							project,
+						);
+						setReport(restored);
+						setLines(restored.lines);
+						setCrew(restored.crew_count);
+						setReportText(restored.text || '');
+						await refresh(true);
+						if (restored.sync_status === 'synced')
+							message.success('Отчёт восстановлен, расчёты обновлены в Битрикс24');
+						else
+							message.warning(
+								'Отчёт восстановлен. ' + (restored.sync_error || 'Ожидает отправки в Битрикс24'),
+							);
+					} catch (error) {
+						message.error((error as Error).message);
+						throw error;
+					} finally {
+						setBusy(false);
+					}
+				},
+			});
+		} catch (error) {
+			message.error((error as Error).message);
 		}
 	};
 	const loadUsers = async () => {
@@ -439,7 +657,10 @@ export function useWorkspace() {
 			await request('/bitrix/connection', { public_url: url, webhook, file_id: fileId }, project);
 			setWebhook('');
 			const r = await request<ImportPreview>('/imports/bitrix', {}, project);
-			if (!r.warnings.some((warning) => warning.severity !== 'info')) {
+			if (
+				!r.warnings.some((warning) => warning.severity !== 'info') &&
+				!r.reconciliation?.needs_confirmation
+			) {
 				await request(
 					'/imports/confirm',
 					{ token: r.token, sheets: r.sheets, acknowledged: [] },
@@ -474,19 +695,19 @@ export function useWorkspace() {
 		}
 		return false;
 	};
-	const commitImport = async () => {
+	const commitImport = async (reconciliation?: ReconciliationConfirmation) => {
 		if (!preview) return;
 		setBusy(true);
 		try {
 			await request(
 				'/imports/confirm',
-				{ token: preview.token, sheets: mapping, acknowledged: ack },
+				{ token: preview.token, sheets: mapping, acknowledged: ack, ...reconciliation },
 				project,
 			);
 			setPreview(null);
 			await refresh();
 			message.success('Таблица готова к работе');
-			setPage('more');
+			setPage(isAdmin ? 'objects' : 'today');
 		} catch (e) {
 			message.error((e as Error).message);
 		} finally {
@@ -638,6 +859,15 @@ export function useWorkspace() {
 		freeText,
 		setFreeText,
 		parsed,
+		parsedCrew,
+		setParsedCrew,
+		parsedCrewAmbiguous,
+		patchParsedLine,
+		removeParsedLine,
+		updateParsedCrew,
+		confirmParsedReport,
+		recognizedMode,
+		setRecognizedMode,
 		setParsed,
 		parsing,
 		setParsing,
@@ -715,6 +945,7 @@ export function useWorkspace() {
 		valid,
 		submit,
 		confirm,
+		restoreDay,
 		retry,
 		loadUsers,
 		openSettings,

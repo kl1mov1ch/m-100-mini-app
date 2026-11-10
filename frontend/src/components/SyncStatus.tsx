@@ -1,11 +1,11 @@
-import { CheckCheck, Clock3, RefreshCw } from 'lucide-react';
+import { CheckCheck, Clock3, TriangleAlert } from 'lucide-react';
 export function Status({ status }: { status: string }) {
 	return (
 		<span className={'sync-status ' + status}>
 			{status === 'synced' ? (
 				<CheckCheck size={13} />
 			) : status === 'error' ? (
-				<RefreshCw size={13} />
+				<TriangleAlert size={13} />
 			) : (
 				<Clock3 size={13} />
 			)}

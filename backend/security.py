@@ -93,6 +93,7 @@ async def access(request: Request, call_next):
                 modifying_report = request.method == "POST" and (
                     request.url.path == "/api/reports"
                     or request.url.path.startswith(("/api/imports/", "/api/bitrix/"))
+                    or request.url.path.startswith("/api/report/")
                 )
                 if (
                     modifying_report

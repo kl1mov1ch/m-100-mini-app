@@ -48,6 +48,8 @@ import './telegram.css';
 import './mobile-refinements.css';
 import './bottom-sheets.css';
 import './avatar.css';
+import './keyboard.css';
+import { useInputVisibility } from './hooks/useInputVisibility';
 import type { HistoryRow, Project, Session } from './types';
 export type WorkspaceView = ReturnType<typeof useWorkspace> & {
 	session: Session;
@@ -55,6 +57,7 @@ export type WorkspaceView = ReturnType<typeof useWorkspace> & {
 	todayRow: HistoryRow | undefined;
 };
 export function WorkspaceApp() {
+	useInputVisibility();
 	const controller = useWorkspace();
 	const {
 		session,

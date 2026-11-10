@@ -104,3 +104,22 @@ def test_avatar_handles_absent_photo_without_repeated_requests(client, monkeypat
     assert client.get("/api/profile/avatar", headers=headers).status_code == 404
     assert client.get("/api/profile/avatar", headers=headers).status_code == 404
     assert len(requests) == 1
+
+
+def test_avatar_proxies_verified_telegram_photo_when_bot_cannot_see_it(client, monkeypatch):
+    grant(client, "1001")
+    with workspaces.registry() as database:
+        database.execute(
+            "UPDATE users SET avatar_url=? WHERE telegram_id=?",
+            ("https://t.me/i/userpic/320/current.jpg", "1001"),
+        )
+
+    def answer(request):
+        assert request.url.host == "t.me"
+        return httpx.Response(200, content=b"current-photo", headers={"Content-Type": "image/jpeg"})
+
+    mock_telegram(monkeypatch, answer)
+    response = client.get("/api/profile/avatar", headers={"X-Preview-User": "1001"})
+    assert response.status_code == 200 and response.content == b"current-photo"
+    assert not profile.telegram_photo_url("https://t.me.evil.test/i/userpic/320/photo.jpg")
+    assert not profile.telegram_photo_url("https://127.0.0.1/i/userpic/320/photo.jpg")

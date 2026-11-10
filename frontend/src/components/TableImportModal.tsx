@@ -1,10 +1,17 @@
-import { Alert, Button, Input, InputNumber, Modal, Select, Tabs, Tag } from 'antd';
+import { Alert, App, Button, Input, InputNumber, Modal, Select, Tabs, Tag } from 'antd';
 import { Check, FileSpreadsheet, Search, Settings2, TriangleAlert } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { WorkspaceView } from '../App';
 import dayjs from '../lib/date';
 import { Money, nf, unit } from '../lib/format';
-import type { ImportWarning, Position, TableFixPayload } from '../types';
+import type {
+	CatalogueReconciliation as Reconciliation,
+	ImportWarning,
+	Position,
+	TableFixPayload,
+} from '../types';
+import { request } from '../lib/api';
+import { CatalogueReconciliation } from './CatalogueReconciliation';
 import { DatePicker } from './ResponsiveDatePicker';
 import './table-import.css';
 
@@ -23,6 +30,11 @@ export function TableImportModal({ workspace }: { workspace: WorkspaceView }) {
 		data,
 		openSettings,
 	} = workspace;
+	const { message } = App.useApp();
+	const [positionMatches, setPositionMatches] = useState<Record<string, string | null>>({});
+	const [reconciliationAccepted, setReconciliationAccepted] = useState(false);
+	const [resolving, setResolving] = useState(false);
+	const [dayResolutions, setDayResolutions] = useState<Record<string, string>>({});
 	const [tab, setTab] = useState('issues');
 	const [query, setQuery] = useState('');
 	const [values, setValues] = useState<Record<string, string | number | null>>({});
@@ -31,13 +43,46 @@ export function TableImportModal({ workspace }: { workspace: WorkspaceView }) {
 	const [editing, setEditing] = useState<string | null>(null);
 	useEffect(() => {
 		setTab(
-			preview?.warnings.some((warning) => warning.severity !== 'info') ? 'issues' : 'positions',
+			preview?.reconciliation?.needs_confirmation
+				? 'reconciliation'
+				: preview?.warnings.some((warning) => warning.severity !== 'info')
+					? 'issues'
+					: 'positions',
 		);
 		setQuery('');
 		setValues({});
 		setEditing(null);
 	}, [preview?.token]);
+	useEffect(() => {
+		setPositionMatches(
+			Object.fromEntries(
+				(preview?.reconciliation?.rows || []).map((row) => [row.previous.id, row.selected_id]),
+			),
+		);
+		setReconciliationAccepted(false);
+		setDayResolutions({});
+	}, [preview]);
 	if (!preview) return null;
+	const reconciliation = preview.reconciliation;
+	const reconciliationPending =
+		!!reconciliation?.needs_confirmation &&
+		(!reconciliationAccepted ||
+			reconciliation.rows.some((row) => row.required && !positionMatches[row.previous.id]));
+	const resolveReconciliation = async () => {
+		setResolving(true);
+		try {
+			const plan = await request<Reconciliation>(
+				'/imports/resolve',
+				{ token: preview.token, sheets: mapping },
+				workspace.project,
+			);
+			setPreview({ ...preview, reconciliation: plan });
+		} catch (error) {
+			message.error((error as Error).message);
+		} finally {
+			setResolving(false);
+		}
+	};
 	const problems = preview.warnings.filter((warning) => warning.severity !== 'info');
 	const positions = preview.positions.filter((position) =>
 		`${position.name} ${position.source_row}`.toLowerCase().includes(query.toLowerCase()),
@@ -397,10 +442,21 @@ export function TableImportModal({ workspace }: { workspace: WorkspaceView }) {
 					<Button
 						type="primary"
 						loading={busy}
-						disabled={problems.some((warning) => !ack.includes(warning.id))}
-						onClick={commitImport}
+						disabled={
+							resolving ||
+							reconciliationPending ||
+							problems.some((warning) => !ack.includes(warning.id))
+						}
+						onClick={() =>
+							void commitImport({
+								position_matches: positionMatches,
+								reconciliation_acknowledged: reconciliationAccepted,
+								reconciliation_version: reconciliation?.version || '',
+								day_resolutions: dayResolutions,
+							})
+						}
 					>
-						Подтвердить таблицу
+						{reconciliation?.needs_confirmation ? 'Применить изменения' : 'Подтвердить таблицу'}
 					</Button>
 				</div>
 			}
@@ -429,6 +485,34 @@ export function TableImportModal({ workspace }: { workspace: WorkspaceView }) {
 				activeKey={tab}
 				onChange={setTab}
 				items={[
+					...(reconciliation?.needs_confirmation
+						? [
+								{
+									key: 'reconciliation',
+									label: 'Изменения сметы',
+									children: (
+										<CatalogueReconciliation
+											plan={reconciliation}
+											dayResolutions={dayResolutions}
+											onResolveDay={(day, value) => {
+												setDayResolutions((current) => ({ ...current, [day]: value }));
+												setReconciliationAccepted(false);
+											}}
+											positions={preview.positions}
+											selected={positionMatches}
+											onSelect={(id, value) => {
+												setPositionMatches((current) => ({ ...current, [id]: value }));
+												setReconciliationAccepted(false);
+											}}
+											accepted={reconciliationAccepted}
+											onAccept={setReconciliationAccepted}
+											busy={resolving}
+											onResolve={() => void resolveReconciliation()}
+										/>
+									),
+								},
+							]
+						: []),
 					{
 						key: 'issues',
 						label: <>Проверка {problems.length > 0 && <Tag color="gold">{problems.length}</Tag>}</>,

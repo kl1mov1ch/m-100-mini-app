@@ -5,9 +5,11 @@ from datetime import date
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
+from pydantic import BaseModel, Field
 
 from .. import matcher, store, workspaces
 from ..clock import now, today
+from ..report_snapshots import remember_start, restore_target
 from ..reporting import ai_settings, get_report, history, report_changes, safe_config
 from ..schemas import ParseBody, SaveBody
 from ..synchronization import send_day
@@ -47,7 +49,7 @@ async def parse(body: ParseBody):
     with store.connect() as db:
         ps = store.positions(db)
         settings = ai_settings(db)
-    return await matcher.parse(body.text, ps, settings)
+    return await matcher.parse(body.text, ps, settings, body.local_only)
 
 
 @router.post("/api/search")
@@ -58,8 +60,41 @@ async def search(body: ParseBody):
     return await matcher.search(body.text, ps, settings, body.local_only)
 
 
+class RestoreBody(BaseModel):
+    revision: int = Field(ge=1)
+
+
 @router.post("/api/reports")
 async def save(request: Request, body: SaveBody):
+    return await persist_report(request, body)
+
+
+@router.get("/api/report/{day}/restore-preview")
+def restore_preview(day: date):
+    with store.connect() as database:
+        current = get_report(database, day.isoformat())
+        return {"current": current, "target": restore_target(database, day.isoformat())}
+
+
+@router.post("/api/report/{day}/restore")
+async def restore(request: Request, day: date, body: RestoreBody):
+    with store.connect() as database:
+        target = restore_target(database, day.isoformat())
+    return await persist_report(
+        request,
+        SaveBody(
+            date=day,
+            revision=body.revision,
+            lines=target["lines"],
+            crew_count=target["crew_count"],
+            text=target.get("text") or "",
+            allow_exceed=True,
+        ),
+        action="restore_day",
+    )
+
+
+async def persist_report(request: Request, body: SaveBody, action="edit_report"):
     day = body.date.isoformat()
     if day > today():
         raise HTTPException(422, "Дата выполнения не может быть в будущем")
@@ -70,6 +105,8 @@ async def save(request: Request, body: SaveBody):
         before = get_report(db, day)
         if before["revision"] != body.revision:
             raise HTTPException(409, "Отчёт изменился в другом окне. Откройте его заново.")
+        if not body.lines and not before["revision"] and not before["lines"]:
+            raise HTTPException(422, "Добавьте выполненную работу перед подтверждением")
         ps = {p["id"]: p for p in store.positions(db)}
         old = {l["item_id"]: l["quantity"] for l in before["lines"]}
         for line in body.lines:
@@ -91,7 +128,9 @@ async def save(request: Request, body: SaveBody):
         )
         if not changed:
             return {**before, "changed": False, "changes": delta}
+        remember_start(db, before)
         event = {
+            "action": action,
             "before": before,
             "changes": delta,
             "actor_id": request.state.user["telegram_id"],
