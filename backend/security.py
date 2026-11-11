@@ -88,6 +88,12 @@ async def access(request: Request, call_next):
             ):
                 p = workspaces.project(request.state.user, request.headers.get("X-Project-Id"))
                 request.state.project = p
+                if (
+                    not development
+                    and request.state.user["role"] == "admin"
+                    and request.url.path.startswith(("/api/imports/", "/api/bitrix/"))
+                ):
+                    raise HTTPException(403, "Таблицу проверяет мастер объекта")
                 modifying_report = request.method == "POST" and (
                     request.url.path == "/api/reports"
                     or request.url.path.startswith(

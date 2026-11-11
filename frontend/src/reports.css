@@ -131,16 +131,16 @@
 		grid-template-columns: repeat(4, minmax(0, 1fr));
 	}
 }
-.profile-settings > .ant-btn {
-	margin-top: 12px;
+.settings-card.profile-settings {
+	padding: 16px;
+	display: grid;
+	gap: 14px;
 }
 .profile-intro {
-	display: flex;
-	gap: 13px;
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr) auto;
+	gap: 10px;
 	align-items: center;
-}
-.profile-intro > div {
-	min-width: 0;
 }
 .profile-intro b,
 .profile-intro small {
@@ -148,14 +148,40 @@
 	overflow-wrap: anywhere;
 }
 .profile-intro small,
-.profile-mode-help {
+.profile-test-role > span {
 	color: #617590;
 	line-height: 1.6;
 	font-size: 12px;
 }
-.profile-mode-help {
-	display: block;
-	margin-top: 10px;
+.profile-meta {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 4px 8px;
+	margin-top: 4px;
+}
+.profile-meta .ant-tag {
+	margin: 0;
+}
+.profile-name-form,
+.profile-test-role {
+	display: grid;
+	gap: 6px;
+	min-width: 0;
+}
+.profile-name-form > label {
+	margin: 0;
+}
+.profile-name-actions {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+	gap: 8px;
+	margin-top: 2px;
+}
+.profile-test-role {
+	border-top: 1px solid #edf1f8;
+	padding-top: 10px;
 }
 .profile-button > img {
 	width: 100%;
