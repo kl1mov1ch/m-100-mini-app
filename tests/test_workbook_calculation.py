@@ -63,6 +63,7 @@ def test_unsupported_formula_requires_clear_cell_confirmation():
 
 def test_guarded_source_formula_and_daily_payroll_on_new_sheet():
     workbook = openpyxl.Workbook()
+    workbook.calculation = None
     sheet = workbook.active
     sheet.title = "Инженерные сети"
     sheet["D5"] = 4
@@ -88,6 +89,7 @@ def test_guarded_source_formula_and_daily_payroll_on_new_sheet():
     assert {issue["cell"] for issue in issues} == {"L9"}
     original = openpyxl.load_workbook(io.BytesIO(content))["Инженерные сети"]
     assert original["F5"].value == formula and original["L9"].value == "=UNKNOWN(A1)"
+    assert original.parent.calculation.fullCalcOnLoad
     verify_day_totals(
         content,
         day,

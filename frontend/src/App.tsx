@@ -128,11 +128,12 @@ export function WorkspaceApp() {
 	return (
 		<div className="application">
 			<header className="app-header">
-				<button className="app-wordmark" onClick={() => setPage('objects')}>
-					<span>
-						<ProjectLogo />
-					</span>
-					<b>Журнал работ</b>
+				<button
+					className="app-wordmark"
+					aria-label="М100 — к списку объектов"
+					onClick={() => setPage('objects')}
+				>
+					<ProjectLogo />
 				</button>
 				<div className="header-user">
 					<span>{session.user.name}</span>

@@ -9,9 +9,15 @@ from ..clock import now
 from ..bitrix_refresh import freshness, refresh_project, review_issues
 from ..reporting import ai_settings, safe_config
 from ..schemas import Connection
+from ..synchronization import write_journal
 from .objects import owned_object
 
 router = APIRouter()
+
+
+@router.post("/api/bitrix/journal")
+async def journal(request: Request):
+    return await write_journal(owned_object(request))
 
 
 @router.post("/api/bitrix/refresh")

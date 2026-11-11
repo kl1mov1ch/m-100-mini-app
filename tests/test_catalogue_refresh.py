@@ -201,3 +201,69 @@ def test_bitrix_review_suggests_verified_values_without_editing_reports(client, 
     assert client.post("/api/bitrix/refresh", headers=headers).json()["status"] == "review"
     assert client.post(path, headers=headers).json()["issues"][0]["kind"] == "layout"
     assert client.get("/api/report/" + today(), headers=headers).json()["lines"] == [line]
+
+
+def test_import_suggests_from_cells_and_recovers_failed_journal_write(client, monkeypatch):
+    grant(client, "9001")
+    project_id = create(client, "9001", sample=False)
+    headers = {"X-Project-Id": project_id, "X-Preview-User": "9001"}
+    project = workspaces.project(workspaces.user("9001"), project_id)
+    with store.connect(project["db_path"]) as database:
+        store.set_setting(database, "webhook", "test-webhook")
+        store.set_setting(database, "file_id", "123")
+    remote = openpyxl.load_workbook(
+        io.BytesIO(
+            workbook(
+                [
+                    ("Прокладка кабеля", "м", 2),
+                    ("Монтаж щита", "шт", 5),
+                ]
+            )
+        )
+    )
+    remote.calculation = None
+    remote.active["H2"] = "12 м"
+    remote.active["I2"] = "уточнить"
+    remote.active["B3"] = None
+    stream = io.BytesIO()
+    remote.save(stream)
+    current = stream.getvalue()
+
+    async def read(*args):
+        return current, {"NAME": "Смета.xlsx"}
+
+    async def write(*args):
+        nonlocal current
+        import base64
+
+        current = base64.b64decode(args[2]["fileContent"][1])
+        return True
+
+    async def fail(*args):
+        raise httpx.ConnectError("offline")
+
+    monkeypatch.setattr(bitrix, "download_rest", read)
+    monkeypatch.setattr(bitrix, "rest", fail)
+    preview = client.post("/api/imports/bitrix", headers=headers).json()
+    body = approval(preview)
+    workspaces.set_shared({"llm_api_key": "test-key"})
+
+    async def model(system, text, settings):
+        positions = json.loads(text)["positions"]
+        return {"units": {positions[0]["id"]: "шт"}}
+
+    monkeypatch.setattr(matcher, "complete", model)
+    suggestions = client.post("/api/imports/consult", headers=headers, json=body).json()
+    for cell, expected in (("H2", [12]), ("I2", []), ("B3", ["шт"])):
+        key = next(issue["id"] for issue in preview["warnings"] if issue.get("cell") == cell)
+        assert [option["value"] for option in suggestions[key]["options"]] == expected
+    confirmed = client.post("/api/imports/confirm", headers=headers, json=body)
+    assert confirmed.is_success, confirmed.text
+    assert confirmed.json()["journal"]["status"] == "pending"
+    config = client.get("/api/bootstrap", headers=headers).json()["config"]
+    assert not config["pending_import"] and config["journal_status"] == "pending"
+    monkeypatch.setattr(bitrix, "rest", write)
+    assert client.post("/api/bitrix/journal", headers=headers).json()["status"] == "ready"
+    saved = openpyxl.load_workbook(io.BytesIO(current))
+    assert saved["Монтаж"]["H2"].value == "12 м"
+    assert "Журнал работ" in saved.sheetnames

@@ -29,6 +29,7 @@ export function ObjectTablePanel({
 		upload,
 		importRemote,
 		resumeImport,
+		retryJournal,
 		openObjectSection,
 	} = workspace;
 	const config = data?.config;
@@ -50,8 +51,17 @@ export function ObjectTablePanel({
 				<>
 					<ObjectTableCard workspace={workspace} />
 					<BitrixReadStatus workspace={workspace} />
-					{config.journal_status === 'pending' && config.journal_note && (
-						<Alert type="warning" showIcon message={config.journal_note} />
+					{config.has_webhook && config.file_id > 0 && config.journal_status !== 'ready' && (
+						<Alert
+							type="warning"
+							showIcon
+							message={config.journal_note || 'Проверьте запись листа «Журнал работ» в Битрикс24'}
+							description={
+								<Button size="small" loading={busy} onClick={retryJournal}>
+									Повторить запись
+								</Button>
+							}
+						/>
 					)}
 				</>
 			) : (
