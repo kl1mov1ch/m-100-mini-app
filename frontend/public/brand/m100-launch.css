@@ -9,10 +9,23 @@
 	transition: opacity 240ms ease-out;
 }
 
-.startup-screen img {
+.startup-brand {
+	display: grid;
+	justify-items: center;
+	gap: clamp(10px, 4vw, 17px);
+}
+
+.startup-brand img {
 	display: block;
-	width: min(86vw, 340px);
+	width: min(55vw, 216px);
 	height: auto;
+}
+
+.startup-brand p {
+	margin: 0;
+	color: #fff;
+	font: 650 clamp(10px, 4vw, 16px) / 1.2 Inter, 'Segoe UI', Arial, sans-serif;
+	letter-spacing: 0.11em;
 }
 
 .startup-screen.is-finished {
@@ -23,5 +36,23 @@
 @media (prefers-reduced-motion: reduce) {
 	.startup-screen {
 		transition: none;
+	}
+}
+
+@media (prefers-reduced-motion: no-preference) {
+	.startup-brand p {
+		animation: startup-caption 480ms cubic-bezier(0.2, 0.75, 0.3, 1) 165ms both;
+	}
+}
+
+@keyframes startup-caption {
+	from {
+		opacity: 0;
+		transform: translateY(4px);
+	}
+
+	to {
+		opacity: 1;
+		transform: translateY(0);
 	}
 }
