@@ -61,6 +61,8 @@ export function CatalogueReconciliation(props: ReconciliationProps) {
 							</p>
 							<label>Работа в актуальной смете</label>
 							<Select
+								virtual={false}
+								classNames={{ popup: { root: 'work-position-options' } }}
 								showSearch
 								allowClear={!row.required}
 								optionFilterProp="label"

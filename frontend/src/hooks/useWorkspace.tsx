@@ -1,10 +1,11 @@
 import { App as AntApp } from 'antd';
 import 'dayjs/locale/ru';
-import { useEffect, useRef, useState } from 'react';
+import { createRef, useEffect, useRef, useState } from 'react';
 import dayjs from '../lib/date';
 
 import { headers, previewUser, request } from '../lib/api';
-import { calculateAmount } from '../lib/calculation';
+import { calculateAmount, mergeWorkQuantities } from '../lib/calculation';
+import { ReportReviewEditor, type ReportReviewHandle } from '../components/ReportReviewEditor';
 import { Money } from '../lib/format';
 import { ReportConfirmation } from '../ReportConfirmation';
 import type {
@@ -54,7 +55,6 @@ export function useWorkspace() {
 	const [parsedCrew, setParsedCrew] = useState<number | null>(null);
 	const [parsedCrewAmbiguous, setParsedCrewAmbiguous] = useState(false);
 	const parsedEditVersion = useRef(0);
-	const [recognizedMode, setRecognizedMode] = useState<'append' | 'replace'>('append');
 	const [projectOpen, setProjectOpen] = useState(false),
 		[objectForm, setObjectForm] = useState(false),
 		[projectName, setProjectName] = useState(''),
@@ -327,36 +327,83 @@ export function useWorkspace() {
 			setBusy(false);
 		}
 	};
-	const confirm = () => {
-		const exceeds = lines.some(
-			(l) =>
-				l.item_id && l.quantity! > (byId[l.item_id]?.remaining || 0) + (oldLines[l.item_id] || 0),
-		);
-		modal.confirm({
-			title: 'Подтверждение отчёта',
+	const openReportReview = (
+		next: { item_id: string; quantity: number }[],
+		nextCrew: number,
+		nextText: string,
+		freeform = false,
+	) => {
+		if (!report) return;
+		const editor = createRef<ReportReviewHandle>();
+		const selection = selectionVersion.current;
+		const reviewModal = modal.confirm({
+			title: 'Общий отчёт за день',
 			icon: null,
-			width: 590,
+			width: 620,
 			className: 'report-confirmation-modal',
 			content: (
-				<ReportConfirmation
-					date={day}
+				<ReportReviewEditor
+					ref={editor}
+					report={report}
 					positions={byId}
-					before={oldLines}
-					after={nextLines}
-					crewBefore={report?.crew_count || 1}
-					crewAfter={crew}
-					amountBefore={report?.payroll.amount || 0}
-					amountAfter={amount}
+					lines={next}
+					crew={nextCrew}
 					connected={!!data?.config.has_webhook && data?.config.source === 'bitrix'}
-					exceeds={exceeds}
-					renderMoney={(value) => <Money value={value} />}
+					onValidityChange={(valid) => reviewModal.update({ okButtonProps: { disabled: !valid } })}
 				/>
 			),
-			okText: 'Подтвердить изменения',
-			cancelText: 'Вернуться к отчёту',
-			onOk: () => submit(exceeds),
+			okText: 'Подтвердить и отправить',
+			cancelText: 'Вернуться',
+			onOk: async () => {
+				if (selection !== selectionVersion.current)
+					throw new Error('Выбран другой объект. Проверьте отчёт заново.');
+				const values = editor.current?.getValues();
+				if (!values) throw new Error('Дождитесь открытия отчёта');
+				const exceeds = values.lines.some(
+					(line) => line.quantity > byId[line.item_id].remaining + (oldLines[line.item_id] || 0),
+				);
+				setBusy(true);
+				parsedEditVersion.current++;
+				try {
+					const saved = await request<Report>(
+						'/reports',
+						{
+							date: day,
+							revision: report.revision,
+							...values,
+							text: nextText,
+							allow_exceed: exceeds,
+						},
+						project,
+					);
+					setReport(saved);
+					setLines(saved.lines);
+					setCrew(saved.crew_count);
+					setReportText(saved.text || '');
+					if (freeform) {
+						setTextOpen(false);
+						setFreeText('');
+					}
+					await refresh(true);
+					if (saved.sync_status === 'synced')
+						message.success('Готово. Отчёт и расчёты записаны в Битрикс24');
+					else message.info('Отчёт сохранён. ' + (saved.sync_error || 'Ожидает отправки'));
+					window.Telegram?.WebApp?.HapticFeedback?.notificationOccurred('success');
+				} catch (error) {
+					message.error((error as Error).message);
+					throw error;
+				} finally {
+					setBusy(false);
+				}
+			},
 		});
 	};
+	const confirm = () =>
+		openReportReview(
+			lines.map((line) => ({ item_id: line.item_id!, quantity: line.quantity! })),
+			crew,
+			reportText,
+		);
 	const patchParsedLine = (index: number, patch: Partial<Line>) => {
 		parsedEditVersion.current++;
 		setParsed((current) =>
@@ -379,88 +426,24 @@ export function useWorkspace() {
 			);
 			return;
 		}
-		const quantities = new Map<string, number>();
-		const combined = [...(recognizedMode === 'append' ? lines : []), ...parsed];
-		for (const line of combined) {
-			if (!line.item_id || !byId[line.item_id] || !line.quantity || line.quantity <= 0) {
-				message.warning('Проверьте выделенные работы и объёмы');
-				return;
-			}
-			quantities.set(line.item_id, (quantities.get(line.item_id) || 0) + line.quantity);
+		const combined = [...lines, ...parsed];
+		if (
+			combined.some(
+				(line) => !line.item_id || !byId[line.item_id] || !line.quantity || line.quantity <= 0,
+			)
+		) {
+			message.warning('Проверьте выделенные работы и объёмы');
+			return;
 		}
-		const next = [...quantities].map(([item_id, quantity]) => ({ item_id, quantity }));
-		const nextCrew = parsedCrew || crew;
-		const nextAmount = calculateAmount(
-			next.map((line) => ({ quantity: line.quantity, rate: byId[line.item_id].rate })),
+		const next = mergeWorkQuantities(
+			combined.map((line) => ({ item_id: line.item_id!, quantity: line.quantity! })),
 		);
-		const exceeds = next.some(
-			(line) => line.quantity > byId[line.item_id].remaining + (oldLines[line.item_id] || 0),
+		openReportReview(
+			next,
+			parsedCrew || crew,
+			[reportText, freeText].filter(Boolean).join('\n'),
+			true,
 		);
-		const selection = selectionVersion.current;
-		const nextText =
-			recognizedMode === 'append' ? [reportText, freeText].filter(Boolean).join('\n') : freeText;
-		modal.confirm({
-			title: 'Проверить и отправить отчёт',
-			icon: null,
-			width: 590,
-			className: 'report-confirmation-modal',
-			content: (
-				<ReportConfirmation
-					date={day}
-					positions={byId}
-					before={oldLines}
-					after={Object.fromEntries(quantities)}
-					crewBefore={report.crew_count}
-					crewAfter={nextCrew}
-					amountBefore={report.payroll.amount}
-					amountAfter={nextAmount}
-					connected={!!data?.config.has_webhook && data?.config.source === 'bitrix'}
-					exceeds={exceeds}
-					renderMoney={(value) => <Money value={value} />}
-				/>
-			),
-			okText: 'Подтвердить и отправить',
-			cancelText: 'Исправить',
-			onOk: async () => {
-				if (selection !== selectionVersion.current)
-					throw new Error('Выбран другой объект. Проверьте отчёт заново.');
-				setBusy(true);
-				parsedEditVersion.current++;
-				try {
-					const saved = await request<Report>(
-						'/reports',
-						{
-							date: day,
-							revision: report.revision,
-							lines: next,
-							crew_count: nextCrew,
-							text: nextText,
-							allow_exceed: exceeds,
-						},
-						project,
-					);
-					setReport(saved);
-					setLines(saved.lines);
-					setCrew(saved.crew_count);
-					setReportText(saved.text || '');
-					setTextOpen(false);
-					setFreeText('');
-					await refresh(true);
-					if (saved.sync_status === 'synced')
-						message.success('Готово. Отчёт и расчёты записаны в Битрикс24');
-					else
-						message.info(
-							'Отчёт сохранён. ' + (saved.sync_error || 'Отправим, когда восстановится соединение'),
-						);
-					window.Telegram?.WebApp?.HapticFeedback?.notificationOccurred('success');
-				} catch (error) {
-					message.error((error as Error).message);
-					throw error;
-				} finally {
-					setBusy(false);
-				}
-			},
-		});
 	};
 	const retry = async (date: string) => {
 		setBusy(true);
@@ -866,8 +849,6 @@ export function useWorkspace() {
 		removeParsedLine,
 		updateParsedCrew,
 		confirmParsedReport,
-		recognizedMode,
-		setRecognizedMode,
 		setParsed,
 		parsing,
 		setParsing,

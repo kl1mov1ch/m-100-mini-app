@@ -102,9 +102,6 @@
 	min-width: 0;
 }
 .draft-work .ant-select-selection-item {
-	white-space: normal;
-	line-height: 1.45;
-	padding-block: 9px;
 	font-size: 14px;
 }
 .draft-work .ant-select-selector {
@@ -147,6 +144,12 @@
 	display: grid;
 	gap: 8px;
 	font-size: 12px;
+	color: #526782;
+}
+.draft-addition-hint {
+	margin: 0;
+	font-size: 12px;
+	line-height: 1.5;
 	color: #526782;
 }
 .draft-mode .ant-segmented {

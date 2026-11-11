@@ -27,3 +27,24 @@ export function calculateAmount(works: WorkValue[]): number {
 	const magnitude = total * sign;
 	return Number(sign * ((magnitude + denominator / 2n) / denominator)) / 100;
 }
+
+export function mergeWorkQuantities(lines: { item_id: string; quantity: number }[]) {
+	const quantities = new Map<string, { integer: bigint; scale: number }>();
+	for (const line of lines) {
+		if (!Number.isFinite(line.quantity) || line.quantity < 0)
+			throw new Error('Проверьте объём работы');
+		const next = decimalValue(line.quantity);
+		const previous = quantities.get(line.item_id) || { integer: 0n, scale: 0 };
+		const scale = Math.max(next.scale, previous.scale);
+		quantities.set(line.item_id, {
+			integer:
+				previous.integer * 10n ** BigInt(scale - previous.scale) +
+				next.integer * 10n ** BigInt(scale - next.scale),
+			scale,
+		});
+	}
+	return [...quantities].map(([item_id, value]) => ({
+		item_id,
+		quantity: Number(value.integer) / 10 ** value.scale,
+	}));
+}

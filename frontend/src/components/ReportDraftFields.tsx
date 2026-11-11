@@ -1,4 +1,4 @@
-import { Alert, Button, InputNumber, Segmented, Select } from 'antd';
+import { Alert, Button, InputNumber, Select } from 'antd';
 import { LoaderCircle, Trash2, Users } from 'lucide-react';
 import type { WorkspaceView } from '../App';
 import { Money, unit, countLabel } from '../lib/format';
@@ -17,8 +17,6 @@ export function ReportDraftFields({ workspace }: { workspace: WorkspaceView }) {
 		updateParsedCrew,
 		crew,
 		report,
-		recognizedMode,
-		setRecognizedMode,
 		confirmParsedReport,
 		busy,
 	} = workspace;
@@ -77,6 +75,8 @@ export function ReportDraftFields({ workspace }: { workspace: WorkspaceView }) {
 							/>
 						</div>
 						<Select
+							virtual={false}
+							classNames={{ popup: { root: 'work-position-options' } }}
 							aria-label={'Позиция сметы для работы ' + (index + 1)}
 							showSearch
 							optionFilterProp="label"
@@ -117,18 +117,9 @@ export function ReportDraftFields({ workspace }: { workspace: WorkspaceView }) {
 				);
 			})}
 			{!!report?.lines.length && (
-				<div className="draft-mode">
-					<span>За этот день уже есть отчёт</span>
-					<Segmented
-						block
-						value={recognizedMode}
-						onChange={setRecognizedMode}
-						options={[
-							{ value: 'append', label: 'Добавить работы' },
-							{ value: 'replace', label: 'Уточнить итог дня' },
-						]}
-					/>
-				</div>
+				<p className="draft-addition-hint">
+					Новые объёмы прибавятся к текущим. Общий итог можно изменить перед отправкой.
+				</p>
 			)}
 			<Button
 				block

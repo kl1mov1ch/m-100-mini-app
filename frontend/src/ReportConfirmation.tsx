@@ -23,6 +23,9 @@ type ConfirmationProps = {
 	connected: boolean;
 	exceeds: boolean;
 	renderMoney: (value: number) => ReactNode;
+	workContent?: ReactNode;
+	crewContent?: ReactNode;
+	workSummary?: string;
 };
 
 export function ReportConfirmation(props: ConfirmationProps) {
@@ -39,65 +42,69 @@ export function ReportConfirmation(props: ConfirmationProps) {
 		<div className="confirmation-detail">
 			<div className="confirmation-date">
 				{dayjs(props.date).format('D MMMM YYYY')}
-				<span>{identifiers.length} изменений в работах</span>
+				<span>{props.workSummary || `${identifiers.length} изменений в работах`}</span>
 			</div>
-			<div className="confirmation-work-list">
-				{identifiers.map((id) => {
-					const position = positions[id];
-					if (!position) return null;
-					const previous = before[id] || 0;
-					const next = after[id] || 0;
-					const state = !previous ? 'added' : !next ? 'removed' : 'edited';
-					return (
-						<div className={'confirmation-work ' + state} key={id}>
-							<div className="confirmation-work-title">
-								<span className="confirmation-work-icon">
-									{state === 'added' ? (
-										<Plus size={15} />
-									) : state === 'removed' ? (
-										<Minus size={15} />
-									) : (
-										<ArrowRight size={15} />
-									)}
-								</span>
-								<b>{position.name}</b>
-								<span className="confirmation-change-label">
-									{state === 'added' ? 'Добавлено' : state === 'removed' ? 'Убрано' : 'Изменено'}
-								</span>
+			{props.workContent ?? (
+				<div className="confirmation-work-list">
+					{identifiers.map((id) => {
+						const position = positions[id];
+						if (!position) return null;
+						const previous = before[id] || 0;
+						const next = after[id] || 0;
+						const state = !previous ? 'added' : !next ? 'removed' : 'edited';
+						return (
+							<div className={'confirmation-work ' + state} key={id}>
+								<div className="confirmation-work-title">
+									<span className="confirmation-work-icon">
+										{state === 'added' ? (
+											<Plus size={15} />
+										) : state === 'removed' ? (
+											<Minus size={15} />
+										) : (
+											<ArrowRight size={15} />
+										)}
+									</span>
+									<b>{position.name}</b>
+									<span className="confirmation-change-label">
+										{state === 'added' ? 'Добавлено' : state === 'removed' ? 'Убрано' : 'Изменено'}
+									</span>
+								</div>
+								<div className="confirmation-values">
+									<span>Объём</span>
+									<del>
+										{numberFormat.format(previous)} {position.unit}
+									</del>
+									<ArrowRight size={13} />
+									<strong>
+										{numberFormat.format(next)} {position.unit}
+									</strong>
+								</div>
+								<div className="confirmation-values amount-values">
+									<span>Сумма</span>
+									<del>{renderMoney(previous * position.rate)}</del>
+									<ArrowRight size={13} />
+									<strong>{renderMoney(next * position.rate)}</strong>
+								</div>
 							</div>
-							<div className="confirmation-values">
-								<span>Объём</span>
-								<del>
-									{numberFormat.format(previous)} {position.unit}
-								</del>
-								<ArrowRight size={13} />
-								<strong>
-									{numberFormat.format(next)} {position.unit}
-								</strong>
-							</div>
-							<div className="confirmation-values amount-values">
-								<span>Сумма</span>
-								<del>{renderMoney(previous * position.rate)}</del>
-								<ArrowRight size={13} />
-								<strong>{renderMoney(next * position.rate)}</strong>
-							</div>
-						</div>
-					);
-				})}
-			</div>
-			{props.crewBefore !== props.crewAfter && (
-				<div className="confirmation-crew">
-					<span>
-						<Users size={15} />
-						Работников
-					</span>
-					<div>
-						<del>{props.crewBefore}</del>
-						<ArrowRight size={14} />
-						<strong>{props.crewAfter} чел.</strong>
-					</div>
+						);
+					})}
 				</div>
 			)}
+			{props.crewContent !== undefined
+				? props.crewContent
+				: props.crewBefore !== props.crewAfter && (
+						<div className="confirmation-crew">
+							<span>
+								<Users size={15} />
+								Работников
+							</span>
+							<div>
+								<del>{props.crewBefore}</del>
+								<ArrowRight size={14} />
+								<strong>{props.crewAfter} чел.</strong>
+							</div>
+						</div>
+					)}
 			<div className="confirmation-total">
 				<div className="confirmation-total-heading">
 					<span>Выработка за день</span>
