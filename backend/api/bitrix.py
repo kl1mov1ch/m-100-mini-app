@@ -2,14 +2,20 @@ import json
 from urllib.parse import urlparse
 
 import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
 from .. import bitrix, store, tables
 from ..clock import now
+from ..bitrix_refresh import refresh_project
 from ..reporting import safe_config
 from ..schemas import Connection
 
 router = APIRouter()
+
+
+@router.post("/api/bitrix/refresh")
+async def refresh(request: Request, force: bool = False):
+    return await refresh_project(request.state.project, max_age=15 if force else 90)
 
 
 @router.post("/api/bitrix/check")

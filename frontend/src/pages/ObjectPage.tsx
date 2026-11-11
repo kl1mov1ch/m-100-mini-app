@@ -5,6 +5,8 @@ import type { WorkspaceView } from '../App';
 import { ObjectActionDialog, type ObjectAction } from '../components/ObjectActionDialog';
 import { ObjectCatalogue } from '../components/ObjectCatalogue';
 import { ObjectTablePanel } from '../components/ObjectTablePanel';
+import { PositionDetails, positionOverrun } from '../components/PositionDetails';
+import { BitrixReadStatus } from '../components/BitrixReadStatus';
 import { request } from '../lib/api';
 import type { ObjectManagement, ObjectSection, Position } from '../types';
 import { DailyReportPage } from './DailyReportPage';
@@ -32,6 +34,7 @@ export function ObjectPage({ workspace }: { workspace: WorkspaceView }) {
 	const [management, setManagement] = useState<ObjectManagement | null>(null);
 	const [error, setError] = useState('');
 	const [action, setAction] = useState<ObjectAction | null>(null);
+	const [viewPosition, setViewPosition] = useState<string | null>(null);
 	const [loadingAction, setLoadingAction] = useState(false);
 
 	useEffect(() => {
@@ -130,7 +133,9 @@ export function ObjectPage({ workspace }: { workspace: WorkspaceView }) {
 		}));
 	const managePosition = (position: Position) => {
 		const used = management?.used_positions.includes(position.id);
-		const operation = position.hidden ? 'show' : used ? 'hide' : 'delete';
+		const overrun = positionOverrun(position);
+		if (!position.hidden && !overrun && used) return;
+		const operation = position.hidden ? 'show' : overrun > 0 ? 'hide' : 'delete';
 		const label =
 			operation === 'show'
 				? 'Вернуть в подбор'
@@ -148,7 +153,7 @@ export function ObjectPage({ workspace }: { workspace: WorkspaceView }) {
 						{operation === 'show'
 							? 'Работа снова появится в поиске и новых отчётах.'
 							: operation === 'hide'
-								? 'Работа уже встречается в истории. Она исчезнет из подбора, а прошлые отчёты и суммы сохранятся.'
+								? 'У позиции есть перерасход. После подтверждения она исчезнет из поиска и подсказок при заполнении отчёта. Смета и история сохранятся.'
 								: 'Позиция будет удалена из сметы приложения. Отменить это действие нельзя. Строка в исходном файле сохранится.'}
 					</p>
 				</>
@@ -185,12 +190,15 @@ export function ObjectPage({ workspace }: { workspace: WorkspaceView }) {
 				</Button>
 				<Button
 					danger
+					type={objectSection === 'reports' ? 'text' : 'default'}
+					size={objectSection === 'reports' ? 'small' : 'middle'}
 					icon={<Trash2 size={17} />}
 					loading={loadingAction}
 					aria-label="Удалить объект"
+					title="Удалить объект"
 					onClick={deleteObject}
 				>
-					Удалить
+					{objectSection === 'reports' ? null : 'Удалить'}
 				</Button>
 			</div>
 			<h1>{active.name}</h1>
@@ -207,6 +215,7 @@ export function ObjectPage({ workspace }: { workspace: WorkspaceView }) {
 			/>
 			{objectSection === 'reports' && (
 				<>
+					<BitrixReadStatus workspace={workspace} />
 					{!positions.length && !workspace.lines.length ? (
 						<section className="object-panel">
 							<Alert
@@ -232,6 +241,7 @@ export function ObjectPage({ workspace }: { workspace: WorkspaceView }) {
 					management={management}
 					error={error}
 					onManage={managePosition}
+					onView={(position) => setViewPosition(position.id)}
 				/>
 			)}
 			{objectSection === 'table' && (
@@ -243,6 +253,15 @@ export function ObjectPage({ workspace }: { workspace: WorkspaceView }) {
 				</Button>
 			)}
 			{action && <ObjectActionDialog action={action} close={() => setAction(null)} />}
+			{viewPosition && workspace.byId[viewPosition] && (
+				<PositionDetails
+					key={viewPosition}
+					workspace={workspace}
+					position={workspace.byId[viewPosition]}
+					close={() => setViewPosition(null)}
+					manage={managePosition}
+				/>
+			)}
 		</div>
 	);
 }

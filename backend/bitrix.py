@@ -5,6 +5,7 @@ import hashlib
 import io
 import json
 import math
+import os
 import re
 from copy import copy
 from datetime import datetime
@@ -15,6 +16,7 @@ import openpyxl
 from openpyxl.workbook.properties import CalcProperties
 
 PUBLIC_URL = ""
+READ_TIMEOUT = httpx.Timeout(25, connect=7)
 
 
 def equal_quantities(left, right):
@@ -35,9 +37,26 @@ def validate_public(url):
     return url
 
 
+async def read_with_fallback(operation):
+    proxy = os.getenv("BITRIX_PROXY_URL") or os.getenv("TELEGRAM_PROXY_URL")
+    try:
+        return await operation(None)
+    except httpx.HTTPStatusError as error:
+        if not proxy or error.response.status_code not in (403, 429) and error.response.status_code < 500:
+            raise
+    except httpx.TransportError:
+        if not proxy:
+            raise
+    return await operation(proxy)
+
+
 async def fetch_public(url):
     validate_public(url)
-    async with httpx.AsyncClient(timeout=45, follow_redirects=True) as client:
+    return await read_with_fallback(lambda proxy: fetch_public_workbook(url, proxy))
+
+
+async def fetch_public_workbook(url, proxy):
+    async with httpx.AsyncClient(timeout=READ_TIMEOUT, follow_redirects=True, proxy=proxy) as client:
         page = await client.get(url)
         page.raise_for_status()
         config_match = re.search(r"editorJson:\s*(\{.*?\}),\s*\n", page.text)
@@ -51,6 +70,7 @@ async def fetch_public(url):
             raise ValueError("Адрес файла не совпадает с порталом")
         public_download = re.search(r"linkToDownload:\s*'([^']+)'", page.text)
         content = None
+        last_error = None
         urls = ([urljoin(url, public_download[1])] if public_download else []) + [download]
         for candidate in urls:
             try:
@@ -59,9 +79,11 @@ async def fetch_public(url):
                 if r.content.startswith(b"PK"):
                     content = r.content
                     break
-            except httpx.HTTPError:
-                continue
+            except httpx.HTTPError as error:
+                last_error = error
         if content is None:
+            if last_error is not None:
+                raise last_error
             raise ValueError("Битрикс не предоставил скачиваемый Excel. Подключите вебхук Диска.")
         match = re.search(r'"object":\{"id":(\d+)', page.text)
         return content, {
@@ -250,7 +272,14 @@ def validate_webhook(webhook):
 
 async def rest(webhook, method, payload):
     base = validate_webhook(webhook)
-    async with httpx.AsyncClient(timeout=45) as client:
+    if method == "disk.file.get":
+        return await read_with_fallback(lambda proxy: rest_request(base, method, payload, proxy))
+    return await rest_request(base, method, payload, os.getenv("BITRIX_WRITE_PROXY_URL") or None)
+
+
+async def rest_request(base, method, payload, proxy):
+    timeout = READ_TIMEOUT if method == "disk.file.get" else httpx.Timeout(45, connect=7)
+    async with httpx.AsyncClient(timeout=timeout, proxy=proxy) as client:
         r = await client.post(base + method + ".json", json=payload)
         r.raise_for_status()
         body = r.json()
@@ -266,7 +295,11 @@ async def download_rest(webhook, file_id):
     url = meta.get("DOWNLOAD_URL", "")
     if urlparse(url).scheme != "https" or urlparse(url).hostname != urlparse(webhook).hostname:
         raise ValueError("Битрикс вернул неподдерживаемый адрес скачивания")
-    async with httpx.AsyncClient(timeout=45, follow_redirects=True) as client:
+    return await read_with_fallback(lambda proxy: download_workbook(url, meta, proxy))
+
+
+async def download_workbook(url, meta, proxy):
+    async with httpx.AsyncClient(timeout=READ_TIMEOUT, follow_redirects=True, proxy=proxy) as client:
         r = await client.get(url)
         r.raise_for_status()
         if not r.content.startswith(b"PK"):

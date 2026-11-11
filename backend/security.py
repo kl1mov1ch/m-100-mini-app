@@ -104,7 +104,7 @@ async def access(request: Request, call_next):
                         403, "Администратор просматривает отчёты мастеров без изменения"
                     )
                 token = store.CURRENT_DATABASE.set(p["db_path"])
-                if modifying_report:
+                if modifying_report and request.url.path != "/api/bitrix/refresh" and not request.url.path.endswith("/consult"):
                     async with workspaces.mutation_lock(p["id"]):
                         if not workspaces.exists(p["id"]):
                             raise HTTPException(404, "Объект удалён")

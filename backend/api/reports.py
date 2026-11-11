@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from .. import matcher, store, workspaces
 from ..clock import now, today
+from ..bitrix_refresh import remote_positions
 from ..report_snapshots import remember_start, restore_target
 from ..reporting import ai_settings, get_report, history, report_changes, safe_config
 from ..schemas import ParseBody, SaveBody
@@ -21,9 +22,17 @@ router = APIRouter()
 def bootstrap(request: Request):
     with store.connect() as db:
         hidden = store.hidden_positions(db)
+        bitrix = remote_positions(db)
+        links = store.position_links(db)
         return {
             "positions": [
-                {**position, "hidden": position["id"] in hidden} for position in store.positions(db)
+                {
+                    **position,
+                    "hidden": position["id"] in hidden,
+                    "bitrix": bitrix.get(position["id"]),
+                    "linked_work_id": links.get(position["id"]),
+                }
+                for position in store.positions(db)
             ],
             "history": history(db),
             "config": safe_config(db),

@@ -44,6 +44,26 @@ export type Position = {
 	source_row: number;
 	source_sheet?: string;
 	hidden?: boolean;
+	bitrix?: { planned: number; rate: number; completed: number; remaining: number } | null;
+	linked_work_id?: string | null;
+};
+export type PositionHistory = {
+	events: {
+		kind: string;
+		date: string;
+		created_at: string;
+		actor?: string;
+		before?: number;
+		after?: number;
+		values?: { before: Record<string, number | string>; after: Record<string, number | string> };
+		work?: string;
+	}[];
+	days: { date: string; quantity: number; sync_status: string | null }[];
+};
+export type BitrixRead = {
+	status: 'current' | 'review' | 'unavailable';
+	checked_at: string;
+	updated_at: string | null;
 };
 export type ObjectSection = 'reports' | 'catalogue' | 'table';
 export type ViewMode = 'admin' | 'master';
@@ -131,6 +151,7 @@ export type Config = {
 	has_webhook: boolean;
 	last_import: string;
 	pending_import: boolean;
+	bitrix_read?: BitrixRead | null;
 	detail_url?: string;
 	connection_check?: {
 		reachable: boolean;

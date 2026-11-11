@@ -10,6 +10,7 @@ import { Money } from '../lib/format';
 import { ReportConfirmation } from '../ReportConfirmation';
 import type {
 	Change,
+	BitrixRead,
 	Config,
 	Data,
 	ImportPreview,
@@ -43,6 +44,9 @@ export function useWorkspace() {
 		[busy, setBusy] = useState(false);
 	const [objectSection, setObjectSection] = useState<ObjectSection>('reports');
 	const [switchingRole, setSwitchingRole] = useState(false);
+	const [readingBitrix, setReadingBitrix] = useState(false);
+	const bitrixRead = useRef<AbortController | null>(null);
+	const editorState = useRef({ project, day: '', dirty: false });
 	const roleSwitch = useRef(false);
 	const [day, setDay] = useState(dayjs().format('YYYY-MM-DD')),
 		[report, setReport] = useState<Report | null>(null),
@@ -150,7 +154,7 @@ export function useWorkspace() {
 			setSwitchingRole(false);
 		}
 	};
-	const loadData = async (id = project, keepEditor = false) => {
+	const loadData = async (id = project, keepEditor = false, onlyIfClean = false) => {
 		const version = ++selectionVersion.current;
 		const d = await request<Data>('/bootstrap', undefined, id);
 		const r = keepEditor
@@ -162,12 +166,12 @@ export function useWorkspace() {
 		setData(d);
 		setUrl(d.config.public_url);
 		setFileId(d.config.file_id);
-		if (r) {
+		if (r && (!onlyIfClean || (!editorState.current.dirty && editorState.current.day === day))) {
 			setReport(r);
 			setLines(r.lines);
 			setCrew(r.crew_count);
 			setReportText(r.text || '');
-			if (d.config.pending_import) {
+			if (d.config.pending_import && !onlyIfClean) {
 				const p = await request<ImportPreview>('/imports/pending', undefined, id);
 				if (p && version === selectionVersion.current) {
 					setPreview(p);
@@ -326,6 +330,63 @@ export function useWorkspace() {
 		(id) => oldLines[id] !== nextLines[id],
 	);
 	const dirty = deltaIds.length > 0 || crew !== report?.crew_count || reportText !== report?.text;
+	editorState.current = { project, day, dirty: !!report && dirty };
+	const refreshBitrix = async (force = false) => {
+		if (
+			isAdmin ||
+			data?.project?.id !== project ||
+			data.config.source !== 'bitrix' ||
+			bitrixRead.current
+		)
+			return;
+		const controller = new AbortController();
+		const selection = selectionVersion.current;
+		bitrixRead.current = controller;
+		setReadingBitrix(true);
+		try {
+			const updated = await request<BitrixRead | null>(
+				'/bitrix/refresh' + (force ? '?force=true' : ''),
+				{},
+				project,
+				controller.signal,
+			);
+			if (
+				!controller.signal.aborted &&
+				selection === selectionVersion.current &&
+				editorState.current.project === project &&
+				updated &&
+				updated.checked_at !== data.config.bitrix_read?.checked_at
+			) {
+				await loadData(project, editorState.current.dirty || editorState.current.day !== day, true);
+			}
+		} catch (error) {
+			if (force && !controller.signal.aborted) message.error((error as Error).message);
+		} finally {
+			if (bitrixRead.current === controller) {
+				bitrixRead.current = null;
+				setReadingBitrix(false);
+			}
+		}
+	};
+	useEffect(() => {
+		setReadingBitrix(false);
+		return () => {
+			bitrixRead.current?.abort();
+			bitrixRead.current = null;
+		};
+	}, [project, isAdmin]);
+	useEffect(() => {
+		if (page === 'today' || page === 'object' || page === 'objects') void refreshBitrix();
+	}, [
+		project,
+		page,
+		objectSection,
+		data?.config.source,
+		data?.config.last_import,
+		workPicker,
+		textOpen,
+		isAdmin,
+	]);
 	const telegramBack = userForm
 		? () => setUserForm(false)
 		: objectForm
@@ -393,7 +454,6 @@ export function useWorkspace() {
 	) => {
 		if (!report) return;
 		const editor = createRef<ReportReviewHandle>();
-		const selection = selectionVersion.current;
 		const reviewModal = modal.confirm({
 			title: 'Общий отчёт за день',
 			icon: null,
@@ -413,7 +473,7 @@ export function useWorkspace() {
 			okText: 'Подтвердить и отправить',
 			cancelText: 'Вернуться',
 			onOk: async () => {
-				if (selection !== selectionVersion.current)
+				if (editorState.current.project !== project || editorState.current.day !== day)
 					throw new Error('Выбран другой объект. Проверьте отчёт заново.');
 				const values = editor.current?.getValues();
 				if (!values) throw new Error('Дождитесь открытия отчёта');
@@ -840,6 +900,8 @@ export function useWorkspace() {
 		openHistoryReport,
 		checkingConnection,
 		checkConnection,
+		refreshBitrix,
+		readingBitrix,
 		objectSection,
 		openObjectSection,
 		switchingRole,

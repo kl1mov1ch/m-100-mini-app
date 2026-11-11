@@ -77,6 +77,11 @@ def test_hidden_and_deleted_positions_do_not_break_history(client):
         client.post(path + "excel-2", json={"action": "delete"}, headers=headers).status_code == 409
     )
     assert (
+        client.post(path + "excel-2", json={"action": "hide"}, headers=headers).status_code == 409
+    )
+    with store.connect(project["db_path"]) as db:
+        db.execute("UPDATE positions SET planned=1 WHERE id='excel-2'")
+    assert (
         client.post(path + "excel-2", json={"action": "hide"}, headers=headers).status_code == 200
     )
     assert (

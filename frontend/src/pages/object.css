@@ -83,9 +83,22 @@
 	padding: 10px 0;
 	border-bottom: 1px solid #edf1f8;
 }
-.object-catalogue li > div {
+.object-catalogue .catalogue-position {
 	flex: 1;
 	min-width: 0;
+	position: relative;
+	border: 0;
+	background: none;
+	color: inherit;
+	text-align: left;
+	padding: 4px 20px 4px 0;
+}
+.catalogue-position-arrow {
+	position: absolute;
+	inset-inline-end: 0;
+	top: 50%;
+	transform: translateY(-50%);
+	color: #587ca7;
 }
 .object-catalogue li small {
 	display: block;
@@ -93,7 +106,94 @@
 	color: #526984;
 }
 .object-catalogue li .ant-tag {
-	margin-inline-end: 0;
+	margin: 6px 0 0;
+}
+.object-catalogue .catalogue-overrun {
+	background: #fff5ed;
+	border-color: #f0d3b8;
+	padding-inline: 9px;
+}
+.catalogue-overrun-label {
+	display: flex;
+	align-items: center;
+	gap: 5px;
+	margin-top: 6px;
+	color: #a33e20;
+	font-size: 12px;
+	font-weight: 700;
+}
+.bitrix-read-status {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+}
+.bitrix-read-status > div {
+	display: flex;
+	align-items: baseline;
+	flex-wrap: wrap;
+	gap: 4px 8px;
+	min-width: 0;
+}
+.bitrix-read-status .ant-tag {
+	white-space: normal;
+	margin: 0;
+}
+.bitrix-read-status small,
+.position-source {
+	color: #526984;
+}
+.position-details,
+.position-history {
+	display: grid;
+	gap: 10px;
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+.position-totals {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 6px;
+}
+.position-totals > span {
+	display: grid;
+	gap: 3px;
+	padding: 8px;
+	border-radius: 8px;
+	background: #eef4fd;
+	font-size: 12px;
+	color: #3b587a;
+}
+.position-totals b {
+	color: #193e70;
+}
+.position-history section,
+.position-history details {
+	display: grid;
+	gap: 4px;
+	padding: 10px;
+	background: #f4f7fc;
+	border-radius: 10px;
+}
+.position-history details summary {
+	cursor: pointer;
+}
+.position-history small {
+	color: #526984;
+}
+.position-details .ant-alert-action {
+	margin: 0;
+}
+.position-details .ant-alert {
+	flex-wrap: wrap;
+	gap: 7px;
+}
+.position-details .ant-tabs-tab {
+	padding-inline: 2px;
+}
+.position-details .ant-tabs-tab + .ant-tabs-tab {
+	margin-inline-start: 12px;
 }
 .object-action-dialog p {
 	margin-block-start: 6px;

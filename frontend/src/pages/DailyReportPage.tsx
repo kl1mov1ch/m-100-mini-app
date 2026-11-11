@@ -102,7 +102,7 @@ function MasterDailyReport({ workspace }: { workspace: WorkspaceView }) {
 			</section>
 			<div className="report-toolbar">
 				<Button
-					type="primary"
+					size="small"
 					icon={<Plus size={18} />}
 					onClick={() => {
 						setReplaceIndex(null);
@@ -113,6 +113,7 @@ function MasterDailyReport({ workspace }: { workspace: WorkspaceView }) {
 					Добавить работу
 				</Button>
 				<Button
+					size="small"
 					icon={<Mic size={17} />}
 					onClick={() => setTextOpen(true)}
 					disabled={!positions.length}

@@ -3,6 +3,7 @@ import { Unlink } from 'lucide-react';
 import { useState } from 'react';
 import type { WorkspaceView } from '../App';
 import { FieldHelp } from './FieldHelp';
+import { BitrixReadStatus } from './BitrixReadStatus';
 import { ObjectTableCard } from './ObjectTableCard';
 
 export function ObjectTablePanel({
@@ -44,7 +45,10 @@ export function ObjectTablePanel({
 				)}
 			</div>
 			{connected ? (
-				<ObjectTableCard workspace={workspace} />
+				<>
+					<ObjectTableCard workspace={workspace} />
+					<BitrixReadStatus workspace={workspace} />
+				</>
 			) : (
 				<>
 					{detached && (

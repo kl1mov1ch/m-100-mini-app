@@ -226,6 +226,17 @@ def register(app, settings, now):
                 from .reporting import get_report
 
                 reports_before = {day: get_report(db, day) for day in sorted(report_dates)}
+                position_fields = ("name", "planned", "rate", "unit")
+                old_positions = {
+                    position["id"]: {field: position[field] for field in position_fields}
+                    for position in store.positions(db)
+                }
+                position_updates = {}
+                for position in data["positions"]:
+                    before = old_positions.get(position["id"])
+                    after = {field: position[field] for field in position_fields}
+                    if before and before != after:
+                        position_updates[position["id"]] = {"before": before, "after": after}
                 preserved = [
                     dict(r)
                     for r in db.execute("SELECT e.* FROM entries e JOIN reports r ON r.date=e.date")
@@ -240,6 +251,13 @@ def register(app, settings, now):
                 for p in data["positions"]:
                     store.insert_position(db, p)
                 store.restore_hidden_positions(db, data["positions"])
+                links = store.position_links(db)
+                if links:
+                    ids = {position["id"] for position in data["positions"]}
+                    store.set_setting(
+                        db, "position_links",
+                        json.dumps({material: work for material, work in links.items() if material in ids and work in ids}),
+                    )
                 for e in data["entries"]:
                     db.execute(
                         "INSERT INTO entries VALUES(:item_id,:date,:quantity) ON CONFLICT(item_id,date) DO UPDATE SET quantity=quantity+excluded.quantity",
@@ -292,6 +310,7 @@ def register(app, settings, now):
                                 "action": "catalogue_reconciled",
                                 "actor_id": request.state.user["telegram_id"],
                                 "position_matches": body.position_matches,
+                                "position_updates": position_updates,
                                 "reports_preserved": sorted(report_dates),
                                 "day_resolutions": body.day_resolutions,
                                 "reports_before": reports_before,
@@ -309,6 +328,9 @@ def register(app, settings, now):
                     "sheet_mappings": json.dumps(data["sheets"]),
                     "remote_days": json.dumps(remote_days),
                     "import_file_path": str(directory() / f"{body.token}.xlsx"),
+                    "bitrix_read_status": "null",
+                    "bitrix_read_positions": "{}",
+                    "bitrix_read_days": "{}",
                 }
                 if meta.get("remote", {}):
                     values["file_id"] = str(meta["remote"]["file_id"])
