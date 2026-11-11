@@ -9,6 +9,7 @@ import httpx
 from openpyxl.utils.exceptions import InvalidFileException
 
 from . import bitrix, store, tables, workspaces
+from .bitrix_review import compare_values, layout_issue, report_issue, warning_issue
 from .clock import now
 from .synchronization import table_lock
 
@@ -30,6 +31,10 @@ def freshness(db):
 
 def remote_positions(db):
     return json.loads(store.setting(db, "bitrix_read_positions", "{}"))
+
+
+def review_issues(db):
+    return json.loads(store.setting(db, "bitrix_read_issues", "null"))
 
 
 def connection(db):
@@ -94,12 +99,35 @@ def apply_read(db, extracted):
         }
     warnings = [warning for warning in extracted["warnings"] if warning.get("severity") != "info"]
     layout_changed = len(matched) != len(local) or len(matched) != len(extracted["positions"])
-    review = layout_changed or any(
-        warning.get("field") in ("Плановый объём", "Расценка", "Единица измерения", "Дневной объём")
-        or warning.get("duplicates")
-        or ":missing:" in warning.get("id", "")
+    relevant_warnings = [
+        warning
         for warning in warnings
-    )
+        if warning.get("field")
+        in ("Плановый объём", "Расценка", "Единица измерения", "Дневной объём")
+        or warning.get("duplicates")
+        or ":missing:" in warning["id"]
+        or warning["id"].endswith(":values")
+    ]
+    invalid_fields = defaultdict(set)
+    invalid_days = set()
+    duplicate_days = set()
+    for warning in relevant_warnings:
+        row = (warning.get("sheet"), warning.get("row"))
+        invalid_fields[row].add(warning.get("field"))
+        if warning.get("date"):
+            invalid_days.add((*row, warning["date"]))
+        duplicate_days.update((row[0], item["date"]) for item in warning.get("duplicates", []))
+    issues = [warning_issue(warning) for warning in relevant_warnings]
+    if layout_changed:
+        issues.extend(
+            layout_issue(position, True)
+            for position in extracted["positions"]
+            if position["id"] not in matched
+        )
+        issues.extend(
+            layout_issue(position, False) for position in local if position["id"] not in snapshot
+        )
+    remote_by_id = dict(matched.values())
     previous = remote_positions(db)
     seen = json.loads(store.setting(db, "bitrix_read_days", "{}"))
     saved_days = {row[0] for row in db.execute("SELECT date FROM reports")}
@@ -128,7 +156,29 @@ def apply_read(db, extracted):
             if not bitrix.equal_quantities(
                 fresh, baseline.get(day, {})
             ) and not bitrix.equal_quantities(fresh, current.get(day, {})):
-                review = True
+                local_day = current.get(day, {})
+                for ident in sorted((fresh.keys() | local_day.keys()) & snapshot.keys()):
+                    remote_position = remote_by_id[ident]
+                    coordinates = (
+                        remote_position["source_sheet"],
+                        remote_position["source_row"],
+                        day,
+                    )
+                    local_qty, remote_qty = local_day.get(ident, 0), fresh.get(ident, 0)
+                    if (
+                        coordinates not in invalid_days
+                        and (coordinates[0], day) not in duplicate_days
+                        and not bitrix.equal_quantities({ident: local_qty}, {ident: remote_qty})
+                    ):
+                        issues.append(
+                            report_issue(
+                                remote_position,
+                                day,
+                                local_qty,
+                                remote_qty,
+                                baseline.get(day, {}).get(ident, 0),
+                            )
+                        )
         elif (
             not layout_changed
             and not warnings
@@ -149,12 +199,9 @@ def apply_read(db, extracted):
         after = snapshot[ident]
         if before != after:
             position_updates[ident] = {"before": before, "after": after}
-        if (
-            after["planned"] != position["planned"]
-            or after["rate"] != position["rate"]
-            or round(after["planned"] - after["completed"], 4) != after["remaining"]
-        ):
-            review = True
+        remote_position = remote_by_id[ident]
+        row = (remote_position["source_sheet"], remote_position["source_row"])
+        issues.extend(compare_values(position, remote_position, after, invalid_fields[row]))
     if position_updates or day_changes:
         checked = now()
         db.execute(
@@ -175,10 +222,11 @@ def apply_read(db, extracted):
         )
     store.set_setting(db, "bitrix_read_positions", json.dumps(snapshot))
     store.set_setting(db, "bitrix_read_days", json.dumps(remote))
+    store.set_setting(db, "bitrix_read_issues", json.dumps(issues, ensure_ascii=False))
     if applied_days:
         baseline.update({day: remote.get(day, {}) for day in applied_days})
         store.set_setting(db, "remote_days", json.dumps(baseline))
-    return review
+    return bool(issues)
 
 
 def extract_workbook(content, mappings):
@@ -203,7 +251,8 @@ async def refresh_project(project, max_age=90):
             seconds=min(max_age, 120) if previous["status"] == "unavailable" else max_age
         ):
             return previous
-        extracted = None
+        content = extracted = None
+        workbook_issue = None
         try:
             if webhook and file_id and int(file_id):
                 content, _ = await bitrix.download_rest(webhook, int(file_id))
@@ -211,11 +260,19 @@ async def refresh_project(project, max_age=90):
                 content, _ = await bitrix.fetch_public(url)
             else:
                 return None
-            extracted = await asyncio.to_thread(
-                extract_workbook, content, json.loads(raw_mappings or "null")
-            )
-        except (httpx.HTTPError, InvalidFileException, BadZipFile, ValueError, KeyError, TypeError):
+        except (httpx.HTTPError, ValueError, KeyError, TypeError):
             pass
+        if content is not None:
+            try:
+                extracted = await asyncio.to_thread(
+                    extract_workbook, content, json.loads(raw_mappings or "null")
+                )
+            except (InvalidFileException, BadZipFile, ValueError, KeyError, TypeError):
+                workbook_issue = {
+                    "kind": "layout",
+                    "title": "Структуру таблицы не удалось прочитать",
+                    "advice": "Откройте проверку таблицы и проверьте листы, строку заголовков и столбцы сметы.",
+                }
         async with table_lock(project):
             if not workspaces.exists(ident):
                 return None
@@ -224,13 +281,15 @@ async def refresh_project(project, max_age=90):
                 if connection(db) != expected:
                     return freshness(db)
                 checked_at = now()
-                status = (
-                    "unavailable"
-                    if extracted is None
-                    else "review"
-                    if apply_read(db, extracted)
-                    else "current"
-                )
+                if workbook_issue:
+                    store.set_setting(
+                        db, "bitrix_read_issues", json.dumps([workbook_issue], ensure_ascii=False)
+                    )
+                    status = "review"
+                elif extracted is None:
+                    status = "unavailable"
+                else:
+                    status = "review" if apply_read(db, extracted) else "current"
                 result = {
                     "status": status,
                     "checked_at": checked_at,

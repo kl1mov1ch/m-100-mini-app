@@ -4,11 +4,12 @@ from urllib.parse import urlparse
 import httpx
 from fastapi import APIRouter, HTTPException, Request
 
-from .. import bitrix, store, tables
+from .. import bitrix, bitrix_review, store, tables
 from ..clock import now
-from ..bitrix_refresh import refresh_project
-from ..reporting import safe_config
+from ..bitrix_refresh import freshness, refresh_project, review_issues
+from ..reporting import ai_settings, safe_config
 from ..schemas import Connection
+from .objects import owned_object
 
 router = APIRouter()
 
@@ -16,6 +17,25 @@ router = APIRouter()
 @router.post("/api/bitrix/refresh")
 async def refresh(request: Request, force: bool = False):
     return await refresh_project(request.state.project, max_age=15 if force else 90)
+
+
+@router.post("/api/bitrix/consult")
+async def consult(request: Request, explain: bool = False):
+    project = owned_object(request)
+    with store.connect() as database:
+        status = freshness(database)
+        issues = review_issues(database)
+    if not status or (status["status"] == "review" and issues is None):
+        await refresh_project(project, max_age=0)
+    with store.connect() as database:
+        status = freshness(database)
+        if not status or status["status"] == "unavailable":
+            raise HTTPException(409, "Битрикс24 не ответил. Обновите данные и попробуйте ещё раз.")
+        issues = (review_issues(database) or []) if status["status"] == "review" else []
+        settings = ai_settings(database) if explain else None
+    if explain:
+        return {"advice": await bitrix_review.advise(issues, settings)}
+    return {"issues": issues}
 
 
 @router.post("/api/bitrix/check")

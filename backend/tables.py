@@ -336,11 +336,17 @@ def extract(content, sheets):
         section = s.title
         remaining_column = next(
             (
-                column for column in range(1, s.max_column + 1)
+                column
+                for column in range(1, s.max_column + 1)
                 if re.search(r"остат.*объем|^остаток$", text(s.cell(header, column).value))
             ),
             None,
         )
+        review_columns = {
+            key: openpyxl.utils.get_column_letter(column)
+            for key, column in {**m, "remaining": remaining_column}.items()
+            if key in ("planned", "rate", "completed", "remaining") and column
+        }
         skipped = []
         row_issues = []
 
@@ -388,10 +394,12 @@ def extract(content, sheets):
                 "rate": rate or 0,
                 "source_row": r,
                 "source_sheet": s.title,
+                "source_cells": {key: f"{column}{r}" for key, column in review_columns.items()},
                 "baseline": completed or 0 if not dates else 0,
                 "workbook_completed": completed,
                 "workbook_remaining": number(s.cell(r, remaining_column).value)
-                if remaining_column else None,
+                if remaining_column
+                else None,
             }
             positions.append(p)
             for c, day in dates.items():
@@ -400,7 +408,9 @@ def extract(content, sheets):
                 if qty is not None and qty:
                     entries.append({"item_id": ident, "date": day, "quantity": qty})
                 elif raw not in (None, "") and qty is None:
-                    warnings.append(cell_warning(s.title, r, c, name, "Дневной объём", raw))
+                    warnings.append(
+                        {**cell_warning(s.title, r, c, name, "Дневной объём", raw), "date": day}
+                    )
         if row_issues:
             warnings.append(
                 {
