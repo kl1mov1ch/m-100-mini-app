@@ -26,6 +26,8 @@ def table_lock(project):
 
 async def send_day(project, day):
     async with table_lock(project):
+        if not workspaces.exists(project["id"]):
+            return {"ok": False, "status": "local", "message": "Объект удалён"}
         with store.connect(project["db_path"]) as db:
             r = get_report(db, day)
             webhook = store.setting(db, "webhook")

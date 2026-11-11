@@ -1,6 +1,7 @@
 import json
 import os
 import sqlite3
+from collections import Counter
 from contextlib import contextmanager
 from contextvars import ContextVar
 from pathlib import Path
@@ -81,6 +82,9 @@ def init(path=None, seed=True):
 
 
 def seed_database(database):
+    if setting(database, "seed_initialized"):
+        return
+    set_setting(database, "seed_initialized", "1")
     if database.execute("SELECT 1 FROM positions LIMIT 1").fetchone():
         return
     seed_path = Path(os.getenv("APP_SEED_FILE", str(ROOT / "data/seed.json")))
@@ -105,6 +109,39 @@ def positions(db):
         round(p.planned-p.baseline-COALESCE(sum(e.quantity),0),4) remaining FROM positions p
         LEFT JOIN entries e ON p.id=e.item_id{project_join} GROUP BY p.id{project_group} ORDER BY p.source_row""")
     ]
+
+
+def hidden_positions(db):
+    return json.loads(setting(db, "hidden_positions", "{}"))
+
+
+def position_links(db):
+    return json.loads(setting(db, "position_links", "{}"))
+
+
+def position_identity(position):
+    return [str(position[key] or "").strip().casefold() for key in ("name", "unit", "section")]
+
+
+def restore_hidden_positions(db, incoming):
+    hidden = hidden_positions(db)
+    if not hidden:
+        return
+    restored = {}
+    identities = {position["id"]: position_identity(position) for position in incoming}
+    counts = Counter(tuple(identity) for identity in identities.values())
+    previously_hidden = {tuple(identity) for identity in hidden.values()}
+    for ident, identity in identities.items():
+        if hidden.get(ident) == identity or (
+            tuple(identity) in previously_hidden and counts[tuple(identity)] == 1
+        ):
+            restored[ident] = identity
+    set_setting(db, "hidden_positions", json.dumps(restored, ensure_ascii=False))
+
+
+def selectable_positions(db):
+    hidden = hidden_positions(db)
+    return [position for position in positions(db) if position["id"] not in hidden]
 
 
 def insert_position(db, p):

@@ -31,8 +31,11 @@ export async function request<T>(
 		} catch {
 			throw new Error('Нет соединения с сервером');
 		}
+		const detail = typeof d.detail === 'string' ? d.detail : d.detail?.message;
 		throw new Error(
-			typeof d.detail === 'string' ? d.detail : d.detail?.message || 'Проверьте введённые данные',
+			detail === 'Not Found'
+				? 'Этот раздел недоступен. Обновите приложение.'
+				: detail || 'Проверьте введённые данные',
 		);
 	}
 	return r.json();

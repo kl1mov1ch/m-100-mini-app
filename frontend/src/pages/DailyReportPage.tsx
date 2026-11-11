@@ -1,16 +1,21 @@
 import { Alert, Button, Empty, InputNumber, Spin, Tag } from 'antd';
 import 'dayjs/locale/ru';
-import { Check, FileSpreadsheet, Mic, Plus, RotateCcw, Trash2, Users } from 'lucide-react';
+import { Check, Mic, Plus, RotateCcw, Trash2, Users } from 'lucide-react';
 import { DatePicker } from '../components/ResponsiveDatePicker';
 import dayjs from '../lib/date';
 
 import type { WorkspaceView } from '../App';
-import { LinkedTable } from '../components/LinkedTable';
+import { useConfirmWorkRemoval } from '../hooks/useConfirmWorkRemoval';
 import { Status } from '../components/SyncStatus';
 import { Money, nf, shortName, unit } from '../lib/format';
 import { AdminDailyReport } from '../components/AdminDailyReport';
 export function DailyReportPage({ workspace }: { workspace: WorkspaceView }) {
 	if (workspace.isAdmin) return <AdminDailyReport workspace={workspace} />;
+	return <MasterDailyReport workspace={workspace} />;
+}
+
+function MasterDailyReport({ workspace }: { workspace: WorkspaceView }) {
+	const confirmRemoval = useConfirmWorkRemoval();
 	const {
 		session,
 		data,
@@ -39,8 +44,7 @@ export function DailyReportPage({ workspace }: { workspace: WorkspaceView }) {
 		valid,
 		confirm,
 		retry,
-		openSettings,
-		importRemote,
+		openObjectSection,
 		restoreDay,
 	} = workspace;
 	return !data ? (
@@ -51,8 +55,7 @@ export function DailyReportPage({ workspace }: { workspace: WorkspaceView }) {
 		<>
 			<div className="page-title">
 				<div>
-					<span className="overline">{active?.name}</span>
-					<h1>Дневной отчёт</h1>
+					<h2>Дневной отчёт</h2>
 				</div>
 				<DatePicker
 					aria-label="Дата отчёта"
@@ -64,9 +67,6 @@ export function DailyReportPage({ workspace }: { workspace: WorkspaceView }) {
 					onChange={(d) => d && void changeDay(d.format('YYYY-MM-DD'))}
 				/>
 			</div>
-			{positions.length > 0 && (
-				<LinkedTable config={data.config} positions={positions.length} onSettings={openSettings} />
-			)}
 			<section className="daily-earnings">
 				<div className="earnings-total">
 					<span>Выработка за день</span>
@@ -102,7 +102,7 @@ export function DailyReportPage({ workspace }: { workspace: WorkspaceView }) {
 			</section>
 			<div className="report-toolbar">
 				<Button
-					type="primary"
+					size="small"
 					icon={<Plus size={18} />}
 					onClick={() => {
 						setReplaceIndex(null);
@@ -113,6 +113,7 @@ export function DailyReportPage({ workspace }: { workspace: WorkspaceView }) {
 					Добавить работу
 				</Button>
 				<Button
+					size="small"
 					icon={<Mic size={17} />}
 					onClick={() => setTextOpen(true)}
 					disabled={!positions.length}
@@ -120,16 +121,6 @@ export function DailyReportPage({ workspace }: { workspace: WorkspaceView }) {
 					Текстом или голосом
 				</Button>
 			</div>
-			{!positions.length && (
-				<div className="empty-panel">
-					<FileSpreadsheet size={34} />
-					<h2>Добавьте таблицу объекта</h2>
-					<p>Загрузите файл или подключите таблицу Битрикс24</p>
-					<Button type="primary" onClick={openSettings}>
-						Добавить таблицу
-					</Button>
-				</div>
-			)}
 			<div className="work-list">
 				{lines.map((l, i) => {
 					const p = l.item_id ? byId[l.item_id] : null;
@@ -137,7 +128,6 @@ export function DailyReportPage({ workspace }: { workspace: WorkspaceView }) {
 					return (
 						<section className={'work-card ' + (!p ? 'needs-review' : '')} key={i}>
 							<div className="work-card-heading">
-								<span className="work-index">{String(i + 1).padStart(2, '0')}</span>
 								<button
 									className="work-name"
 									onClick={() => {
@@ -151,7 +141,17 @@ export function DailyReportPage({ workspace }: { workspace: WorkspaceView }) {
 								<button
 									className="plain-icon"
 									aria-label={'Удалить работу ' + (i + 1)}
-									onClick={() => setLines((ls) => ls.filter((_, j) => j !== i))}
+									onClick={() =>
+										confirmRemoval(
+											{
+												name: p?.name || l.raw || 'Работа',
+												quantity: l.quantity,
+												unit: p?.unit,
+												saved: !!(l.item_id && oldLines[l.item_id]),
+											},
+											() => setLines((ls) => ls.filter((line) => line !== l)),
+										)
+									}
 								>
 									<Trash2 size={16} />
 								</button>
@@ -200,7 +200,6 @@ export function DailyReportPage({ workspace }: { workspace: WorkspaceView }) {
 			</div>
 			{!lines.length && positions.length > 0 && (
 				<div className="no-work">
-					<FileSpreadsheet size={29} />
 					<p>Добавьте работы, выполненные за день</p>
 				</div>
 			)}
@@ -232,12 +231,20 @@ export function DailyReportPage({ workspace }: { workspace: WorkspaceView }) {
 					>
 						Вернуть к началу дня
 					</Button>
-					<Status status={report.sync_status} />
-					{report.sync_status !== 'synced' && (
-						<Button size="small" loading={busy} onClick={() => void retry(day)}>
-							Повторить отправку
-						</Button>
-					)}
+					<Status
+						status={
+							report.sync_status === 'pending' && !data.config.has_webhook
+								? 'local'
+								: report.sync_status
+						}
+					/>
+					{report.sync_status !== 'synced' &&
+						data.config.source === 'bitrix' &&
+						data.config.has_webhook && (
+							<Button size="small" loading={busy} onClick={() => void retry(day)}>
+								Повторить отправку
+							</Button>
+						)}
 					{report.sync_status === 'error' && report.sync_error && (
 						<Alert
 							type="warning"
@@ -245,8 +252,8 @@ export function DailyReportPage({ workspace }: { workspace: WorkspaceView }) {
 							message="Нужно проверить изменения таблицы"
 							description={report.sync_error}
 							action={
-								<Button size="small" loading={busy} onClick={() => void importRemote()}>
-									Решить в приложении
+								<Button size="small" onClick={() => openObjectSection('table')}>
+									Проверить таблицу
 								</Button>
 							}
 						/>

@@ -92,7 +92,7 @@ async def access(request: Request, call_next):
                 request.state.project = p
                 modifying_report = request.method == "POST" and (
                     request.url.path == "/api/reports"
-                    or request.url.path.startswith(("/api/imports/", "/api/bitrix/"))
+                    or request.url.path.startswith(("/api/imports/", "/api/bitrix/", "/api/object/"))
                     or request.url.path.startswith("/api/report/")
                 )
                 if (
@@ -104,6 +104,11 @@ async def access(request: Request, call_next):
                         403, "Администратор просматривает отчёты мастеров без изменения"
                     )
                 token = store.CURRENT_DATABASE.set(p["db_path"])
+                if modifying_report and request.url.path != "/api/bitrix/refresh" and not request.url.path.endswith("/consult"):
+                    async with workspaces.mutation_lock(p["id"]):
+                        if not workspaces.exists(p["id"]):
+                            raise HTTPException(404, "Объект удалён")
+                        return await call_next(request)
         return await call_next(request)
     except HTTPException as e:
         return JSONResponse({"detail": e.detail}, status_code=e.status_code)

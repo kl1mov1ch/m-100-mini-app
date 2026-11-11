@@ -1,5 +1,5 @@
 import { Button, Tag } from 'antd';
-import { Building2, CheckCircle2, ExternalLink, FileSpreadsheet, RefreshCw } from 'lucide-react';
+import { ExternalLink, RefreshCw } from 'lucide-react';
 import type { WorkspaceView } from '../App';
 import dayjs from '../lib/date';
 import { openExternalLink } from '../lib/telegram';
@@ -15,30 +15,13 @@ export function ObjectTableCard({ workspace }: { workspace: WorkspaceView }) {
 	return (
 		<section className="object-table-card">
 			<div className="object-table-card-top">
-				<span className="object-table-file-icon">
-					<FileSpreadsheet size={24} />
-				</span>
 				<div>
 					<b>{config.source_name}</b>
 					<small>{positions.length} работ · Битрикс24.Диск</small>
 				</div>
-				<Tag color="blue">Связана</Tag>
-			</div>
-			<div className="object-table-binding">
-				<Building2 size={16} />
-				<div>
-					<b>{active.name}</b>
-					<span>Мастер: {active.owner_name}</span>
-				</div>
-				<CheckCircle2 size={18} />
-			</div>
-			<div className="object-table-modes">
-				<span>
-					Чтение <b>подключено</b>
-				</span>
-				<span>
-					Отправка <b>{config.has_webhook ? 'настроена' : 'нужен доступ'}</b>
-				</span>
+				<Tag color={config.has_webhook ? 'green' : 'gold'}>
+					{config.has_webhook ? 'Подключена' : 'Только чтение'}
+				</Tag>
 			</div>
 			{check && (
 				<div
@@ -77,16 +60,17 @@ export function ObjectTableCard({ workspace }: { workspace: WorkspaceView }) {
 				>
 					Проверить соединение
 				</Button>
-				<Button
-					type="primary"
-					href={original}
-					onClick={(event) => openExternalLink(event, original)}
-					target="_blank"
-					rel="noreferrer"
-					icon={<ExternalLink size={15} />}
-				>
-					Открыть таблицу
-				</Button>
+				{original && (
+					<Button
+						href={original}
+						onClick={(event) => openExternalLink(event, original)}
+						target="_blank"
+						rel="noreferrer"
+						icon={<ExternalLink size={15} />}
+					>
+						Открыть таблицу
+					</Button>
+				)}
 			</div>
 		</section>
 	);

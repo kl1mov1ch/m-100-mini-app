@@ -2,7 +2,7 @@ import json
 import os
 from decimal import ROUND_HALF_UP, Decimal
 
-from . import bitrix, matcher, store, workspaces
+from . import matcher, store, workspaces
 from .clock import today
 
 
@@ -89,13 +89,14 @@ def safe_config(db):
         "llm": bool(matcher.provider(ai_settings(db))["key"]),
         "source": store.setting(db, "source", "excel"),
         "source_name": store.setting(db, "source_name", "Смета работ"),
-        "public_url": store.setting(db, "public_url", bitrix.PUBLIC_URL),
+        "public_url": store.setting(db, "public_url"),
         "file_id": int(store.setting(db, "file_id", "0")),
         "has_webhook": bool(store.setting(db, "webhook")),
         "last_import": store.setting(db, "last_import"),
         "pending_import": bool(store.setting(db, "pending_import_token")),
         "connection_check": json.loads(store.setting(db, "connection_check", "null")),
         "detail_url": store.setting(db, "table_detail_url"),
+        "bitrix_read": json.loads(store.setting(db, "bitrix_read_status", "null")),
     }
 
 

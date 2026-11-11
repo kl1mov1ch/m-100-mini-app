@@ -330,6 +330,13 @@ def extract(content, sheets):
                 }
             )
         section = s.title
+        remaining_column = next(
+            (
+                column for column in range(1, s.max_column + 1)
+                if re.search(r"остат.*объем|^остаток$", text(s.cell(header, column).value))
+            ),
+            None,
+        )
         skipped = []
         row_issues = []
 
@@ -378,6 +385,9 @@ def extract(content, sheets):
                 "source_row": r,
                 "source_sheet": s.title,
                 "baseline": completed or 0 if not dates else 0,
+                "workbook_completed": completed,
+                "workbook_remaining": number(s.cell(r, remaining_column).value)
+                if remaining_column else None,
             }
             positions.append(p)
             for c, day in dates.items():

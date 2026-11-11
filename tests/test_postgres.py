@@ -110,6 +110,11 @@ def test_sqlite_migration_and_report_lifecycle(tmp_path, monkeypatch):
                     assert restored.json()["payroll"]["amount"] == 0
                     assert workspaces.user("7001")["role"] == "master"
                     assert create(client, "7001", sample=True)
+                    assert client.post(
+                        "/api/object/delete", json={"name": "Объект"}, headers=headers
+                    ).status_code == 200
+                    assert not workspaces.exists(first)
+                    assert workspaces.exists(second)
             finally:
                 postgres.close_pool()
                 cluster.execute(sql.SQL("DROP DATABASE {}").format(sql.Identifier(identifier)))

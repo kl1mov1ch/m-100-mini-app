@@ -1,48 +1,22 @@
-import { Button, Input, InputNumber, Tag, Upload, Select } from 'antd';
-import { ObjectTableCard } from '../components/ObjectTableCard';
-import { openExternalLink } from '../lib/telegram';
+import { Button, Input, Tag } from 'antd';
 import { ProfileCard } from '../components/ProfileCard';
 import { FieldHelp } from '../components/FieldHelp';
-import { TelegramAvatar } from '../components/TelegramAvatar';
 import 'dayjs/locale/ru';
-import {
-	ArrowRight,
-	ChevronRight,
-	FileSpreadsheet,
-	RefreshCw,
-	ShieldCheck,
-	Sparkles,
-	UploadCloud,
-	Users,
-} from 'lucide-react';
+import { Bell, ChevronRight, ShieldCheck, Sparkles, Users } from 'lucide-react';
 
 import type { WorkspaceView } from '../App';
 export function SettingsPage({ workspace }: { workspace: WorkspaceView }) {
 	const {
 		session,
-		data,
 		setPage,
 		busy,
-		url,
-		setUrl,
-		webhook,
-		setWebhook,
-		fileId,
-		setFileId,
 		aiKey,
 		setAiKey,
 		aiModel,
 		setAiModel,
-		active,
-		positions,
 		isAdmin,
 		loadUsers,
-		connect,
-		importRemote,
-		upload,
 		connectAI,
-		project,
-		switchSettingsProject,
 	} = workspace;
 	return (
 		<>
@@ -73,11 +47,10 @@ export function SettingsPage({ workspace }: { workspace: WorkspaceView }) {
 					<ChevronRight size={18} />
 				</button>
 			)}
-			<ProfileCard workspace={workspace} />
 			{isAdmin && (
 				<button className="settings-menu" onClick={() => setPage('reminders')}>
-					<span className="settings-icon">
-						<Users size={21} />
+					<span className="settings-icon reminder-icon">
+						<Bell size={21} />
 					</span>
 					<span>
 						<b>Напоминания мастерам</b>
@@ -86,103 +59,15 @@ export function SettingsPage({ workspace }: { workspace: WorkspaceView }) {
 					<ChevronRight size={18} />
 				</button>
 			)}
-			{active && !isAdmin && (
-				<>
-					<>
-						<section className="settings-card">
-							<h2>
-								<FileSpreadsheet size={20} />
-								Таблица объекта
-							</h2>
-							<label htmlFor="table-project">Привязать таблицу к объекту</label>
-							<Select
-								id="table-project"
-								className="object-table-select"
-								value={project}
-								onChange={switchSettingsProject}
-								options={session.projects.map((object) => ({
-									value: object.id,
-									label: object.name,
-								}))}
-							/>
-							<p className="settings-current">
-								{data?.config.source_name || active.name} · {positions.length} работ
-							</p>
-							<Upload accept=".xlsx,.csv" showUploadList={false} beforeUpload={upload}>
-								<Button block icon={<UploadCloud size={18} />} loading={busy}>
-									Загрузить свою таблицу
-								</Button>
-							</Upload>
-							<label>Ссылка Битрикс24</label>
-							<Input
-								value={url}
-								onChange={(e) => setUrl(e.target.value)}
-								placeholder="https://bitrix24public.com/…"
-							/>
-							<label>ID файла на Диске</label>
-							<InputNumber
-								min={1}
-								value={fileId || null}
-								onChange={setFileId}
-								placeholder="Определяется по ссылке"
-							/>
-							<label>
-								Вебхук с доступом к Диску <FieldHelp topic="bitrix" />
-							</label>
-							<Input.Password
-								value={webhook}
-								onChange={(e) => setWebhook(e.target.value)}
-								placeholder={
-									data?.config.has_webhook
-										? 'Подключён · новый ключ для замены'
-										: 'https://ваш-портал.bitrix24.by/rest/…'
-								}
-								autoComplete="off"
-							/>
-							<div className="stack-actions">
-								<Button
-									type="primary"
-									onClick={importRemote}
-									loading={busy}
-									icon={<RefreshCw size={16} />}
-								>
-									{data?.config.source === 'bitrix'
-										? 'Обновить связанную таблицу'
-										: 'Связать таблицу с объектом'}
-								</Button>
-								<Button onClick={connect} loading={busy}>
-									Сохранить доступ к таблице
-								</Button>
-								{url && (
-									<Button
-										type="link"
-										href={url}
-										onClick={(event) => openExternalLink(event, url)}
-										target="_blank"
-										rel="noreferrer"
-									>
-										Открыть оригинал
-										<ArrowRight size={15} />
-									</Button>
-								)}
-							</div>
-						</section>
-						<ObjectTableCard workspace={workspace} />
-					</>
-				</>
-			)}
 			{isAdmin && (
-				<section className="settings-card">
-					<h2>
+				<details className="settings-card admin-settings-details">
+					<summary>
 						<Sparkles size={20} />
-						Умный подбор
-					</h2>
-					<div className="ai-settings-state">
-						<span>DeepSeek · экономный режим</span>
-						<Tag color={session.ai_connected ? 'blue' : 'default'}>
+						<b>Умный подбор</b>
+						<Tag color={session.ai_connected ? 'green' : 'gold'}>
 							{session.ai_connected ? 'Подключён' : 'Нужен ключ'}
 						</Tag>
-					</div>
+					</summary>
 					<label>Модель</label>
 					<Input value={aiModel} onChange={(e) => setAiModel(e.target.value)} />
 					<label>
@@ -197,22 +82,9 @@ export function SettingsPage({ workspace }: { workspace: WorkspaceView }) {
 					<Button type="primary" block disabled={!aiKey.trim()} loading={busy} onClick={connectAI}>
 						Подключить
 					</Button>
-				</section>
+				</details>
 			)}
-			<section className="account-card">
-				<TelegramAvatar
-					userId={session.user.telegram_id}
-					name={session.user.name}
-					source={session.user.avatar_url}
-				/>
-				<div>
-					<b>{session.user.name}</b>
-					<small>
-						{isAdmin ? 'Администратор' : 'Мастер'}
-						{session.user.telegram_id !== 'local-admin' ? ` · ID ${session.user.telegram_id}` : ''}
-					</small>
-				</div>
-			</section>
+			<ProfileCard workspace={workspace} />
 		</>
 	);
 }

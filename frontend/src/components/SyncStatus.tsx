@@ -18,7 +18,7 @@ export function Status({ status }: { status: string }) {
 							? 'Ожидает отправки'
 							: status === 'imported'
 								? 'Из таблицы'
-								: 'Не отправлен'}
+								: 'В приложении'}
 			</span>
 		</span>
 	);

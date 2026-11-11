@@ -1,0 +1,129 @@
+import asyncio
+import io
+import json
+from datetime import date, timedelta
+
+import httpx
+import openpyxl
+
+from backend import bitrix, matcher, store, workspaces
+from backend.clock import today
+from test_reconciliation_restore import approval, upload, workbook
+from test_workspaces import client, create, grant
+
+
+def test_live_overrun_preserves_confirmed_report_and_position_history(client, monkeypatch):
+    grant(client, "9001")
+    ident = create(client, "9001", sample=False)
+    headers = {"X-Project-Id": ident, "X-Preview-User": "9001"}
+    content = workbook([("Монтаж блока", "шт", 2), ("Материал блока", "шт", 4)])
+    preview = upload(client, headers, content)
+    assert (
+        client.post("/api/imports/confirm", json=approval(preview), headers=headers).status_code
+        == 200
+    )
+    line = {"item_id": "excel-2", "quantity": 2}
+    assert (
+        client.post(
+            "/api/reports", json={"date": today(), "revision": 0, "lines": [line]}, headers=headers
+        ).status_code
+        == 200
+    )
+
+    remote = openpyxl.load_workbook(io.BytesIO(content))
+    sheet = remote.active
+    sheet["C2"] = 4
+    sheet["E2"] = 8
+    sheet["F2"] = -4
+    sheet["H2"] = 8
+    sheet["I3"] = 9
+    stream = io.BytesIO()
+    remote.save(stream)
+    selected = workspaces.project(workspaces.user("9001"), ident)
+    with store.connect(selected["db_path"]) as db:
+        store.set_setting(db, "source", "bitrix")
+        store.set_setting(db, "file_id", "123")
+        store.set_setting(db, "webhook", "mock")
+
+    attempts = []
+
+    async def read(*args):
+        attempts.append(True)
+        return stream.getvalue(), {"NAME": "Смета.xlsx"}
+
+    monkeypatch.setattr(bitrix, "download_rest", read)
+    first = client.post("/api/bitrix/refresh", headers=headers)
+    assert first.status_code == 200, first.text
+    assert first.json()["status"] == "review"
+    assert client.post("/api/bitrix/refresh", headers=headers).json() == first.json()
+    assert len(attempts) == 1
+    data = client.get("/api/bootstrap", headers=headers).json()
+    assert data["report"]["lines"] == [line]
+    assert data["positions"][0]["bitrix"]["remaining"] == -4
+    assert data["positions"][0]["bitrix"]["completed"] == 8
+    assert not data["positions"][0]["hidden"]
+    yesterday = (date.fromisoformat(today()) - timedelta(days=1)).isoformat()
+    updated = client.get("/api/report/" + yesterday, headers=headers).json()
+    assert {"item_id": "excel-3", "quantity": 9} in updated["lines"]
+
+    path = "/api/object/positions/excel-2"
+    history = client.get(path + "/history", headers=headers).json()
+    assert {event["kind"] for event in history["events"]} >= {
+        "report",
+        "bitrix_values",
+        "bitrix_day",
+    }
+    assert client.post(path, json={"action": "hide"}, headers=headers).status_code == 200
+    assert (
+        client.post(
+            "/api/object/positions/excel-3/link", json={"work_id": "excel-2"}, headers=headers
+        ).status_code
+        == 200
+    )
+    updated = client.get("/api/bootstrap", headers=headers).json()
+    assert updated["positions"][1]["linked_work_id"] == "excel-2"
+    assert updated["positions"][0]["hidden"]
+
+    workspaces.set_shared({"llm_api_key": "test-key"})
+
+    async def advice(system, text, settings):
+        context = json.loads(text)
+        assert context["position"]["bitrix"]["remaining"] == -4
+        assert all("actor" not in event for event in context["history"]["events"])
+        return {
+            "answer": "Сравните объём в отчёте с Битрикс24.",
+            "checks": ["Проверить запись за день"],
+        }
+
+    monkeypatch.setattr(matcher, "complete", advice)
+    response = client.post(path + "/consult", json={"question": "Почему −4?"}, headers=headers)
+    assert response.status_code == 200, response.text
+    assert response.json()["checks"]
+
+    async def offline(*args):
+        raise httpx.ConnectError("offline")
+
+    monkeypatch.setattr(bitrix, "download_rest", offline)
+    with store.connect(selected["db_path"]) as db:
+        read_status = first.json()
+        read_status["checked_at"] = "2020-01-01T00:00:00+03:00"
+        store.set_setting(db, "bitrix_read_status", json.dumps(read_status))
+    read_status = client.post("/api/bitrix/refresh", headers=headers).json()
+    assert read_status["status"] == "unavailable"
+    data = client.get("/api/bootstrap", headers=headers).json()
+    assert data["positions"][0]["bitrix"]["remaining"] == -4
+    assert data["report"]["lines"] == [line]
+
+
+def test_bitrix_reads_can_fall_back_to_server_proxy(monkeypatch):
+    monkeypatch.setenv("BITRIX_PROXY_URL", "socks5://127.0.0.1:40001")
+    calls = []
+
+    async def read(proxy):
+        calls.append(proxy)
+        if proxy is None:
+            raise httpx.ConnectError("direct route unavailable")
+        return "workbook"
+
+    assert asyncio.run(bitrix.read_with_fallback(read)) == "workbook"
+    assert calls == [None, "socks5://127.0.0.1:40001"]

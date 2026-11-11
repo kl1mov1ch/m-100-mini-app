@@ -163,7 +163,11 @@ async def edit_table(request: Request, body: TableChanges):
     with store.connect() as database:
         webhook = store.setting(database, "webhook")
         file_id = int(store.setting(database, "file_id", "0"))
+        pending = store.setting(database, "pending_import_token")
     remote = metadata["source"] == "bitrix"
+    remote_id = (metadata.get("remote") or {}).get("file_id", file_id)
+    if remote and (body.token != pending or file_id != int(remote_id)):
+        raise HTTPException(409, "Подключение изменилось. Откройте таблицу заново.")
     if remote and not webhook:
         raise HTTPException(
             400,

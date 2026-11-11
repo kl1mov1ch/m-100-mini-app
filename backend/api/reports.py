@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from .. import matcher, store, workspaces
 from ..clock import now, today
+from ..bitrix_refresh import remote_positions
 from ..report_snapshots import remember_start, restore_target
 from ..reporting import ai_settings, get_report, history, report_changes, safe_config
 from ..schemas import ParseBody, SaveBody
@@ -20,8 +21,19 @@ router = APIRouter()
 @router.get("/api/bootstrap")
 def bootstrap(request: Request):
     with store.connect() as db:
+        hidden = store.hidden_positions(db)
+        bitrix = remote_positions(db)
+        links = store.position_links(db)
         return {
-            "positions": store.positions(db),
+            "positions": [
+                {
+                    **position,
+                    "hidden": position["id"] in hidden,
+                    "bitrix": bitrix.get(position["id"]),
+                    "linked_work_id": links.get(position["id"]),
+                }
+                for position in store.positions(db)
+            ],
             "history": history(db),
             "config": safe_config(db),
             "report": get_report(db, today()),
@@ -47,7 +59,7 @@ def changes():
 @router.post("/api/parse")
 async def parse(body: ParseBody):
     with store.connect() as db:
-        ps = store.positions(db)
+        ps = store.selectable_positions(db)
         settings = ai_settings(db)
     return await matcher.parse(body.text, ps, settings, body.local_only)
 
@@ -55,7 +67,7 @@ async def parse(body: ParseBody):
 @router.post("/api/search")
 async def search(body: ParseBody):
     with store.connect() as db:
-        ps = store.positions(db)
+        ps = store.selectable_positions(db)
         settings = ai_settings(db)
     return await matcher.search(body.text, ps, settings, body.local_only)
 
@@ -109,9 +121,12 @@ async def persist_report(request: Request, body: SaveBody, action="edit_report")
             raise HTTPException(422, "Добавьте выполненную работу перед подтверждением")
         ps = {p["id"]: p for p in store.positions(db)}
         old = {l["item_id"]: l["quantity"] for l in before["lines"]}
+        hidden = store.hidden_positions(db)
         for line in body.lines:
             if line.item_id not in ps:
                 raise HTTPException(422, "Позиция отсутствует в справочнике")
+            if line.item_id in hidden and line.item_id not in old and action != "restore_day":
+                raise HTTPException(409, "Работа скрыта из сметы. Обновите список работ.")
             if (
                 line.quantity > ps[line.item_id]["remaining"] + old.get(line.item_id, 0) + 1e-8
                 and not body.allow_exceed

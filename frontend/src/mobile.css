@@ -4,6 +4,11 @@
 	color: #172b4d;
 	font-synthesis: none;
 	-webkit-font-smoothing: antialiased;
+	overflow-x: clip;
+	scrollbar-width: none;
+}
+:root::-webkit-scrollbar {
+	display: none;
 }
 * {
 	box-sizing: border-box;
@@ -82,7 +87,7 @@ small {
 	justify-content: space-between;
 	align-items: center;
 	height: 75px;
-	padding: 0 max(24px, calc((100vw - 1100px) / 2));
+	padding: 0 max(24px, calc((100% - 1100px) / 2));
 	background: #fff;
 	border-bottom: 1px solid #e9edf5;
 	gap: 20px;

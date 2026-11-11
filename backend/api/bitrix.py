@@ -2,24 +2,32 @@ import json
 from urllib.parse import urlparse
 
 import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
 from .. import bitrix, store, tables
 from ..clock import now
+from ..bitrix_refresh import refresh_project
 from ..reporting import safe_config
 from ..schemas import Connection
 
 router = APIRouter()
 
 
+@router.post("/api/bitrix/refresh")
+async def refresh(request: Request, force: bool = False):
+    return await refresh_project(request.state.project, max_age=15 if force else 90)
+
+
 @router.post("/api/bitrix/check")
 async def check_connection():
     with store.connect() as database:
         webhook = store.setting(database, "webhook")
-        public_url = store.setting(database, "public_url", bitrix.PUBLIC_URL)
+        public_url = store.setting(database, "public_url")
         file_id = int(store.setting(database, "file_id", "0"))
         mappings = json.loads(store.setting(database, "sheet_mappings", "null"))
     try:
+        if not webhook and not public_url:
+            raise ValueError("Сначала подключите таблицу Битрикс24")
         if webhook:
             content, metadata = await bitrix.download_rest(webhook, file_id)
             name = metadata["NAME"]
