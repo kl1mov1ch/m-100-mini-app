@@ -51,6 +51,7 @@ import './avatar.css';
 import './keyboard.css';
 import './select-controls.css';
 import { useInputVisibility } from './hooks/useInputVisibility';
+import { useStartupScreen } from './hooks/useStartupScreen';
 import type { HistoryRow, Project, Session } from './types';
 export type WorkspaceView = ReturnType<typeof useWorkspace> & {
 	session: Session;
@@ -109,6 +110,7 @@ export function WorkspaceApp() {
 		createObject,
 		grant,
 	} = controller;
+	useStartupScreen(Boolean(failure || (session && (!session.projects.length || data))));
 	if (failure && !session)
 		return (
 			<div className="launch-state">
