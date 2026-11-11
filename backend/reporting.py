@@ -81,7 +81,7 @@ def history(db):
     return result
 
 
-def safe_config(db):
+def safe_config(db, include_table_review=True):
     return {
         "today": today(),
         "mode": os.getenv("APP_ENV", "development"),
@@ -93,16 +93,20 @@ def safe_config(db):
         "file_id": int(store.setting(db, "file_id", "0")),
         "has_webhook": bool(store.setting(db, "webhook")),
         "last_import": store.setting(db, "last_import"),
-        "pending_import": bool(store.setting(db, "pending_import_token")),
-        "connection_check": json.loads(store.setting(db, "connection_check", "null")),
+        "pending_import": include_table_review and bool(store.setting(db, "pending_import_token")),
+        "connection_check": json.loads(store.setting(db, "connection_check", "null"))
+        if include_table_review
+        else None,
         "detail_url": store.setting(db, "table_detail_url"),
-        "bitrix_read": json.loads(store.setting(db, "bitrix_read_status", "null")),
+        "bitrix_read": json.loads(store.setting(db, "bitrix_read_status", "null"))
+        if include_table_review
+        else None,
         "journal_status": store.setting(db, "journal_status"),
-        "journal_note": store.setting(db, "journal_note"),
+        "journal_note": store.setting(db, "journal_note") if include_table_review else "",
     }
 
 
-def project_summary(p, selected_date=None):
+def project_summary(p, selected_date=None, include_table_review=True):
     with store.connect(p["db_path"]) as db:
         rows = history(db)
         current = next((r for r in rows if r["date"] == (selected_date or today())), None)
@@ -129,7 +133,8 @@ def project_summary(p, selected_date=None):
                 "read_connected": store.setting(db, "source") == "bitrix",
                 "write_connected": bool(store.setting(db, "webhook"))
                 and store.setting(db, "source") == "bitrix",
-                "pending_review": bool(store.setting(db, "pending_import_token")),
+                "pending_review": include_table_review
+                and bool(store.setting(db, "pending_import_token")),
                 "last_import": store.setting(db, "last_import"),
             },
         }

@@ -23,6 +23,12 @@ def bootstrap(request: Request):
     with store.connect() as db:
         hidden = store.hidden_positions(db)
         bitrix = remote_positions(db)
+        master = request.state.user["role"] == "master"
+        rows = history(db)
+        current = get_report(db, today())
+        if not master:
+            for row in [*rows, current]:
+                row["sync_error"] = ""
         return {
             "positions": [
                 {
@@ -32,26 +38,38 @@ def bootstrap(request: Request):
                 }
                 for position in store.positions(db)
             ],
-            "history": history(db),
-            "config": safe_config(db),
-            "report": get_report(db, today()),
+            "history": rows,
+            "config": safe_config(db, include_table_review=master),
+            "report": current,
             "project": workspaces.public_project(request.state.project),
         }
 
 
 @router.get("/api/report/{day}")
-def report(day: date):
+def report(day: date, request: Request):
     with store.connect() as db:
-        return get_report(db, day.isoformat())
+        result = get_report(db, day.isoformat())
+    if request.state.user["role"] == "admin":
+        result["sync_error"] = ""
+    return result
 
 
 @router.get("/api/changes")
-def changes():
+def changes(request: Request):
+    master = request.state.user["role"] == "master"
     with store.connect() as db:
-        return [
-            {**dict(r), "payload": json.loads(r["payload"])}
-            for r in db.execute("SELECT * FROM audit ORDER BY id DESC LIMIT 100")
-        ]
+        events = []
+        for row in db.execute("SELECT * FROM audit ORDER BY id DESC"):
+            payload = json.loads(row["payload"])
+            if not master:
+                if "changes" not in payload:
+                    continue
+                if "before" in payload:
+                    payload["before"].pop("sync_error", None)
+            events.append({**dict(row), "payload": payload})
+            if len(events) == 100:
+                break
+        return events
 
 
 @router.post("/api/parse")

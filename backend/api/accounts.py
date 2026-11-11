@@ -60,7 +60,10 @@ def session(request: Request, date: date | None = None):
     return {
         "user": request.state.user,
         "projects": [
-            project_summary(p, selected_date) for p in workspaces.visible(request.state.user)
+            project_summary(
+                p, selected_date, include_table_review=request.state.user["role"] == "master"
+            )
+            for p in workspaces.visible(request.state.user)
         ],
         "mode": os.getenv("APP_ENV", "development"),
         "today": today(),

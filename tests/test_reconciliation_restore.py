@@ -259,5 +259,7 @@ def test_conflict_can_accept_table_values_without_losing_audit(client):
     assert (
         client.get(f"/api/report/{today()}", headers=headers).json()["lines"][0]["quantity"] == 10
     )
-    event = client.get("/api/changes", headers=headers).json()[0]["payload"]
+    event = client.get("/api/changes", headers={**headers, "X-View-Mode": "master"}).json()[0][
+        "payload"
+    ]
     assert event["reports_before"][today()]["lines"][0]["quantity"] == 15

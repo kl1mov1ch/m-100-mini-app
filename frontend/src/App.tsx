@@ -317,7 +317,7 @@ export function WorkspaceApp() {
 					/>
 				</div>
 			</Modal>
-			<TableImportModal workspace={workspace} />
+			{!isAdmin && <TableImportModal workspace={workspace} />}
 		</div>
 	);
 }

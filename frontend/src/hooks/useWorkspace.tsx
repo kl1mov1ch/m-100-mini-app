@@ -174,7 +174,7 @@ export function useWorkspace() {
 			setLines(r.lines);
 			setCrew(r.crew_count);
 			setReportText(r.text || '');
-			if (d.config.pending_import && !onlyIfClean) {
+			if (!isAdmin && d.config.pending_import && !onlyIfClean) {
 				const p = await request<ImportPreview>('/imports/pending', undefined, id);
 				if (p && version === selectionVersion.current) {
 					setPreview(p);

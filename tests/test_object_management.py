@@ -6,6 +6,20 @@ from test_reconciliation_restore import approval, upload, workbook
 from test_workspaces import client, create, grant
 
 
+def test_pending_table_review_belongs_to_master(client):
+    grant(client, "9001")
+    ident = create(client, "9001", sample=False)
+    admin = {"X-Project-Id": ident}
+    master = {**admin, "X-Preview-User": "9001"}
+    preview = upload(client, master, workbook())
+    assert client.get("/api/imports/pending", headers=master).json()["token"] == preview["token"]
+    assert client.get("/api/imports/pending", headers=admin).json() is None
+    assert not client.get("/api/bootstrap", headers=admin).json()["config"]["pending_import"]
+    assert client.get("/api/bootstrap", headers=master).json()["config"]["pending_import"]
+    projects = client.get("/api/session", headers=admin).json()["projects"]
+    assert not next(item for item in projects if item["id"] == ident)["table"]["pending_review"]
+
+
 def test_detach_keeps_reports_and_disables_retry(client, monkeypatch):
     grant(client, "9001")
     ident = create(client, "9001", sample=False)

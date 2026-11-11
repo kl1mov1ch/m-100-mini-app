@@ -57,7 +57,7 @@ export function ObjectsPage({ workspace }: { workspace: WorkspaceView }) {
 								<Building2 size={21} />
 							</span>
 							<span className={'connection-dot ' + (p.table?.read_connected ? 'connected' : '')}>
-								{p.table?.pending_review
+								{!isAdmin && p.table?.pending_review
 									? 'Проверьте импорт'
 									: p.table?.read_connected
 										? 'Таблица подключена'

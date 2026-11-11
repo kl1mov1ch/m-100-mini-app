@@ -4,7 +4,7 @@
 	min-width: 0;
 }
 .swipe-surface {
-	touch-action: pan-y;
+	touch-action: pan-y pinch-zoom;
 }
 .team-actions {
 	display: flex;
@@ -242,8 +242,13 @@
 	background: #e9eef7;
 	color: #3c5576;
 }
+.role-switch .ant-segmented-item {
+	margin: 0;
+}
 .role-switch .ant-segmented-item-label {
-	padding: 6px 8px;
+	min-height: 36px;
+	padding: 7px 8px;
+	line-height: 22px;
 	font-weight: 600;
 }
 .role-switch .ant-segmented-item-selected {

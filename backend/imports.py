@@ -95,6 +95,8 @@ def register(app, settings, now):
 
     @app.get("/api/imports/pending")
     async def pending(request: Request):
+        if request.state.user["role"] != "master":
+            return None
         with store.connect() as db:
             token = store.setting(db, "pending_import_token")
         if not token:

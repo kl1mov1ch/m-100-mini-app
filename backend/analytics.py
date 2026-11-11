@@ -38,6 +38,7 @@ def collect(user, start=None, end=None, project_id=None, owner_id=None, sort="da
                 rows.append(
                     {
                         **row,
+                        "sync_error": row["sync_error"] if user["role"] == "master" else "",
                         "project_id": project["id"],
                         "project_name": project["name"],
                         "owner_id": project["owner_id"],
