@@ -142,7 +142,7 @@ async def persist_report(request: Request, body: SaveBody, action="edit_report")
         )
         db.execute("DELETE FROM entries WHERE date=?", (day,))
         db.executemany(
-            "INSERT INTO entries VALUES(?,?,?)",
+            "INSERT INTO entries(item_id,date,quantity) VALUES(?,?,?)",
             [(l.item_id, day, l.quantity) for l in body.lines],
         )
         db.execute(

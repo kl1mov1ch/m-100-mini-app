@@ -5,6 +5,8 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from pathlib import Path
 
+from . import postgres
+
 ROOT = Path(__file__).resolve().parents[1]
 CURRENT_DATABASE = ContextVar("current_database", default=None)
 
@@ -15,6 +17,11 @@ def base_path():
 
 @contextmanager
 def connect(path=None):
+    if postgres.enabled():
+        reference = path or CURRENT_DATABASE.get() or "project:default"
+        with postgres.connect(postgres.project_id(reference)) as database:
+            yield database
+        return
     path = Path(path or CURRENT_DATABASE.get() or base_path())
     path.parent.mkdir(parents=True, exist_ok=True)
     db = sqlite3.connect(path, timeout=15)
@@ -31,6 +38,13 @@ def connect(path=None):
 
 
 def init(path=None, seed=True):
+    if postgres.enabled():
+        if path is None:
+            postgres.check_schema()
+        elif seed:
+            with connect(path) as database:
+                seed_database(database)
+        return
     with connect(path) as db:
         db.executescript("""
         CREATE TABLE IF NOT EXISTS positions(id TEXT PRIMARY KEY,name TEXT,section TEXT,unit TEXT,planned REAL,rate REAL,source_row INTEGER);
@@ -62,26 +76,34 @@ def init(path=None, seed=True):
         ]:
             if column not in position_columns:
                 db.execute(f"ALTER TABLE positions ADD COLUMN {column} {definition}")
-        if seed and not db.execute("SELECT 1 FROM positions LIMIT 1").fetchone():
-            seed_path = Path(os.getenv("APP_SEED_FILE", str(ROOT / "data/seed.json")))
-            if not seed_path.exists():
-                return
-            seed = json.loads(seed_path.read_text(encoding="utf-8"))
-            for p in seed["positions"]:
-                insert_position(db, p)
-            for e in seed["entries"]:
-                db.execute(
-                    "INSERT INTO entries VALUES(:item_id,:date,:quantity) ON CONFLICT(item_id,date) DO UPDATE SET quantity=quantity+excluded.quantity",
-                    e,
-                )
+        if seed:
+            seed_database(db)
+
+
+def seed_database(database):
+    if database.execute("SELECT 1 FROM positions LIMIT 1").fetchone():
+        return
+    seed_path = Path(os.getenv("APP_SEED_FILE", str(ROOT / "data/seed.json")))
+    if not seed_path.exists():
+        return
+    seed = json.loads(seed_path.read_text(encoding="utf-8"))
+    for position in seed["positions"]:
+        insert_position(database, position)
+    for entry in seed["entries"]:
+        database.execute(
+            "INSERT INTO entries(item_id,date,quantity) VALUES(:item_id,:date,:quantity) ON CONFLICT(item_id,date) DO UPDATE SET quantity=entries.quantity+excluded.quantity",
+            entry,
+        )
 
 
 def positions(db):
+    project_join = " AND e.project_id=p.project_id" if postgres.enabled() else ""
+    project_group = ",p.project_id" if postgres.enabled() else ""
     return [
         dict(r)
-        for r in db.execute("""SELECT p.*,round(p.baseline+COALESCE(sum(e.quantity),0),4) completed,
+        for r in db.execute(f"""SELECT p.*,round(p.baseline+COALESCE(sum(e.quantity),0),4) completed,
         round(p.planned-p.baseline-COALESCE(sum(e.quantity),0),4) remaining FROM positions p
-        LEFT JOIN entries e ON p.id=e.item_id GROUP BY p.id ORDER BY p.source_row""")
+        LEFT JOIN entries e ON p.id=e.item_id{project_join} GROUP BY p.id{project_group} ORDER BY p.source_row""")
     ]
 
 
@@ -103,6 +125,6 @@ def setting(db, key, default=""):
 
 def set_setting(db, key, value):
     db.execute(
-        "INSERT INTO settings VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        "INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
         (key, value),
     )

@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from . import store, workspaces
+from . import postgres, store, workspaces
 from .analytics import router as analytics_router
 from .api import accounts, bitrix, reports
 from .audio import router as audio_router
@@ -41,6 +41,7 @@ async def lifespan(app):
         reminders_task.cancel()
         with suppress(asyncio.CancelledError):
             await reminders_task
+        postgres.close_pool()
 
 
 app = FastAPI(title="Журнал работ", lifespan=lifespan)

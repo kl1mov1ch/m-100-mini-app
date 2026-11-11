@@ -221,13 +221,13 @@ def register(app, settings, now):
                     store.insert_position(db, p)
                 for e in data["entries"]:
                     db.execute(
-                        "INSERT INTO entries VALUES(:item_id,:date,:quantity) ON CONFLICT(item_id,date) DO UPDATE SET quantity=quantity+excluded.quantity",
+                        "INSERT INTO entries(item_id,date,quantity) VALUES(:item_id,:date,:quantity) ON CONFLICT(item_id,date) DO UPDATE SET quantity=entries.quantity+excluded.quantity",
                         e,
                     )
                 for day in dirty:
                     db.execute("DELETE FROM entries WHERE date=?", (day,))
                 for e in preserved:
-                    db.execute("INSERT INTO entries VALUES(:item_id,:date,:quantity)", e)
+                    db.execute("INSERT INTO entries(item_id,date,quantity) VALUES(:item_id,:date,:quantity)", e)
                 for report_day in sorted(report_dates):
                     resolution = body.day_resolutions.get(report_day, "report")
                     if resolution not in ("report", "table"):
