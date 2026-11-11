@@ -3,9 +3,10 @@ import { useEffect, useState } from 'react';
 import { ArrowDownToLine, ChevronRight, History, RefreshCw, SlidersHorizontal } from 'lucide-react';
 import { DatePicker } from '../components/ResponsiveDatePicker';
 import { Status } from '../components/SyncStatus';
-import { request, headers } from '../lib/api';
+import { request } from '../lib/api';
 import dayjs from '../lib/date';
 import { Money } from '../lib/format';
+import { downloadReport } from '../lib/report-download';
 import type { HistoryRow } from '../types';
 import type { WorkspaceView } from '../App';
 
@@ -33,6 +34,7 @@ export function ReportsPage({ workspace }: { workspace: WorkspaceView }) {
 	const [sort, setSort] = useState('date_desc');
 	const [data, setData] = useState<Analytics>();
 	const [loading, setLoading] = useState(false);
+	const [downloading, setDownloading] = useState(false);
 	const [version, setVersion] = useState(0);
 	const [filtersOpen, setFiltersOpen] = useState(false);
 	const params = new URLSearchParams({ sort });
@@ -55,17 +57,13 @@ export function ReportsPage({ workspace }: { workspace: WorkspaceView }) {
 		return () => controller.abort();
 	}, [query, version]);
 	const exportReport = async () => {
+		setDownloading(true);
 		try {
-			const response = await fetch('/api/analytics/export.xlsx?' + query, { headers: headers() });
-			if (!response.ok) throw new Error('Не удалось сформировать Excel');
-			const url = URL.createObjectURL(await response.blob());
-			const link = document.createElement('a');
-			link.href = url;
-			link.download = 'Журнал работ.xlsx';
-			link.click();
-			setTimeout(() => URL.revokeObjectURL(url), 1000);
+			await downloadReport('/analytics/export.xlsx?' + query);
 		} catch (error) {
 			message.error((error as Error).message);
+		} finally {
+			setDownloading(false);
 		}
 	};
 	const summary = data?.summary;
@@ -76,8 +74,8 @@ export function ReportsPage({ workspace }: { workspace: WorkspaceView }) {
 					<span className="overline">ПОКАЗАТЕЛИ И ВЫРАБОТКА</span>
 					<h1>История работ</h1>
 				</div>
-				<Button icon={<ArrowDownToLine size={17} />} onClick={exportReport}>
-					Excel
+				<Button icon={<ArrowDownToLine size={17} />} loading={downloading} onClick={exportReport}>
+					Скачать Excel
 				</Button>
 			</div>
 			<section className="report-filter-compact">

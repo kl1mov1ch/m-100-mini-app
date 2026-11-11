@@ -3,10 +3,11 @@ import 'dayjs/locale/ru';
 import { createRef, useEffect, useRef, useState } from 'react';
 import dayjs from '../lib/date';
 
-import { headers, previewUser, request } from '../lib/api';
+import { previewUser, request } from '../lib/api';
 import { calculateAmount, mergeWorkQuantities } from '../lib/calculation';
 import { ReportReviewEditor, type ReportReviewHandle } from '../components/ReportReviewEditor';
 import { Money } from '../lib/format';
+import { downloadReport } from '../lib/report-download';
 import { ReportConfirmation } from '../ReportConfirmation';
 import type {
 	Change,
@@ -117,13 +118,7 @@ export function useWorkspace() {
 		}
 	};
 	const changeViewMode = async (mode: ViewMode) => {
-		if (
-			session?.mode !== 'development' ||
-			!session.can_switch_role ||
-			mode === session.view_mode ||
-			roleSwitch.current
-		)
-			return;
+		if (!session?.can_switch_role || mode === session.view_mode || roleSwitch.current) return;
 		roleSwitch.current = true;
 		setSwitchingRole(true);
 		const previousMode = localStorage.getItem('view-mode');
@@ -886,14 +881,7 @@ export function useWorkspace() {
 	};
 	const exportCsv = async () => {
 		try {
-			const r = await fetch('/api/export.csv', { headers: headers(project) });
-			if (!r.ok) throw new Error('Не удалось выгрузить отчёт');
-			const url = URL.createObjectURL(await r.blob());
-			const link = document.createElement('a');
-			link.href = url;
-			link.download = 'Отчёты.csv';
-			link.click();
-			URL.revokeObjectURL(url);
+			await downloadReport('/export.csv', project);
 		} catch (e) {
 			message.error((e as Error).message);
 		}

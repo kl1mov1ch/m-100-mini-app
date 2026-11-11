@@ -5,7 +5,7 @@ from urllib.parse import parse_qs
 import httpx
 import openpyxl
 
-from backend import notifications, store, workspaces
+from backend import notifications, report_downloads, workspaces
 from backend.clock import today
 from test_workspaces import client, create, grant
 
@@ -121,3 +121,32 @@ def test_analytics_filters_isolation_totals_and_styled_export(client):
     assert workbook["Общий отчёт"].freeze_panes == "A6"
     assert workbook["Выполненные работы"]["D2"].alignment.wrap_text is True
     assert workbook["Общий отчёт"]["A5"].fill.fgColor.rgb.endswith("2563EB")
+    headers = {"X-Preview-User": "1001"}
+    ticket = client.get(
+        "/api/analytics/export.xlsx" + query + "&prepare=true", headers=headers
+    ).json()
+    head = client.head(ticket["url"])
+    assert head.status_code == 200 and head.content == b""
+    downloaded = client.get(ticket["url"])
+    assert (
+        downloaded.headers["content-disposition"] == f'attachment; filename="{ticket["filename"]}"'
+    )
+    assert downloaded.headers["access-control-allow-origin"] == "https://web.telegram.org"
+    assert downloaded.headers["cache-control"] == "private, no-store"
+    assert openpyxl.load_workbook(io.BytesIO(downloaded.content))["Общий отчёт"]["A3"].value == 100
+    assert client.get(ticket["url"].replace(ticket["filename"], "other.xlsx")).status_code == 404
+
+
+def test_csv_download_link_expires_and_revoked_access_is_rechecked(client, monkeypatch):
+    grant(client, "1001")
+    project = create(client, "1001")
+    headers = {"X-Preview-User": "1001", "X-Project-Id": project}
+    path = "/api/export.csv?prepare=true"
+    ticket = client.get(path, headers=headers).json()["url"]
+    assert client.get(ticket).text.startswith("\ufeffДата;Работа;")
+    monkeypatch.setattr(report_downloads, "DOWNLOAD_TTL", 0)
+    expired = client.get(path, headers=headers).json()["url"]
+    assert client.get(expired).status_code == 404
+    with workspaces.registry() as database:
+        database.execute("UPDATE users SET enabled=0 WHERE telegram_id=?", ("1001",))
+    assert client.get(ticket).status_code == 403

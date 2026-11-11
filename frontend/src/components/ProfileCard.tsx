@@ -89,7 +89,7 @@ export function ProfileCard({ workspace }: { workspace: WorkspaceView }) {
 					</div>
 				</form>
 			)}
-			{session.mode === 'development' && session.can_switch_role && (
+			{session.can_switch_role && (
 				<div className="profile-test-role">
 					<span>Режим тестирования</span>
 					<RoleSwitch workspace={workspace} unsaved={editing && changed} />

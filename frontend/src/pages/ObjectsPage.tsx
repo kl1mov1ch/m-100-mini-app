@@ -38,7 +38,7 @@ export function ObjectsPage({ workspace }: { workspace: WorkspaceView }) {
 					Новый объект
 				</Button>
 			</div>
-			{session.mode === 'development' && session.can_switch_role && (
+			{session.can_switch_role && (
 				<div className="dashboard-role">
 					<RoleSwitch workspace={workspace} />
 				</div>
