@@ -1,6 +1,7 @@
 import json
 import os
 import sqlite3
+from collections import Counter
 from contextlib import contextmanager
 from contextvars import ContextVar
 from pathlib import Path
@@ -62,18 +63,27 @@ def init(path=None, seed=True):
         ]:
             if column not in position_columns:
                 db.execute(f"ALTER TABLE positions ADD COLUMN {column} {definition}")
-        if seed and not db.execute("SELECT 1 FROM positions LIMIT 1").fetchone():
-            seed_path = Path(os.getenv("APP_SEED_FILE", str(ROOT / "data/seed.json")))
-            if not seed_path.exists():
-                return
-            seed = json.loads(seed_path.read_text(encoding="utf-8"))
-            for p in seed["positions"]:
-                insert_position(db, p)
-            for e in seed["entries"]:
-                db.execute(
-                    "INSERT INTO entries VALUES(:item_id,:date,:quantity) ON CONFLICT(item_id,date) DO UPDATE SET quantity=quantity+excluded.quantity",
-                    e,
-                )
+        if seed:
+            seed_database(db)
+
+
+def seed_database(database):
+    if setting(database, "seed_initialized"):
+        return
+    set_setting(database, "seed_initialized", "1")
+    if database.execute("SELECT 1 FROM positions LIMIT 1").fetchone():
+        return
+    seed_path = Path(os.getenv("APP_SEED_FILE", str(ROOT / "data/seed.json")))
+    if not seed_path.exists():
+        return
+    seed = json.loads(seed_path.read_text(encoding="utf-8"))
+    for position in seed["positions"]:
+        insert_position(database, position)
+    for entry in seed["entries"]:
+        database.execute(
+            "INSERT INTO entries(item_id,date,quantity) VALUES(:item_id,:date,:quantity) ON CONFLICT(item_id,date) DO UPDATE SET quantity=entries.quantity+excluded.quantity",
+            entry,
+        )
 
 
 def positions(db):
@@ -83,6 +93,35 @@ def positions(db):
         round(p.planned-p.baseline-COALESCE(sum(e.quantity),0),4) remaining FROM positions p
         LEFT JOIN entries e ON p.id=e.item_id GROUP BY p.id ORDER BY p.source_row""")
     ]
+
+
+def hidden_positions(db):
+    return json.loads(setting(db, "hidden_positions", "{}"))
+
+
+def position_identity(position):
+    return [str(position[key] or "").strip().casefold() for key in ("name", "unit", "section")]
+
+
+def restore_hidden_positions(db, incoming):
+    hidden = hidden_positions(db)
+    if not hidden:
+        return
+    restored = {}
+    identities = {position["id"]: position_identity(position) for position in incoming}
+    counts = Counter(tuple(identity) for identity in identities.values())
+    previously_hidden = {tuple(identity) for identity in hidden.values()}
+    for ident, identity in identities.items():
+        if hidden.get(ident) == identity or (
+            tuple(identity) in previously_hidden and counts[tuple(identity)] == 1
+        ):
+            restored[ident] = identity
+    set_setting(db, "hidden_positions", json.dumps(restored, ensure_ascii=False))
+
+
+def selectable_positions(db):
+    hidden = hidden_positions(db)
+    return [position for position in positions(db) if position["id"] not in hidden]
 
 
 def insert_position(db, p):

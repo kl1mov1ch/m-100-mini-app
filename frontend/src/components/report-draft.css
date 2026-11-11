@@ -34,17 +34,19 @@
 	gap: 10px;
 }
 .quick-report-actions {
+	justify-content: flex-start;
 	margin-top: 10px;
 }
-.quick-report-actions > span {
+.quick-report-voice-status {
 	font-size: 12px;
 	color: #5d718b;
+	margin-top: 8px;
 }
 .quick-report-actions > button {
-	width: 46px;
+	min-height: 44px;
+}
+.quick-report-actions > button:first-child {
 	flex: 0 0 46px;
-	color: #1e61c8;
-	background: #f1f6ff;
 }
 .report-draft-fields {
 	display: grid;

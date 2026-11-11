@@ -28,7 +28,7 @@ export function TableImportModal({ workspace }: { workspace: WorkspaceView }) {
 		commitImport,
 		applyImportChanges,
 		data,
-		openSettings,
+		openObjectSection,
 	} = workspace;
 	const { message } = App.useApp();
 	const [positionMatches, setPositionMatches] = useState<Record<string, string | null>>({});
@@ -474,7 +474,7 @@ export function TableImportModal({ workspace }: { workspace: WorkspaceView }) {
 						size="small"
 						onClick={() => {
 							setPreview(null);
-							openSettings();
+							openObjectSection('table');
 						}}
 					>
 						Включить запись

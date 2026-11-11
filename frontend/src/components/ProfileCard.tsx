@@ -1,30 +1,15 @@
-import { App, Button, Input, Segmented } from 'antd';
+import { App, Button, Input } from 'antd';
 import { useState } from 'react';
 import type { WorkspaceView } from '../App';
 import { request } from '../lib/api';
+import { RoleSwitch } from './RoleSwitch';
 import { TelegramAvatar } from './TelegramAvatar';
 
 export function ProfileCard({ workspace }: { workspace: WorkspaceView }) {
 	const { session } = workspace;
-	const { message, modal } = App.useApp();
+	const { message } = App.useApp();
 	const [name, setName] = useState(session.user.name);
 	const [busy, setBusy] = useState(false);
-	const switchMode = (value: string) => {
-		const apply = () => {
-			localStorage.setItem('view-mode', value);
-			location.reload();
-		};
-		if ((workspace.report && workspace.dirty) || name !== session.user.name) {
-			modal.confirm({
-				title: 'Есть несохранённые изменения',
-				content:
-					'Переключение режима закроет текущий черновик. Сначала сохраните изменения или продолжите без сохранения.',
-				okText: 'Переключить',
-				cancelText: 'Вернуться',
-				onOk: apply,
-			});
-		} else apply();
-	};
 	const save = async () => {
 		setBusy(true);
 		try {
@@ -66,23 +51,7 @@ export function ProfileCard({ workspace }: { workspace: WorkspaceView }) {
 			>
 				Сохранить имя
 			</Button>
-			{session.can_switch_role && (
-				<>
-					<label>Режим просмотра</label>
-					<Segmented
-						block
-						value={session.view_mode}
-						options={[
-							{ value: 'admin', label: 'Администратор' },
-							{ value: 'master', label: 'Мастер' },
-						]}
-						onChange={switchMode}
-					/>
-					<small className="profile-mode-help">
-						В режиме мастера доступны только ваши объекты. Доступ к роли администратора сохраняется.
-					</small>
-				</>
-			)}
+			<RoleSwitch workspace={workspace} unsaved={name !== session.user.name} />
 		</section>
 	);
 }

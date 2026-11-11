@@ -1,13 +1,16 @@
 import { Alert, Button, InputNumber, Select } from 'antd';
-import { LoaderCircle, Trash2, Users } from 'lucide-react';
+import { Trash2, Users } from 'lucide-react';
 import type { WorkspaceView } from '../App';
+import { useConfirmWorkRemoval } from '../hooks/useConfirmWorkRemoval';
 import { Money, unit, countLabel } from '../lib/format';
 import './report-draft.css';
 
 export function ReportDraftFields({ workspace }: { workspace: WorkspaceView }) {
+	const confirmRemoval = useConfirmWorkRemoval();
 	const {
 		parsed,
 		parsing,
+		parseNote,
 		positions,
 		byId,
 		patchParsedLine,
@@ -20,7 +23,13 @@ export function ReportDraftFields({ workspace }: { workspace: WorkspaceView }) {
 		confirmParsedReport,
 		busy,
 	} = workspace;
-	if (!parsed.length && !parsedCrew && !parsing) return null;
+	if (!parsed.length) {
+		return !parsing && parseNote ? (
+			<div className="report-draft-fields">
+				<Alert type="warning" showIcon message={parseNote} />
+			</div>
+		) : null;
+	}
 	const valid =
 		parsed.length > 0 &&
 		!parsedCrewAmbiguous &&
@@ -28,13 +37,9 @@ export function ReportDraftFields({ workspace }: { workspace: WorkspaceView }) {
 	return (
 		<div className="report-draft-fields">
 			<div className="draft-status">
-				<b>
-					{parsed.length
-						? `${countLabel(parsed.length, 'работа', 'работы', 'работ')} из сметы`
-						: 'Разбираем сообщение'}
-				</b>
-				{parsing && <LoaderCircle size={16} className="spinning" />}
+				<b>{countLabel(parsed.length, 'работа', 'работы', 'работ')} из сметы</b>
 			</div>
+			{parseNote && <Alert type="warning" showIcon message={parseNote} />}
 			{parsedCrewAmbiguous && (
 				<Alert type="warning" showIcon message="Уточните количество работников" />
 			)}
@@ -71,7 +76,16 @@ export function ReportDraftFields({ workspace }: { workspace: WorkspaceView }) {
 								size="small"
 								aria-label={'Убрать распознанную работу ' + (index + 1)}
 								icon={<Trash2 size={16} />}
-								onClick={() => removeParsedLine(index)}
+								onClick={() =>
+									confirmRemoval(
+										{
+											name: position?.name || line.raw || 'Работа',
+											quantity: line.quantity,
+											unit: position?.unit || line.unit || undefined,
+										},
+										() => removeParsedLine(index),
+									)
+								}
 							/>
 						</div>
 						<Select
@@ -125,7 +139,9 @@ export function ReportDraftFields({ workspace }: { workspace: WorkspaceView }) {
 				block
 				type="primary"
 				size="large"
-				disabled={!valid}
+				disabled={
+					!valid || parsing || workspace.audioInput.recording || workspace.audioInput.pending
+				}
 				loading={busy}
 				onClick={confirmParsedReport}
 			>

@@ -16,10 +16,12 @@ router = APIRouter()
 async def check_connection():
     with store.connect() as database:
         webhook = store.setting(database, "webhook")
-        public_url = store.setting(database, "public_url", bitrix.PUBLIC_URL)
+        public_url = store.setting(database, "public_url")
         file_id = int(store.setting(database, "file_id", "0"))
         mappings = json.loads(store.setting(database, "sheet_mappings", "null"))
     try:
+        if not webhook and not public_url:
+            raise ValueError("Сначала подключите таблицу Битрикс24")
         if webhook:
             content, metadata = await bitrix.download_rest(webhook, file_id)
             name = metadata["NAME"]

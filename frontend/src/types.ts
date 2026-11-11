@@ -43,6 +43,14 @@ export type Position = {
 	remaining: number;
 	source_row: number;
 	source_sheet?: string;
+	hidden?: boolean;
+};
+export type ObjectSection = 'reports' | 'catalogue' | 'table';
+export type ViewMode = 'admin' | 'master';
+export type ObjectManagement = {
+	reports: number;
+	pending: number;
+	used_positions: string[];
 };
 export type CatalogueReconciliation = {
 	version: string;
@@ -150,7 +158,7 @@ export type Session = {
 	selected_date: string;
 	ai_connected: boolean;
 	can_switch_role: boolean;
-	view_mode: string;
+	view_mode: ViewMode;
 };
 export type Suggestion = { item_id: string; reason: string };
 export type SearchResult = {
@@ -165,6 +173,7 @@ export type Change = {
 	created_at: string;
 	payload: {
 		action?: string;
+		position_name?: string;
 		actor_name: string;
 		table_changes?: {
 			sheet: string;
@@ -225,10 +234,12 @@ declare global {
 }
 export type SpeechEngine = {
 	lang: string;
+	continuous: boolean;
+	interimResults: boolean;
 	start: () => void;
 	stop: () => void;
-	onresult:
-		((e: { results: { [n: number]: { [n: number]: { transcript: string } } } }) => void) | null;
-	onerror: (() => void) | null;
+	abort: () => void;
+	onresult: ((event: { results: ArrayLike<{ 0: { transcript: string } }> }) => void) | null;
+	onerror: ((event: { error: string }) => void) | null;
 	onend: (() => void) | null;
 };

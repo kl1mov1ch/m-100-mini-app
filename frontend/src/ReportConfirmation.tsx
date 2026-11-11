@@ -131,14 +131,12 @@ export function ReportConfirmation(props: ConfirmationProps) {
 					message="Объём превышает остаток по смете. Подтвердите фактически выполненные работы."
 				/>
 			)}
-			<div className={'confirmation-delivery ' + (!props.connected ? 'not-connected' : '')}>
-				<CloudUpload size={18} />
-				<span>
-					{props.connected
-						? 'После подтверждения изменения сразу отправятся в Битрикс24.'
-						: 'Отчёт сохранится в приложении. Автоматическая отправка станет доступна после подключения таблицы.'}
-				</span>
-			</div>
+			{!props.connected && (
+				<div className="confirmation-delivery not-connected">
+					<CloudUpload size={18} />
+					<span>Отчёт сохранится в приложении.</span>
+				</div>
+			)}
 		</div>
 	);
 }

@@ -5,7 +5,6 @@ import {
 	ConfigProvider,
 	Drawer,
 	Input,
-	InputNumber,
 	Modal,
 	Select,
 	Spin,
@@ -19,8 +18,8 @@ import {
 	ChevronDown,
 	ChevronRight,
 	History,
-	MoreHorizontal,
 	Plus,
+	Settings2,
 	ShieldCheck,
 } from 'lucide-react';
 import { createRoot } from 'react-dom/client';
@@ -38,6 +37,7 @@ import './mobile.css';
 import { ChangesPage } from './pages/ChangesPage';
 import { DailyReportPage } from './pages/DailyReportPage';
 import { ObjectsPage } from './pages/ObjectsPage';
+import { ObjectPage } from './pages/ObjectPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { TeamPage } from './pages/TeamPage';
@@ -82,12 +82,6 @@ export function WorkspaceApp() {
 		setProjectName,
 		projectOwner,
 		setProjectOwner,
-		projectUrl,
-		setProjectUrl,
-		projectFile,
-		setProjectFile,
-		sample,
-		setSample,
 		users,
 		userForm,
 		setUserForm,
@@ -155,17 +149,24 @@ export function WorkspaceApp() {
 				</div>
 			</header>
 			<div className="workspace">
-				<div className="context-bar">
-					<button className="object-switch" onClick={() => setProjectOpen(true)}>
-						<Building2 size={17} />
-						<span>{active?.name || 'Выберите объект'}</span>
-						<ChevronDown size={15} />
-					</button>
-					<span className="role-label">{isAdmin ? 'Администратор' : 'Мастер'}</span>
-				</div>
+				{!(isAdmin && page === 'objects') && page !== 'object' && (
+					<div className="context-bar">
+						<button className="object-switch" onClick={() => setProjectOpen(true)}>
+							<Building2 size={17} />
+							<span>{active?.name || 'Выберите объект'}</span>
+							<ChevronDown size={15} />
+						</button>
+						<span className="role-label">{isAdmin ? 'Администратор' : 'Мастер'}</span>
+					</div>
+				)}
 				<main className="content">
 					{page === 'objects' && <ObjectsPage workspace={workspace} />}
-					{page === 'today' && <DailyReportPage workspace={workspace} />}
+					{(page === 'today' || page === 'object') &&
+						(isAdmin ? (
+							<DailyReportPage workspace={workspace} />
+						) : (
+							<ObjectPage key={project} workspace={workspace} />
+						))}
 					{page === 'history' && <ReportsPage workspace={workspace} />}
 					{page === 'changes' && <ChangesPage workspace={workspace} />}
 					{page === 'more' && <SettingsPage workspace={workspace} />}
@@ -176,15 +177,21 @@ export function WorkspaceApp() {
 			<nav className="bottom-nav">
 				{[
 					{ id: 'objects', label: 'Объекты', icon: Building2 },
-					{ id: 'today', label: 'Отчёт', icon: Plus },
+					...(!isAdmin ? [{ id: 'today', label: 'Отчёт', icon: Plus }] : []),
 					{ id: 'history', label: 'История', icon: History },
-					{ id: 'more', label: 'Ещё', icon: MoreHorizontal },
+					{ id: 'more', label: 'Настройки', icon: Settings2 },
 				].map((n) => (
 					<button
 						key={n.id}
-						onClick={() => (n.id === 'more' ? openSettings() : setPage(n.id))}
+						onClick={() => {
+							if (n.id === 'more') openSettings();
+							else if (n.id === 'today' && !isAdmin && active)
+								controller.openObjectSection('reports');
+							else setPage(n.id);
+						}}
 						className={
 							page === n.id ||
+							(n.id === 'today' && page === 'object') ||
 							(n.id === 'more' && page === 'team') ||
 							(n.id === 'history' && page === 'changes')
 								? 'active'
@@ -261,8 +268,9 @@ export function WorkspaceApp() {
 				okButtonProps={{ disabled: !projectName.trim() }}
 			>
 				<div className="form-fields">
-					<label>Название объекта</label>
+					<label htmlFor="project-name">Название объекта</label>
 					<Input
+						id="project-name"
 						value={projectName}
 						onChange={(e) => setProjectName(e.target.value)}
 						placeholder="Например: Детский сад, корпус 2"
@@ -278,20 +286,6 @@ export function WorkspaceApp() {
 									.map((u) => ({ value: u.telegram_id, label: u.name }))}
 							/>
 						</>
-					)}
-					<label>Ссылка на таблицу Битрикс24</label>
-					<Input
-						value={projectUrl}
-						onChange={(e) => setProjectUrl(e.target.value)}
-						placeholder="Можно подключить позже"
-					/>
-					<label>ID файла, если известен</label>
-					<InputNumber value={projectFile} onChange={setProjectFile} min={1} />
-					{session.mode === 'development' && (
-						<div className="switch-row">
-							<span>Начать с шаблона сметы</span>
-							<Switch checked={sample} onChange={setSample} />
-						</div>
 					)}
 				</div>
 			</Modal>

@@ -1,15 +1,44 @@
 """Access registry. Each object has a separate database, guarded before selection."""
 
+import asyncio
 import os
 import sqlite3
 import uuid
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
+from weakref import WeakValueDictionary
 
 from fastapi import HTTPException
 
 from . import store
+
+PROJECT_LOCKS = WeakValueDictionary()
+
+
+def mutation_lock(ident):
+    return PROJECT_LOCKS.setdefault(ident, asyncio.Lock())
+
+
+def exists(ident):
+    with registry() as db:
+        return db.execute("SELECT 1 FROM projects WHERE id=?", (ident,)).fetchone() is not None
+
+
+def delete_project(project):
+    ident = project["id"]
+    relations = ("entries", "positions", "reports", "audit", "settings", "day_snapshots")
+    with registry() as db:
+        db.execute("ATTACH DATABASE ? AS object_data", (project["db_path"],))
+        db.execute("BEGIN IMMEDIATE")
+        for relation in relations:
+            db.execute(f"DELETE FROM object_data.{relation}")
+        db.execute("DELETE FROM projects WHERE id=?", (ident,))
+        if ident == "default":
+            db.execute(
+                "INSERT INTO shared_settings(key,value) VALUES('default_object_removed','1') "
+                "ON CONFLICT(key) DO NOTHING"
+            )
 
 
 @contextmanager
@@ -59,6 +88,9 @@ def init():
             )
         if (
             not db.execute("SELECT 1 FROM projects LIMIT 1").fetchone()
+            and not db.execute(
+                "SELECT 1 FROM shared_settings WHERE key='default_object_removed'"
+            ).fetchone()
             and identities
             and os.getenv("APP_ENV", "development") == "development"
         ):

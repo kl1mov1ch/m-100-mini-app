@@ -15,14 +15,15 @@ import type {
 	ImportPreview,
 	ImportSheet,
 	Line,
+	ObjectSection,
 	Project,
 	ParsedReport,
 	Report,
 	ReconciliationConfirmation,
 	Session,
-	SpeechEngine,
 	TableFixPayload,
 	User,
+	ViewMode,
 } from '../types';
 import { useAudioInput } from './useAudioInput';
 import { useTelegramNavigation } from './useTelegramNavigation';
@@ -40,6 +41,9 @@ export function useWorkspace() {
 				'default',
 		),
 		[busy, setBusy] = useState(false);
+	const [objectSection, setObjectSection] = useState<ObjectSection>('reports');
+	const [switchingRole, setSwitchingRole] = useState(false);
+	const roleSwitch = useRef(false);
 	const [day, setDay] = useState(dayjs().format('YYYY-MM-DD')),
 		[report, setReport] = useState<Report | null>(null),
 		[lines, setLines] = useState<Line[]>([]),
@@ -55,13 +59,11 @@ export function useWorkspace() {
 	const [parsedCrew, setParsedCrew] = useState<number | null>(null);
 	const [parsedCrewAmbiguous, setParsedCrewAmbiguous] = useState(false);
 	const parsedEditVersion = useRef(0);
+	const matchRequest = useRef<AbortController | null>(null);
 	const [projectOpen, setProjectOpen] = useState(false),
 		[objectForm, setObjectForm] = useState(false),
 		[projectName, setProjectName] = useState(''),
-		[projectOwner, setProjectOwner] = useState<string>(),
-		[projectUrl, setProjectUrl] = useState(''),
-		[projectFile, setProjectFile] = useState<number | null>(null),
-		[sample, setSample] = useState(false);
+		[projectOwner, setProjectOwner] = useState<string>();
 	const [users, setUsers] = useState<User[]>([]),
 		[userForm, setUserForm] = useState(false),
 		[userId, setUserId] = useState(''),
@@ -74,23 +76,25 @@ export function useWorkspace() {
 		[aiKey, setAiKey] = useState(''),
 		[aiModel, setAiModel] = useState('deepseek-flash');
 	const [changes, setChanges] = useState<Change[]>([]),
-		[ownerFilter, setOwnerFilter] = useState('all'),
-		[listening, setListening] = useState(false);
+		[ownerFilter, setOwnerFilter] = useState('all');
 	const [summaryDate, setSummaryDate] = useState(dayjs().format('YYYY-MM-DD'));
 	const [summaryProject, setSummaryProject] = useState('all');
-	const speech = useRef<SpeechEngine | null>(null);
-	const audioInput = useAudioInput(project, (transcript) =>
-		setFreeText((current) => [current, transcript].filter(Boolean).join(' ')),
-	);
 	const [preview, setPreview] = useState<ImportPreview | null>(null),
 		[ack, setAck] = useState<string[]>([]),
 		[mapping, setMapping] = useState<ImportSheet[]>([]);
 	const selectionVersion = useRef(0);
 	const sessionVersion = useRef(0);
 	const active = session?.projects.find((p) => p.id === project);
-	const positions = data?.positions || [];
-	const byId = Object.fromEntries(positions.map((p) => [p.id, p]));
+	const allPositions = data?.project?.id === project ? data.positions : [];
+	const positions = allPositions.filter((position) => !position.hidden);
+	const byId = Object.fromEntries(allPositions.map((p) => [p.id, p]));
 	const isAdmin = session?.user.role === 'admin';
+	const audioInput = useAudioInput(
+		project,
+		JSON.stringify([day, page, isAdmin]),
+		freeText,
+		setFreeText,
+	);
 	const loadSession = async (selectedDate = summaryDate) => {
 		const version = ++sessionVersion.current;
 		const s = await request<Session>('/session?date=' + selectedDate);
@@ -101,19 +105,64 @@ export function useWorkspace() {
 	};
 	const changeSummaryDate = async (selectedDate: string) => {
 		setSummaryDate(selectedDate);
-		await loadSession(selectedDate);
+		try {
+			await loadSession(selectedDate);
+		} catch (error) {
+			setSummaryDate((current) =>
+				current === selectedDate ? session?.selected_date || current : current,
+			);
+			message.error((error as Error).message);
+		}
+	};
+	const changeViewMode = async (mode: ViewMode) => {
+		if (!session?.can_switch_role || mode === session.view_mode || roleSwitch.current) return;
+		roleSwitch.current = true;
+		setSwitchingRole(true);
+		const previousMode = localStorage.getItem('view-mode');
+		localStorage.setItem('view-mode', mode);
+		try {
+			const next = await request<Session>('/session?date=' + session.today);
+			if (next.view_mode !== mode) throw new Error('Этот режим недоступен');
+			sessionVersion.current++;
+			selectionVersion.current++;
+			audioInput.cancel();
+			setData(null);
+			setReport(null);
+			setLines([]);
+			setReportText('');
+			setCrew(1);
+			setDay(next.today);
+			setSummaryDate(next.today);
+			setSummaryProject('all');
+			setOwnerFilter('all');
+			setObjectSection('reports');
+			setPage('objects');
+			if (!next.projects.some((item) => item.id === project)) {
+				setProject(next.projects[0]?.id || 'default');
+			}
+			setSession(next);
+		} catch (error) {
+			if (previousMode) localStorage.setItem('view-mode', previousMode);
+			else localStorage.removeItem('view-mode');
+			message.error((error as Error).message);
+		} finally {
+			roleSwitch.current = false;
+			setSwitchingRole(false);
+		}
 	};
 	const loadData = async (id = project, keepEditor = false) => {
 		const version = ++selectionVersion.current;
 		const d = await request<Data>('/bootstrap', undefined, id);
+		const r = keepEditor
+			? null
+			: day === d.config.today
+				? d.report
+				: await request<Report>('/report/' + day, undefined, id);
 		if (version !== selectionVersion.current) return;
 		setData(d);
 		setUrl(d.config.public_url);
 		setFileId(d.config.file_id);
-		if (!keepEditor) {
-			const r =
-				day === d.config.today ? d.report : await request<Report>('/report/' + day, undefined, id);
-			if (version !== selectionVersion.current) return;
+		if (r) {
 			setReport(r);
 			setLines(r.lines);
 			setCrew(r.crew_count);
@@ -133,6 +182,11 @@ export function useWorkspace() {
 		loadSession().catch((e) => setFailure(e.message));
 	}, []);
 	useEffect(() => {
+		selectionVersion.current++;
+		setPreview(null);
+		setTextOpen(false);
+		setFreeText('');
+		setWebhook('');
 		if (!session?.projects.some((p) => p.id === project)) {
 			setData(null);
 			return;
@@ -140,75 +194,73 @@ export function useWorkspace() {
 		setData(null);
 		localStorage.setItem('selected-object' + (previewUser || ''), project);
 		loadData().catch((e) => setFailure(e.message));
-	}, [project, !!session]);
+	}, [project, session?.user.role]);
 	useEffect(() => {
 		if (!session) return;
 		const timer = setInterval(() => {
-			void loadSession().catch(() => {});
+			if (!roleSwitch.current) void loadSession().catch(() => {});
 		}, 20000);
 		return () => clearInterval(timer);
 	}, [!!session, project, summaryDate]);
 	useEffect(() => {
-		if ((!textOpen && (page !== 'objects' || isAdmin)) || freeText.trim().length < 5) {
-			setParsed([]);
-			setParsedCrew(null);
-			setParsedCrewAmbiguous(false);
-			setParsing(false);
-			return;
-		}
+		setParsed([]);
+		setParsedCrew(null);
+		setParsedCrewAmbiguous(false);
+		setParseNote('');
+		setParsing(false);
+		return () => {
+			matchRequest.current?.abort();
+			matchRequest.current = null;
+		};
+	}, [freeText, project, day, page, isAdmin]);
+
+	const matchReportText = async () => {
+		const text = freeText.trim();
+		if (!text || isAdmin || !active || !positions.length || matchRequest.current) return;
+		if (audioInput.recording || audioInput.pending) return;
 		const controller = new AbortController();
-		let aiTimer: ReturnType<typeof setTimeout>;
+		matchRequest.current = controller;
+		setParsed([]);
+		setParsedCrew(null);
+		setParsedCrewAmbiguous(false);
+		setParsing(true);
+		setParseNote('');
+		parsedEditVersion.current = 0;
 		const apply = (result: ParsedReport) => {
 			setParsed(result.lines);
-			setParseNote(result.notice);
 			setParsedCrew(result.crew_count);
 			setParsedCrewAmbiguous(result.crew_ambiguous);
+			setParseNote(
+				result.lines.length ? '' : 'Работы не найдены. Уточните название и объём в сообщении.',
+			);
 		};
-		setParsing(true);
-		parsedEditVersion.current = 0;
-		const timer = setTimeout(async () => {
-			try {
-				const local = await request<ParsedReport>(
+		try {
+			const local = await request<ParsedReport>(
+				'/parse',
+				{ text, local_only: true },
+				project,
+				controller.signal,
+			);
+			if (controller.signal.aborted) return;
+			apply(local);
+			if (local.needs_ai && session?.ai_connected) {
+				const improved = await request<ParsedReport>(
 					'/parse',
-					{ text: freeText, local_only: true },
+					{ text },
 					project,
 					controller.signal,
 				);
-				if (controller.signal.aborted) return;
-				apply(local);
-				setParsing(false);
-				if (local.needs_ai && session?.ai_connected) {
-					aiTimer = setTimeout(async () => {
-						if (parsedEditVersion.current > 0) return;
-						setParsing(true);
-						try {
-							const improved = await request<ParsedReport>(
-								'/parse',
-								{ text: freeText },
-								project,
-								controller.signal,
-							);
-							if (!controller.signal.aborted && parsedEditVersion.current === 0) apply(improved);
-						} catch (error) {
-							if (!controller.signal.aborted) setParseNote((error as Error).message);
-						} finally {
-							if (!controller.signal.aborted) setParsing(false);
-						}
-					}, 550);
-				}
-			} catch (error) {
-				if (!controller.signal.aborted) {
-					setParseNote((error as Error).message);
-					setParsing(false);
-				}
+				if (!controller.signal.aborted && parsedEditVersion.current === 0) apply(improved);
 			}
-		}, 250);
-		return () => {
-			controller.abort();
-			clearTimeout(timer);
-			clearTimeout(aiTimer);
-		};
-	}, [freeText, textOpen, project, page, isAdmin, session?.ai_connected]);
+		} catch (error) {
+			if (!controller.signal.aborted) setParseNote((error as Error).message);
+		} finally {
+			if (matchRequest.current === controller) {
+				matchRequest.current = null;
+				setParsing(false);
+			}
+		}
+	};
 	const refresh = async (keep = false) => {
 		await Promise.all([loadSession(), ...(active ? [loadData(project, keep)] : [])]);
 	};
@@ -232,7 +284,8 @@ export function useWorkspace() {
 		if (id === project) void changeDay(selectedDay);
 		setProject(id);
 		setProjectOpen(false);
-		setPage('today');
+		setObjectSection('reports');
+		setPage(isAdmin ? 'today' : 'object');
 		if (id !== project) setDay(selectedDay);
 	};
 	const openHistoryReport = (objectId: string, reportDay: string) => {
@@ -241,7 +294,12 @@ export function useWorkspace() {
 			setDay(reportDay);
 			setProject(objectId);
 		}
+		setObjectSection('reports');
 		setPage('today');
+	};
+	const openObjectSection = (section: ObjectSection) => {
+		setObjectSection(section);
+		setPage('object');
 	};
 	const addLine = (id: string) => {
 		if (replaceIndex !== null)
@@ -276,7 +334,7 @@ export function useWorkspace() {
 				? () => setPreview(null)
 				: textOpen
 					? () => {
-							audioInput.stop();
+							audioInput.cancel();
 							setTextOpen(false);
 						}
 					: workPicker
@@ -553,19 +611,16 @@ export function useWorkspace() {
 			const p = await request<Project>('/projects', {
 				name: projectName,
 				owner_id: projectOwner || session?.user.telegram_id,
-				public_url: projectUrl,
-				file_id: projectFile,
-				webhook: '',
-				sample,
 			});
 			await loadSession();
 			setProject(p.id);
 			setObjectForm(false);
 			setProjectName('');
-			setProjectUrl('');
-			setProjectFile(null);
-			setSample(false);
-			setPage('more');
+			if (isAdmin) setPage('objects');
+			else {
+				setDay(session?.today || day);
+				openObjectSection('table');
+			}
 			message.success('Объект добавлен');
 		} catch (e) {
 			message.error((e as Error).message);
@@ -609,37 +664,18 @@ export function useWorkspace() {
 			setCheckingConnection(false);
 		}
 	};
-	const switchSettingsProject = (objectId: string) => {
-		setWebhook('');
-		setProject(objectId);
-	};
-	const connect = async () => {
-		if (data?.project?.id !== project) {
-			message.info('Дождитесь загрузки выбранного объекта');
-			return;
-		}
-		setBusy(true);
-		try {
-			await request('/bitrix/connection', { public_url: url, webhook, file_id: fileId }, project);
-			setWebhook('');
-			await refresh(true);
-			message.success('Подключение сохранено');
-		} catch (e) {
-			message.error((e as Error).message);
-		} finally {
-			setBusy(false);
-		}
-	};
 	const importRemote = async () => {
 		if (data?.project?.id !== project) {
 			message.info('Дождитесь загрузки выбранного объекта');
 			return;
 		}
 		setBusy(true);
+		const selection = selectionVersion.current;
 		try {
 			await request('/bitrix/connection', { public_url: url, webhook, file_id: fileId }, project);
 			setWebhook('');
 			const r = await request<ImportPreview>('/imports/bitrix', {}, project);
+			if (selection !== selectionVersion.current) return;
 			if (
 				!r.warnings.some((warning) => warning.severity !== 'info') &&
 				!r.reconciliation?.needs_confirmation
@@ -649,6 +685,7 @@ export function useWorkspace() {
 					{ token: r.token, sheets: r.sheets, acknowledged: [] },
 					project,
 				);
+				if (selection !== selectionVersion.current) return;
 				await refresh(true);
 				message.success('Таблица связана с объектом');
 				return;
@@ -656,6 +693,7 @@ export function useWorkspace() {
 			setPreview(r);
 			setMapping(r.sheets);
 			setAck([]);
+			await loadData(project, true);
 		} catch (e) {
 			message.error((e as Error).message);
 		} finally {
@@ -664,19 +702,41 @@ export function useWorkspace() {
 	};
 	const upload = async (file: File) => {
 		setBusy(true);
+		const selection = selectionVersion.current;
 		try {
 			const form = new FormData();
 			form.append('file', file);
 			const r = await request<ImportPreview>('/imports/upload', form, project);
+			if (selection !== selectionVersion.current) return false;
 			setPreview(r);
 			setMapping(r.sheets);
 			setAck([]);
+			await loadData(project, true);
 		} catch (e) {
 			message.error((e as Error).message);
 		} finally {
 			setBusy(false);
 		}
 		return false;
+	};
+	const resumeImport = async () => {
+		setBusy(true);
+		const selection = selectionVersion.current;
+		try {
+			const pending = await request<ImportPreview | null>('/imports/pending', undefined, project);
+			if (selection !== selectionVersion.current) return;
+			if (!pending) {
+				await loadData(project, true);
+				return;
+			}
+			setPreview(pending);
+			setMapping(pending.sheets);
+			setAck([]);
+		} catch (error) {
+			message.error((error as Error).message);
+		} finally {
+			setBusy(false);
+		}
 	};
 	const commitImport = async (reconciliation?: ReconciliationConfirmation) => {
 		if (!preview) return;
@@ -690,7 +750,6 @@ export function useWorkspace() {
 			setPreview(null);
 			await refresh();
 			message.success('Таблица готова к работе');
-			setPage(isAdmin ? 'objects' : 'today');
 		} catch (e) {
 			message.error((e as Error).message);
 		} finally {
@@ -755,28 +814,6 @@ export function useWorkspace() {
 			setBusy(false);
 		}
 	};
-	const voice = () => {
-		if (listening) {
-			speech.current?.stop();
-			return;
-		}
-		const Engine = window.SpeechRecognition || window.webkitSpeechRecognition;
-		if (!Engine) {
-			message.info('Голосовой ввод недоступен в этом браузере');
-			return;
-		}
-		const r = new Engine();
-		r.lang = 'ru-RU';
-		r.onresult = (e) => setFreeText((t) => (t ? t + ' ' : '') + e.results[0][0].transcript);
-		r.onend = () => setListening(false);
-		r.onerror = () => {
-			setListening(false);
-			message.info('Проверьте доступ к микрофону');
-		};
-		speech.current = r;
-		r.start();
-		setListening(true);
-	};
 	const showChanges = async () => {
 		try {
 			setChanges(await request<Change[]>('/changes', undefined, project));
@@ -803,7 +840,11 @@ export function useWorkspace() {
 		openHistoryReport,
 		checkingConnection,
 		checkConnection,
-		switchSettingsProject,
+		objectSection,
+		openObjectSection,
+		switchingRole,
+		changeViewMode,
+		resumeImport,
 		applyImportChanges,
 		summaryDate,
 		setSummaryDate,
@@ -843,17 +884,14 @@ export function useWorkspace() {
 		setFreeText,
 		parsed,
 		parsedCrew,
-		setParsedCrew,
 		parsedCrewAmbiguous,
 		patchParsedLine,
 		removeParsedLine,
 		updateParsedCrew,
 		confirmParsedReport,
-		setParsed,
+		matchReportText,
 		parsing,
-		setParsing,
 		parseNote,
-		setParseNote,
 		projectOpen,
 		setProjectOpen,
 		objectForm,
@@ -862,12 +900,6 @@ export function useWorkspace() {
 		setProjectName,
 		projectOwner,
 		setProjectOwner,
-		projectUrl,
-		setProjectUrl,
-		projectFile,
-		setProjectFile,
-		sample,
-		setSample,
 		users,
 		setUsers,
 		userForm,
@@ -894,9 +926,6 @@ export function useWorkspace() {
 		setChanges,
 		ownerFilter,
 		setOwnerFilter,
-		listening,
-		setListening,
-		speech,
 		preview,
 		setPreview,
 		ack,
@@ -906,6 +935,7 @@ export function useWorkspace() {
 		selectionVersion,
 		active,
 		positions,
+		allPositions,
 		byId,
 		isAdmin,
 		loadSession,
@@ -932,13 +962,11 @@ export function useWorkspace() {
 		openSettings,
 		createObject,
 		grant,
-		connect,
 		importRemote,
 		upload,
 		commitImport,
 		reviewImport,
 		connectAI,
-		voice,
 		showChanges,
 		exportCsv,
 	};

@@ -2,6 +2,7 @@ import { Button, InputNumber, Select } from 'antd';
 import { Pencil, Trash2, Users } from 'lucide-react';
 import { forwardRef, useEffect, useImperativeHandle, useState } from 'react';
 import { ReportConfirmation } from '../ReportConfirmation';
+import { useConfirmWorkRemoval } from '../hooks/useConfirmWorkRemoval';
 import { calculateAmount, mergeWorkQuantities } from '../lib/calculation';
 import { countLabel, Money, nf, unit } from '../lib/format';
 import type { Position, Report } from '../types';
@@ -23,6 +24,7 @@ type ReviewProps = {
 
 export const ReportReviewEditor = forwardRef<ReportReviewHandle, ReviewProps>(
 	function ReportReviewEditor(props, ref) {
+		const confirmRemoval = useConfirmWorkRemoval();
 		const [quantities, setQuantities] = useState<Record<string, number | null>>(() =>
 			Object.fromEntries(props.lines.map((line) => [line.item_id, line.quantity])),
 		);
@@ -67,10 +69,12 @@ export const ReportReviewEditor = forwardRef<ReportReviewHandle, ReviewProps>(
 			});
 			setEditing(null);
 		};
-		const options = Object.values(props.positions).map((position) => ({
-			value: position.id,
-			label: `${position.name} · ${unit(position.unit)}`,
-		}));
+		const options = Object.values(props.positions)
+			.filter((position) => !position.hidden)
+			.map((position) => ({
+				value: position.id,
+				label: `${position.name} · ${unit(position.unit)}`,
+			}));
 		const amount = calculateAmount(
 			Object.entries(quantities).map(([id, quantity]) => ({
 				quantity,
@@ -113,7 +117,18 @@ export const ReportReviewEditor = forwardRef<ReportReviewHandle, ReviewProps>(
 									size="small"
 									aria-label={'Убрать из общего отчёта ' + position.name}
 									icon={<Trash2 size={16} />}
-									onClick={() => changeQuantity(id, 0)}
+									disabled={next === 0}
+									onClick={() =>
+										confirmRemoval(
+											{
+												name: position.name,
+												quantity: next,
+												unit: position.unit,
+												saved: previous > 0,
+											},
+											() => changeQuantity(id, 0),
+										)
+									}
 								/>
 							</div>
 							<div className="review-editor-comparison">

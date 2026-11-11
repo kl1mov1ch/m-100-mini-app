@@ -5,7 +5,9 @@ from pathlib import Path
 
 def main():
     result = subprocess.run(
-        ["git", "diff", "--cached", "--name-only", "-z"], capture_output=True, check=True
+        ["git", "diff", "--cached", "--diff-filter=ACMRT", "--name-only", "-z"],
+        capture_output=True,
+        check=True,
     )
     names = result.stdout.decode("utf-8").strip("\0").split("\0")
     failures = []

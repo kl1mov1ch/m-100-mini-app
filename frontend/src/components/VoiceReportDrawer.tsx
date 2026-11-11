@@ -8,10 +8,19 @@ const exampleReport =
 	'Сегодня проложили медь 6-ку\n15 м и 9-ку 15 м, изоляцию на них столько же, кабель 3х2,5 — 56 м, поставили 10\nхомутов под фреон.';
 
 export function VoiceReportDrawer({ workspace }: { workspace: WorkspaceView }) {
-	const { textOpen, setTextOpen, audioInput, active, freeText, setFreeText } = workspace;
+	const {
+		textOpen,
+		setTextOpen,
+		audioInput,
+		active,
+		freeText,
+		setFreeText,
+		matchReportText,
+		parsing,
+	} = workspace;
 	const close = () => {
 		setTextOpen(false);
-		audioInput.stop();
+		audioInput.cancel();
 	};
 	return (
 		<Drawer
@@ -37,9 +46,10 @@ export function VoiceReportDrawer({ workspace }: { workspace: WorkspaceView }) {
 				onChange={(event) => setFreeText(event.target.value)}
 				autoSize={{ minRows: 3, maxRows: 6 }}
 				maxLength={8000}
+				readOnly={audioInput.recording || audioInput.pending}
 				placeholder="Что сделали на объекте? Вставьте сообщение работника или надиктуйте отчёт."
 			/>
-			{!freeText && (
+			{!freeText && !audioInput.recording && !audioInput.pending && (
 				<button className="voice-example-link" onClick={() => setFreeText(exampleReport)}>
 					<Sparkles size={12} />
 					Пример сообщения
@@ -50,11 +60,11 @@ export function VoiceReportDrawer({ workspace }: { workspace: WorkspaceView }) {
 			>
 				<button
 					className={'voice-microphone ' + (audioInput.recording ? 'recording' : '')}
-					disabled={audioInput.transcribing}
+					disabled={audioInput.pending}
 					aria-label={audioInput.recording ? 'Остановить запись' : 'Начать запись'}
 					onClick={audioInput.toggleRecording}
 				>
-					{audioInput.transcribing ? (
+					{audioInput.pending ? (
 						<LoaderCircle size={28} className="spinning" />
 					) : audioInput.recording ? (
 						<Square size={23} fill="currentColor" />
@@ -63,10 +73,12 @@ export function VoiceReportDrawer({ workspace }: { workspace: WorkspaceView }) {
 					)}
 				</button>
 				<span>
-					{audioInput.transcribing
-						? 'Распознаём речь…'
+					{audioInput.pending
+						? 'Подождите…'
 						: audioInput.recording
-							? 'Говорите. Нажмите, чтобы закончить'
+							? audioInput.live
+								? 'Говорите, текст появится в поле'
+								: 'Записываем. Текст появится после остановки'
 							: 'Нажмите, чтобы говорить'}
 				</span>
 				<Upload
@@ -74,11 +86,21 @@ export function VoiceReportDrawer({ workspace }: { workspace: WorkspaceView }) {
 					showUploadList={false}
 					beforeUpload={audioInput.uploadAudio}
 				>
-					<Button type="text" disabled={audioInput.transcribing || audioInput.recording}>
+					<Button type="text" disabled={audioInput.pending || audioInput.recording}>
 						Добавить голосовое сообщение
 					</Button>
 				</Upload>
 			</div>
+			<Button
+				block
+				type="primary"
+				size="large"
+				disabled={!freeText.trim() || audioInput.recording || audioInput.pending}
+				loading={parsing}
+				onClick={matchReportText}
+			>
+				Подобрать работы
+			</Button>
 			<ReportDraftFields workspace={workspace} />
 		</Drawer>
 	);

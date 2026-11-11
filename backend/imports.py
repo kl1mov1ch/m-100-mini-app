@@ -1,4 +1,5 @@
 import json
+import logging
 import uuid
 from pathlib import Path
 
@@ -34,6 +35,17 @@ def directory():
     p = store.base_path().parent / "imports"
     p.mkdir(parents=True, exist_ok=True)
     return p
+
+
+def remove_project_imports(project_id):
+    for metadata in (store.base_path().parent / "imports").glob("*.json"):
+        try:
+            saved = json.loads(metadata.read_text(encoding="utf-8"))
+            if isinstance(saved, dict) and saved.get("project_id") == project_id:
+                metadata.with_suffix(".xlsx").unlink(missing_ok=True)
+                metadata.unlink(missing_ok=True)
+        except (OSError, ValueError):
+            logging.getLogger(__name__).warning("Could not remove an object import")
 
 
 def read_pending(token, project):
@@ -124,7 +136,9 @@ def register(app, settings, now):
         with store.connect() as db:
             webhook = store.setting(db, "webhook")
             file_id = int(store.setting(db, "file_id", "0"))
-            url = store.setting(db, "public_url", bitrix.PUBLIC_URL)
+            url = store.setting(db, "public_url")
+        if not webhook and not url:
+            raise HTTPException(422, "Сначала укажите ссылку на таблицу Битрикс24")
         try:
             if webhook:
                 content, meta = await bitrix.download_rest(webhook, file_id)
@@ -194,6 +208,12 @@ def register(app, settings, now):
         async with table_lock(request.state.project):
             with store.connect() as db:
                 db.execute("BEGIN IMMEDIATE")
+                configured_id = int(store.setting(db, "file_id", "0"))
+                if meta["source"] == "bitrix" and (
+                    body.token != store.setting(db, "pending_import_token")
+                    or (configured_id and configured_id != int(meta["remote"]["file_id"]))
+                ):
+                    raise HTTPException(409, "Подключение изменилось. Откройте таблицу заново.")
                 data = reconciliation.reconcile_import(
                     db,
                     data,
@@ -219,6 +239,7 @@ def register(app, settings, now):
                 db.execute("DELETE FROM positions")
                 for p in data["positions"]:
                     store.insert_position(db, p)
+                store.restore_hidden_positions(db, data["positions"])
                 for e in data["entries"]:
                     db.execute(
                         "INSERT INTO entries VALUES(:item_id,:date,:quantity) ON CONFLICT(item_id,date) DO UPDATE SET quantity=quantity+excluded.quantity",
