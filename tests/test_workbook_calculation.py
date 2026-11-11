@@ -6,6 +6,7 @@ import pytest
 
 from backend import bitrix
 from backend.workbook_calculation import cache_formulas, verify_calculations
+from backend.workbook_journal import format_journal, verify_day_totals
 
 
 def test_all_dependent_columns_have_updated_values_without_opening_excel():
@@ -58,3 +59,48 @@ def test_unsupported_formula_requires_clear_cell_confirmation():
     workbook.save(output)
     with pytest.raises(ValueError, match="B2"):
         cache_formulas(output.getvalue())
+
+
+def test_guarded_source_formula_and_daily_payroll_on_new_sheet():
+    workbook = openpyxl.Workbook()
+    sheet = workbook.active
+    sheet.title = "Инженерные сети"
+    sheet["D5"] = 4
+    sheet["E5"] = 145
+    formula = '=IF(OR(D5="",E5=""),"",D5*E5)'
+    sheet["F5"] = formula
+    sheet["D6"] = 0
+    sheet["E6"] = 145
+    sheet["F6"] = '=IF(OR(D6="",E6=""),"",D6*E6)'
+    sheet["F7"] = '=IF(OR(D7="",E7=""),"",D7*E7)'
+    sheet["L9"] = "=UNKNOWN(A1)"
+    stream = io.BytesIO()
+    workbook.save(stream)
+    positions = [{"id": "one", "name": "Блок", "unit": "шт", "planned": 4, "rate": 145}]
+    day = "2026-11-11"
+    entries = [{"item_id": "one", "date": day, "quantity": 1}]
+    issues = []
+    content = format_journal(stream.getvalue(), positions, entries, {day: 3}, issues)
+    cached = openpyxl.load_workbook(io.BytesIO(content), data_only=True)
+    assert cached["Инженерные сети"]["F5"].value == 580
+    assert cached["Инженерные сети"]["F6"].value == 0
+    assert cached["Инженерные сети"]["F7"].value is None
+    assert {issue["cell"] for issue in issues} == {"L9"}
+    original = openpyxl.load_workbook(io.BytesIO(content))["Инженерные сети"]
+    assert original["F5"].value == formula and original["L9"].value == "=UNKNOWN(A1)"
+    verify_day_totals(
+        content,
+        day,
+        {
+            "amount": 145,
+            "crew_count": 3,
+            "per_person": 48.33,
+            "extra_people": 1,
+            "extra_per_person": 48.34,
+        },
+        1,
+    )
+    older_day = "2026-11-10"
+    updated = format_journal(content, positions, entries, {day: 3, older_day: 1}, [])
+    journal = openpyxl.load_workbook(io.BytesIO(updated), data_only=True)["Журнал работ"]
+    assert str(journal["J3"].value)[:10] == day and str(journal["K3"].value)[:10] == older_day

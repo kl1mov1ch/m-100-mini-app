@@ -6,6 +6,7 @@ import dayjs from '../lib/date';
 
 import type { WorkspaceView } from '../App';
 import { useConfirmWorkRemoval } from '../hooks/useConfirmWorkRemoval';
+import { useReportDateSwipe } from '../hooks/useReportDateSwipe';
 import { Status } from '../components/SyncStatus';
 import { Money, nf, shortName, unit } from '../lib/format';
 import { AdminDailyReport } from '../components/AdminDailyReport';
@@ -16,6 +17,7 @@ export function DailyReportPage({ workspace }: { workspace: WorkspaceView }) {
 
 function MasterDailyReport({ workspace }: { workspace: WorkspaceView }) {
 	const confirmRemoval = useConfirmWorkRemoval();
+	const dateSwipe = useReportDateSwipe(workspace);
 	const {
 		session,
 		data,
@@ -53,7 +55,7 @@ function MasterDailyReport({ workspace }: { workspace: WorkspaceView }) {
 		</div>
 	) : (
 		<>
-			<div className="page-title">
+			<div className="page-title swipe-surface" {...dateSwipe}>
 				<div>
 					<h2>Дневной отчёт</h2>
 				</div>
@@ -257,6 +259,9 @@ function MasterDailyReport({ workspace }: { workspace: WorkspaceView }) {
 								</Button>
 							}
 						/>
+					)}
+					{report.sync_status === 'synced' && report.sync_error && (
+						<Alert type="warning" showIcon message={report.sync_error} />
 					)}
 				</div>
 			)}

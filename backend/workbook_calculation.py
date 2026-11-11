@@ -8,7 +8,6 @@ from decimal import ROUND_HALF_UP, Decimal
 from xml.etree import ElementTree as ET
 
 import openpyxl
-from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter, range_boundaries
 
 NAMESPACE = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
@@ -37,25 +36,8 @@ def header_text(value):
     return re.sub(r"\s+", " ", str(value or "").lower().replace("ё", "е")).strip()
 
 
-def recalculate(content, catalogue, mappings=None):
+def recalculate(content, catalogue, mappings=None, issues=None):
     book = openpyxl.load_workbook(io.BytesIO(content))
-    if "Итоги объекта" in book:
-        summary = book["Итоги объекта"]
-        summary.delete_rows(1, summary.max_row)
-    else:
-        summary = book.create_sheet("Итоги объекта")
-    summary.append(
-        [
-            "Работа",
-            "Ед. изм.",
-            "Плановый объём",
-            "Расценка, BYN",
-            "Выполненный объём",
-            "Остаток объёма",
-            "По смете, BYN",
-            "Выполнено в деньгах, BYN",
-        ]
-    )
     by_sheet = {}
     for position in catalogue:
         sheet_name = position.get("source_sheet") or book.sheetnames[0]
@@ -71,9 +53,11 @@ def recalculate(content, catalogue, mappings=None):
                 fields["remaining"] = column
             elif re.search(r"выполн.*объем|^выполнено$", label):
                 fields["completed"] = column
-            elif re.search(r"выполн.*ден|сумма.*выполн|стоимость.*выполн|на руки", label):
+            elif re.search(
+                r"выполн.*(?:ден|byn|руб)|сумма.*выполн|стоимость.*выполн|на руки", label
+            ):
                 fields["earned"] = column
-            elif re.search(r"зп.*весь|сумма.*план|стоимость.*смет", label):
+            elif re.search(r"зп.*весь|сумма.*план|стоимость.*смет|по смете.*(?:byn|руб)", label):
                 fields["planned_amount"] = column
         mapping = descriptor["mapping"] if descriptor else {"planned": 4, "rate": 5}
         date_row = descriptor.get("date_row", header) if descriptor else 3
@@ -129,54 +113,9 @@ def recalculate(content, catalogue, mappings=None):
                 cell.number_format = (
                     '#,##0.00 "BYN"' if name in ("earned", "planned_amount") else "0.####"
                 )
-            summary.append(
-                [
-                    position["name"],
-                    position["unit"],
-                    planned,
-                    rate,
-                    completed,
-                    planned - completed,
-                    computed["planned_amount"],
-                    computed["earned"],
-                ]
-            )
-    for title in ("Расчёт бригады", "Итоги объекта"):
-        if title not in book:
-            continue
-        sheet = book[title]
-        sheet.freeze_panes = "A2"
-        sheet.sheet_view.showGridLines = False
-        sheet.row_dimensions[1].height = 36
-        for row in sheet:
-            for cell in row:
-                cell.alignment = Alignment(wrap_text=True, vertical="center")
-                cell.font = Font(
-                    name="Calibri",
-                    size=11,
-                    color="FFFFFF" if cell.row == 1 else "203958",
-                    bold=cell.row == 1,
-                )
-                cell.fill = PatternFill(
-                    "solid",
-                    fgColor="2563EB"
-                    if cell.row == 1
-                    else "EDF4FF"
-                    if cell.row % 2 == 0
-                    else "FFFFFF",
-                )
-                if title == "Итоги объекта" and cell.row > 1 and cell.column in (4, 7, 8):
-                    cell.number_format = '#,##0.00 "BYN"'
-        if title == "Итоги объекта":
-            for column, width in enumerate((65, 12, 20, 22, 22, 22, 22, 25), 1):
-                sheet.column_dimensions[get_column_letter(column)].width = width
-            for row in range(2, sheet.max_row + 1):
-                sheet.row_dimensions[row].height = max(
-                    30, 15 * ((len(str(sheet.cell(row, 1).value)) // 60) + 1)
-                )
     stream = io.BytesIO()
     book.save(stream)
-    return cache_formulas(stream.getvalue())
+    return cache_formulas(stream.getvalue(), issues)
 
 
 class FormulaEvaluator:
@@ -212,8 +151,6 @@ class FormulaEvaluator:
                 value = self.evaluate(ast.parse(formula, mode="eval").body, sheet)
             finally:
                 self.visiting.remove(key)
-        elif value in (None, ""):
-            value = 0
         self.cache[key] = value
         return value
 
@@ -233,13 +170,16 @@ class FormulaEvaluator:
             ast.Mod: operator.mod,
         }
         if isinstance(node, ast.BinOp) and type(node.op) in binary:
-            if isinstance(node.op, ast.Pow) and abs(self.evaluate(node.right, sheet)) > 20:
+            left = self.evaluate(node.left, sheet)
+            right = self.evaluate(node.right, sheet)
+            left = 0 if left is None else left
+            right = 0 if right is None else right
+            if isinstance(node.op, ast.Pow) and abs(right) > 20:
                 raise ValueError("Слишком большая степень")
-            return binary[type(node.op)](
-                self.evaluate(node.left, sheet), self.evaluate(node.right, sheet)
-            )
+            return binary[type(node.op)](left, right)
         if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
             value = self.evaluate(node.operand, sheet)
+            value = 0 if value is None else value
             return -value if isinstance(node.op, ast.USub) else value
         comparison = {
             ast.Eq: operator.eq,
@@ -250,9 +190,13 @@ class FormulaEvaluator:
             ast.GtE: operator.ge,
         }
         if isinstance(node, ast.Compare) and len(node.ops) == 1 and type(node.ops[0]) in comparison:
-            return comparison[type(node.ops[0])](
-                self.evaluate(node.left, sheet), self.evaluate(node.comparators[0], sheet)
-            )
+            left = self.evaluate(node.left, sheet)
+            right = self.evaluate(node.comparators[0], sheet)
+            if left is None:
+                left = "" if isinstance(right, str) else 0
+            if right is None:
+                right = "" if isinstance(left, str) else 0
+            return comparison[type(node.ops[0])](left, right)
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
             function = node.func.id.upper()
             if function == "IF" and len(node.args) == 3:
@@ -277,6 +221,17 @@ class FormulaEvaluator:
             values = [self.evaluate(arg, sheet) for arg in node.args]
             if function == "CELL" and len(values) == 2:
                 return self.cell(values[0], values[1])
+            if function == "ISBLANK" and len(values) == 1:
+                return values[0] is None
+            if function == "NOT" and len(values) == 1:
+                return not values[0]
+            if function in ("OR", "AND"):
+                flags = (
+                    bool(item)
+                    for value in values
+                    for item in (value if isinstance(value, list) else [value])
+                )
+                return any(flags) if function == "OR" else all(flags)
             flattened = [
                 item
                 for value in values
@@ -285,6 +240,22 @@ class FormulaEvaluator:
             ]
             if function == "SUM":
                 return sum(flattened)
+            if (
+                function == "SUMPRODUCT"
+                and len(values) == 2
+                and all(isinstance(value, list) for value in values)
+            ):
+                if len(values[0]) != len(values[1]):
+                    raise ValueError("Диапазоны SUMPRODUCT разной длины")
+                return sum((left or 0) * (right or 0) for left, right in zip(*values))
+            if function == "INT" and len(values) == 1:
+                return int(values[0] // 1)
+            if function == "MOD" and len(values) == 2:
+                return values[0] % values[1]
+            if function == "COUNT":
+                return len(flattened)
+            if function == "AVERAGE" and flattened:
+                return sum(flattened) / len(flattened)
             if function == "MIN":
                 return min(flattened, default=0)
             if function == "MAX":
@@ -300,7 +271,7 @@ class FormulaEvaluator:
         raise ValueError("Неподдерживаемая формула")
 
 
-def cache_formulas(content):
+def cache_formulas(content, issues=None):
     book = openpyxl.load_workbook(io.BytesIO(content), data_only=False)
     evaluator = FormulaEvaluator(book)
     cached = {}
@@ -319,8 +290,17 @@ def cache_formulas(content):
                         KeyError,
                         RecursionError,
                     ):
-                        raise ValueError(
-                            f"Лист «{sheet.title}», ячейка {cell.coordinate}: не удалось пересчитать формулу {cell.value}. Уточните правило расчёта перед отправкой."
+                        message = f"Лист «{sheet.title}», ячейка {cell.coordinate}: формула требует проверки."
+                        if issues is None:
+                            raise ValueError(message)
+                        issues.append(
+                            {
+                                "id": f"{sheet.title}:{cell.coordinate}",
+                                "sheet": sheet.title,
+                                "cell": cell.coordinate,
+                                "value": str(cell.value),
+                                "message": message,
+                            }
                         )
         cached[f"xl/worksheets/sheet{index}.xml"] = values
     output = io.BytesIO()
@@ -339,7 +319,11 @@ def cache_formulas(content):
                     child = node.find(f"{{{NAMESPACE}}}v")
                     if child is None:
                         child = ET.SubElement(node, f"{{{NAMESPACE}}}v")
-                    child.text = str(int(value) if isinstance(value, bool) else value)
+                    child.text = (
+                        ""
+                        if value is None
+                        else str(int(value) if isinstance(value, bool) else value)
+                    )
                     if isinstance(value, str):
                         node.set("t", "str")
                     else:
@@ -359,6 +343,8 @@ def verify_calculations(expected, actual):
                 if cell.data_type != "f":
                     continue
                 expected_value = values[sheet.title][cell.coordinate].value
+                if expected_value is None:
+                    continue
                 received = (
                     remote[sheet.title][cell.coordinate].value if sheet.title in remote else None
                 )

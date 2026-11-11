@@ -45,9 +45,9 @@ export type Position = {
 	source_sheet?: string;
 	hidden?: boolean;
 	bitrix?: { planned: number; rate: number; completed: number; remaining: number } | null;
-	linked_work_id?: string | null;
 };
 export type PositionHistory = {
+	can_delete: boolean;
 	events: {
 		kind: string;
 		date: string;
@@ -66,11 +66,11 @@ export type BitrixRead = {
 	updated_at: string | null;
 };
 export type ObjectSection = 'reports' | 'catalogue' | 'table';
+export type CatalogueAction = 'delete' | 'hide' | 'show';
 export type ViewMode = 'admin' | 'master';
 export type ObjectManagement = {
 	reports: number;
 	pending: number;
-	used_positions: string[];
 };
 export type CatalogueReconciliation = {
 	version: string;
@@ -152,6 +152,8 @@ export type Config = {
 	last_import: string;
 	pending_import: boolean;
 	bitrix_read?: BitrixRead | null;
+	journal_status?: string;
+	journal_note?: string;
 	detail_url?: string;
 	connection_check?: {
 		reachable: boolean;
@@ -239,6 +241,7 @@ export type ImportWarning = {
 	field?: string;
 	value?: string;
 	fix?: string;
+	ai_tip?: string;
 	confirmation_label?: string;
 	duplicates?: { date: string; columns: number[]; cells: string[] }[];
 };

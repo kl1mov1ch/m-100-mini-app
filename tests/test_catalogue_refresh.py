@@ -74,15 +74,13 @@ def test_live_overrun_preserves_confirmed_report_and_position_history(client, mo
         "bitrix_day",
     }
     assert client.post(path, json={"action": "hide"}, headers=headers).status_code == 200
-    assert (
-        client.post(
-            "/api/object/positions/excel-3/link", json={"work_id": "excel-2"}, headers=headers
-        ).status_code
-        == 200
-    )
     updated = client.get("/api/bootstrap", headers=headers).json()
-    assert updated["positions"][1]["linked_work_id"] == "excel-2"
     assert updated["positions"][0]["hidden"]
+    assert history["can_delete"] is False
+    assert (
+        client.post(path + "/consult", json={"question": "Почему −4?"}, headers=headers).status_code
+        == 409
+    )
 
     workspaces.set_shared({"llm_api_key": "test-key"})
 
@@ -96,9 +94,6 @@ def test_live_overrun_preserves_confirmed_report_and_position_history(client, mo
         }
 
     monkeypatch.setattr(matcher, "complete", advice)
-    response = client.post(path + "/consult", json={"question": "Почему −4?"}, headers=headers)
-    assert response.status_code == 200, response.text
-    assert response.json()["checks"]
 
     async def offline(*args):
         raise httpx.ConnectError("offline")
@@ -113,6 +108,9 @@ def test_live_overrun_preserves_confirmed_report_and_position_history(client, mo
     data = client.get("/api/bootstrap", headers=headers).json()
     assert data["positions"][0]["bitrix"]["remaining"] == -4
     assert data["report"]["lines"] == [line]
+    response = client.post(path + "/consult", json={"question": "Почему −4?"}, headers=headers)
+    assert response.status_code == 200, response.text
+    assert response.json()["checks"]
 
 
 def test_bitrix_reads_can_fall_back_to_server_proxy(monkeypatch):

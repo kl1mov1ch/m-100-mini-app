@@ -15,6 +15,8 @@ import httpx
 import openpyxl
 from openpyxl.workbook.properties import CalcProperties
 
+from .workbook_journal import is_journal
+
 PUBLIC_URL = ""
 READ_TIMEOUT = httpx.Timeout(25, connect=7)
 
@@ -42,7 +44,11 @@ async def read_with_fallback(operation):
     try:
         return await operation(None)
     except httpx.HTTPStatusError as error:
-        if not proxy or error.response.status_code not in (403, 429) and error.response.status_code < 500:
+        if (
+            not proxy
+            or error.response.status_code not in (403, 429)
+            and error.response.status_code < 500
+        ):
             raise
     except httpx.TransportError:
         if not proxy:
@@ -56,7 +62,9 @@ async def fetch_public(url):
 
 
 async def fetch_public_workbook(url, proxy):
-    async with httpx.AsyncClient(timeout=READ_TIMEOUT, follow_redirects=True, proxy=proxy) as client:
+    async with httpx.AsyncClient(
+        timeout=READ_TIMEOUT, follow_redirects=True, proxy=proxy
+    ) as client:
         page = await client.get(url)
         page.raise_for_status()
         config_match = re.search(r"editorJson:\s*(\{.*?\}),\s*\n", page.text)
@@ -101,6 +109,8 @@ def read_workbook(content, mappings=None):
     w = openpyxl.load_workbook(io.BytesIO(content), data_only=True)
     result = {"positions": [], "entries": [], "sheet": None}
     for sheet in w:
+        if is_journal(sheet):
+            continue
         # Match by actual column headers, not the workbook's filename.
         header = next(
             (
@@ -150,16 +160,17 @@ def read_workbook(content, mappings=None):
     return result
 
 
-def patch_workbook(content, day, lines, catalogue, payroll=None, mappings=None):
+def patch_workbook(content, day, lines, catalogue, payroll=None, mappings=None, issues=None):
     from .workbook_calculation import recalculate
 
     if mappings:
         from .tables import patch
 
         return recalculate(
-            add_payroll(patch(content, day, lines, catalogue, mappings), day, payroll),
+            patch(content, day, lines, catalogue, mappings),
             catalogue,
             mappings,
+            issues,
         )
     book = openpyxl.load_workbook(io.BytesIO(content))
     info = read_workbook(content)
@@ -217,46 +228,10 @@ def patch_workbook(content, day, lines, catalogue, payroll=None, mappings=None):
     quantities = {line["item_id"]: line["quantity"] for line in lines}
     for p in catalogue:
         sheet.cell(p["source_row"], col).value = quantities.get(p["id"])
-    if payroll:
-        payouts = (
-            book["Расчёт бригады"]
-            if "Расчёт бригады" in book.sheetnames
-            else book.create_sheet("Расчёт бригады")
-        )
-        headers = [
-            "Дата",
-            "Работников",
-            "Работы, BYN",
-            "На человека, BYN",
-            "Человек с +0,01 BYN",
-            "Повышенная доля, BYN",
-        ]
-        for c, value in enumerate(headers, 1):
-            payouts.cell(1, c, value)
-        payout_row = next(
-            (r for r in range(2, payouts.max_row + 1) if str(payouts.cell(r, 1).value)[:10] == day),
-            payouts.max_row + 1,
-        )
-        for c, value in enumerate(
-            [
-                day,
-                payroll["crew_count"],
-                payroll["amount"],
-                payroll["per_person"],
-                payroll["extra_people"],
-                payroll["extra_per_person"],
-            ],
-            1,
-        ):
-            payouts.cell(payout_row, c, value)
-            if c in (3, 4, 6):
-                payouts.cell(payout_row, c).number_format = "0.00"
-        for c, width in {"A": 16, "B": 16, "C": 20, "D": 24, "E": 27, "F": 28}.items():
-            payouts.column_dimensions[c].width = width
     book.calculation = CalcProperties(calcId=191029, fullCalcOnLoad=True)
     out = io.BytesIO()
     book.save(out)
-    return recalculate(out.getvalue(), catalogue)
+    return recalculate(out.getvalue(), catalogue, issues=issues)
 
 
 def validate_webhook(webhook):
@@ -272,13 +247,17 @@ def validate_webhook(webhook):
 
 async def rest(webhook, method, payload):
     base = validate_webhook(webhook)
-    if method == "disk.file.get":
+    if method in ("disk.file.get", "disk.file.search"):
         return await read_with_fallback(lambda proxy: rest_request(base, method, payload, proxy))
     return await rest_request(base, method, payload, os.getenv("BITRIX_WRITE_PROXY_URL") or None)
 
 
 async def rest_request(base, method, payload, proxy):
-    timeout = READ_TIMEOUT if method == "disk.file.get" else httpx.Timeout(45, connect=7)
+    timeout = (
+        READ_TIMEOUT
+        if method in ("disk.file.get", "disk.file.search")
+        else httpx.Timeout(45, connect=7)
+    )
     async with httpx.AsyncClient(timeout=timeout, proxy=proxy) as client:
         r = await client.post(base + method + ".json", json=payload)
         r.raise_for_status()
@@ -299,7 +278,9 @@ async def download_rest(webhook, file_id):
 
 
 async def download_workbook(url, meta, proxy):
-    async with httpx.AsyncClient(timeout=READ_TIMEOUT, follow_redirects=True, proxy=proxy) as client:
+    async with httpx.AsyncClient(
+        timeout=READ_TIMEOUT, follow_redirects=True, proxy=proxy
+    ) as client:
         r = await client.get(url)
         r.raise_for_status()
         if not r.content.startswith(b"PK"):
@@ -307,9 +288,98 @@ async def download_workbook(url, meta, proxy):
         return r.content, meta
 
 
+def workbook_identity(content):
+    book = openpyxl.load_workbook(io.BytesIO(content), read_only=True)
+    digest = hashlib.sha256()
+    try:
+        for sheet in book:
+            if (sheet.max_row or 0) * (sheet.max_column or 0) > 3_000_000:
+                raise ValueError("Не удалось проверить слишком большой файл Диска")
+            digest.update(json.dumps(sheet.title, ensure_ascii=False).encode())
+            for row_index, row in enumerate(sheet.values, 1):
+                values = [(index, value) for index, value in enumerate(row, 1) if value is not None]
+                if values:
+                    digest.update(
+                        json.dumps((row_index, values), ensure_ascii=False, default=str).encode()
+                    )
+        return digest.digest()
+    finally:
+        book.close()
+
+
+async def resolve_public_file(public_url, webhook, existing_id=None):
+    content, public = await fetch_public(public_url)
+    public_id = public.get("file_id")
+    if not webhook:
+        return int(public_id) if public_id else None
+    base = validate_webhook(webhook)
+    portal = urlparse(public_url).path.split("/")[1].lower()
+    if urlparse(base).hostname != portal:
+        raise ValueError("Вебхук и публичная ссылка должны относиться к одному порталу")
+
+    public_identity = None
+
+    async def matches(ident):
+        nonlocal public_identity
+        try:
+            candidate, meta = await download_rest(webhook, ident)
+        except (httpx.HTTPError, ValueError, KeyError):
+            return False
+        if int(meta.get("ID") or ident) != ident:
+            return False
+        if hashlib.sha256(content).digest() == hashlib.sha256(candidate).digest():
+            return True
+        if public_identity is None:
+            public_identity = workbook_identity(content)
+        return public_identity == workbook_identity(candidate)
+
+    candidates = {int(ident) for ident in (public_id, existing_id) if ident}
+    for ident in candidates:
+        if await matches(ident):
+            return ident
+    title = str(public.get("name", "")).strip()
+    query = re.sub(r"\.xlsx?$", "", title, flags=re.I).strip()
+    if len(query) < 3:
+        raise ValueError("Публичная таблица не дала название для поиска на Диске")
+    verified = set()
+    for start in range(0, 200, 50):
+        results = await rest(
+            webhook, "disk.file.search", {"QUERY": query[:255], "TYPE": "file", "start": start}
+        )
+        for item in results:
+            name = re.sub(r"\.xlsx?$", "", str(item.get("NAME", "")), flags=re.I)
+            if name.strip().casefold() != query.casefold() or not item.get("ID"):
+                continue
+            ident = int(item["ID"])
+            if ident not in candidates and await matches(ident):
+                verified.add(ident)
+            candidates.add(ident)
+            if len(verified) > 1:
+                raise ValueError(
+                    "На Диске есть несколько одинаковых файлов. Опубликуйте нужную копию под отдельным названием."
+                )
+        if len(results) < 50:
+            break
+    if len(verified) == 1:
+        return verified.pop()
+    raise ValueError(
+        "Не удалось подтвердить соответствие публичной таблицы файлу Диска. Проверьте доступ вебхука."
+    )
+
+
 async def upload_day(
-    webhook, file_id, day, lines, catalogue, payroll=None, baseline=None, mappings=None
+    webhook,
+    file_id,
+    day,
+    lines,
+    catalogue,
+    payroll=None,
+    baseline=None,
+    mappings=None,
+    crew_by_day=None,
 ):
+    from .workbook_journal import format_journal, verify_day_totals
+
     content, meta = await download_rest(webhook, file_id)
     if baseline is not None:
         remote = {}
@@ -321,7 +391,15 @@ async def upload_day(
             raise ValueError(
                 "Объёмы дня изменены в Битрикс. Обновите таблицу и проверьте изменения перед отправкой."
             )
-    patched = patch_workbook(content, day, lines, catalogue, payroll, mappings)
+    issues = []
+    patched = patch_workbook(content, day, lines, catalogue, payroll, mappings, issues)
+    entries = read_workbook(patched, mappings)["entries"]
+    crew = dict(crew_by_day or {})
+    if payroll:
+        crew[day] = payroll["crew_count"]
+    patched = format_journal(patched, catalogue, entries, crew, issues)
+    if payroll:
+        verify_day_totals(patched, day, payroll, len(catalogue))
     latest, _ = await download_rest(webhook, file_id)
     if hashlib.sha256(content).digest() != hashlib.sha256(latest).digest():
         raise ValueError(
@@ -352,60 +430,38 @@ async def upload_day(
             "Версия отправлена, но проверка значений не прошла. Нажмите «Решить в приложении», чтобы прочитать актуальные данные и сравнить объёмы."
         )
     if payroll:
-        payouts = openpyxl.load_workbook(io.BytesIO(verified), data_only=True)["Расчёт бригады"]
-        row = next((r for r in payouts.values if str(r[0])[:10] == day), None)
-        if not row or list(row[1:6]) != [
-            payroll["crew_count"],
-            payroll["amount"],
-            payroll["per_person"],
-            payroll["extra_people"],
-            payroll["extra_per_person"],
-        ]:
-            raise ValueError("Не подтверждён расчёт бригады в Битрикс. Повторите отправку.")
-    return {"ok": True, "file_id": file_id}
+        verify_day_totals(verified, day, payroll, len(catalogue))
+    return {
+        "ok": True,
+        "file_id": file_id,
+        "issues": list({issue["id"]: issue for issue in issues}.values()),
+    }
 
 
-def add_payroll(content, day, payroll):
-    if not payroll:
-        return content
-    book = openpyxl.load_workbook(io.BytesIO(content))
-    sheet = (
-        book["Расчёт бригады"]
-        if "Расчёт бригады" in book.sheetnames
-        else book.create_sheet("Расчёт бригады")
+async def upload_journal(webhook, file_id, mappings, crew_by_day):
+    from .workbook_calculation import verify_calculations
+    from .workbook_journal import format_journal
+
+    content, meta = await download_rest(webhook, file_id)
+    book = openpyxl.load_workbook(io.BytesIO(content), data_only=True)
+    if any(is_journal(sheet) for sheet in book):
+        return []
+    parsed = read_workbook(content, mappings)
+    issues = []
+    patched = format_journal(content, parsed["positions"], parsed["entries"], crew_by_day, issues)
+    latest, _ = await download_rest(webhook, file_id)
+    if hashlib.sha256(content).digest() != hashlib.sha256(latest).digest():
+        raise ValueError("Таблица обновилась во время оформления. Повторите чтение.")
+    result = await rest(
+        webhook,
+        "disk.file.uploadVersion",
+        {"id": file_id, "fileContent": [meta["NAME"], base64.b64encode(patched).decode()]},
     )
-    for c, value in enumerate(
-        [
-            "Дата",
-            "Работников",
-            "Работы, BYN",
-            "На человека, BYN",
-            "Человек с +0,01 BYN",
-            "Повышенная доля, BYN",
-        ],
-        1,
-    ):
-        sheet.cell(1, c, value)
-    r = next(
-        (r for r in range(2, sheet.max_row + 1) if str(sheet.cell(r, 1).value)[:10] == day),
-        sheet.max_row + 1,
-    )
-    for c, value in enumerate(
-        [
-            day,
-            payroll["crew_count"],
-            payroll["amount"],
-            payroll["per_person"],
-            payroll["extra_people"],
-            payroll["extra_per_person"],
-        ],
-        1,
-    ):
-        sheet.cell(r, c, value)
-        if c in (3, 4, 6):
-            sheet.cell(r, c).number_format = "0.00"
-    for c, width in {"A": 16, "B": 16, "C": 20, "D": 24, "E": 27, "F": 28}.items():
-        sheet.column_dimensions[c].width = width
-    out = io.BytesIO()
-    book.save(out)
-    return out.getvalue()
+    if not result:
+        raise ValueError("Битрикс24 не подтвердил создание листа «Журнал работ».")
+    verified, _ = await download_rest(webhook, file_id)
+    verified_book = openpyxl.load_workbook(io.BytesIO(verified), data_only=True)
+    if not any(is_journal(sheet) for sheet in verified_book):
+        raise ValueError("Лист «Журнал работ» пока не появился в Битрикс24.")
+    verify_calculations(patched, verified)
+    return issues

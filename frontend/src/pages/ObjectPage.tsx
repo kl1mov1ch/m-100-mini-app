@@ -1,16 +1,23 @@
 import { Alert, App, Button, Empty, Segmented, Spin } from 'antd';
-import { ChevronLeft, Trash2 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { ChevronLeft } from 'lucide-react';
+import { useState } from 'react';
 import type { WorkspaceView } from '../App';
 import { ObjectActionDialog, type ObjectAction } from '../components/ObjectActionDialog';
 import { ObjectCatalogue } from '../components/ObjectCatalogue';
 import { ObjectTablePanel } from '../components/ObjectTablePanel';
-import { PositionDetails, positionOverrun } from '../components/PositionDetails';
+import { PositionDetails } from '../components/PositionDetails';
 import { BitrixReadStatus } from '../components/BitrixReadStatus';
+import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
 import { request } from '../lib/api';
-import type { ObjectManagement, ObjectSection, Position } from '../types';
+import type { CatalogueAction, ObjectManagement, ObjectSection, Position } from '../types';
 import { DailyReportPage } from './DailyReportPage';
 import './object.css';
+
+const sections: { label: string; value: ObjectSection }[] = [
+	{ label: 'Отчёты', value: 'reports' },
+	{ label: 'Смета', value: 'catalogue' },
+	{ label: 'Таблица', value: 'table' },
+];
 
 export function ObjectPage({ workspace }: { workspace: WorkspaceView }) {
 	const { message } = App.useApp();
@@ -31,26 +38,25 @@ export function ObjectPage({ workspace }: { workspace: WorkspaceView }) {
 		changeDay,
 		setPreview,
 	} = workspace;
-	const [management, setManagement] = useState<ObjectManagement | null>(null);
-	const [error, setError] = useState('');
 	const [action, setAction] = useState<ObjectAction | null>(null);
 	const [viewPosition, setViewPosition] = useState<string | null>(null);
 	const [loadingAction, setLoadingAction] = useState(false);
 
-	useEffect(() => {
-		if (!active || objectSection !== 'catalogue') return;
-		const controller = new AbortController();
-		setManagement(null);
-		setError('');
-		request<ObjectManagement>('/object/management', undefined, project, controller.signal)
-			.then((result) => {
-				if (!controller.signal.aborted) setManagement(result);
-			})
-			.catch((failure) => {
-				if (!controller.signal.aborted) setError((failure as Error).message);
-			});
-		return () => controller.abort();
-	}, [project, !!active, objectSection, data]);
+	const openSection = (section: ObjectSection) => {
+		if (section !== 'reports' && workspace.textOpen) {
+			workspace.audioInput.cancel();
+			workspace.setTextOpen(false);
+		}
+		openObjectSection(section);
+	};
+	const sectionSwipe = useHorizontalSwipe(
+		(step) => {
+			const current = sections.findIndex(({ value }) => value === objectSection);
+			const target = sections[current + step];
+			if (target) openSection(target.value);
+		},
+		workspace.busy || !!viewPosition || !!action,
+	);
 
 	if (!active) {
 		return (
@@ -131,11 +137,7 @@ export function ObjectPage({ workspace }: { workspace: WorkspaceView }) {
 				message.success('Таблица отвязана');
 			},
 		}));
-	const managePosition = (position: Position) => {
-		const used = management?.used_positions.includes(position.id);
-		const overrun = positionOverrun(position);
-		if (!position.hidden && !overrun && used) return;
-		const operation = position.hidden ? 'show' : overrun > 0 ? 'hide' : 'delete';
+	const managePosition = (position: Position, operation: CatalogueAction) => {
 		const label =
 			operation === 'show'
 				? 'Вернуть в подбор'
@@ -164,6 +166,7 @@ export function ObjectPage({ workspace }: { workspace: WorkspaceView }) {
 					{ action: operation },
 					project,
 				);
+				if (operation === 'delete') setViewPosition(null);
 				await refresh(true).catch(() => message.warning('Обновите карточку объекта'));
 				message.success(
 					operation === 'show'
@@ -175,30 +178,11 @@ export function ObjectPage({ workspace }: { workspace: WorkspaceView }) {
 			},
 		});
 	};
-	const openSection = (section: ObjectSection) => {
-		if (section !== 'reports' && workspace.textOpen) {
-			workspace.audioInput.cancel();
-			workspace.setTextOpen(false);
-		}
-		openObjectSection(section);
-	};
 	return (
-		<div className="object-page">
+		<div className="object-page swipe-surface" {...sectionSwipe}>
 			<div className="object-page-nav">
 				<Button type="text" icon={<ChevronLeft size={17} />} onClick={() => setPage('objects')}>
 					Объекты
-				</Button>
-				<Button
-					danger
-					type={objectSection === 'reports' ? 'text' : 'default'}
-					size={objectSection === 'reports' ? 'small' : 'middle'}
-					icon={<Trash2 size={17} />}
-					loading={loadingAction}
-					aria-label="Удалить объект"
-					title="Удалить объект"
-					onClick={deleteObject}
-				>
-					{objectSection === 'reports' ? null : 'Удалить'}
 				</Button>
 			</div>
 			<h1>{active.name}</h1>
@@ -207,11 +191,7 @@ export function ObjectPage({ workspace }: { workspace: WorkspaceView }) {
 				aria-label="Разделы объекта"
 				value={objectSection}
 				onChange={openSection}
-				options={[
-					{ label: 'Отчёты', value: 'reports' },
-					{ label: 'Смета', value: 'catalogue' },
-					{ label: 'Таблица', value: 'table' },
-				]}
+				options={sections}
 			/>
 			{objectSection === 'reports' && (
 				<>
@@ -238,14 +218,17 @@ export function ObjectPage({ workspace }: { workspace: WorkspaceView }) {
 			{objectSection === 'catalogue' && (
 				<ObjectCatalogue
 					workspace={workspace}
-					management={management}
-					error={error}
-					onManage={managePosition}
 					onView={(position) => setViewPosition(position.id)}
 				/>
 			)}
 			{objectSection === 'table' && (
-				<ObjectTablePanel key={data.config.source} workspace={workspace} onDetach={detach} />
+				<ObjectTablePanel
+					key={data.config.source}
+					workspace={workspace}
+					onDetach={detach}
+					onDelete={deleteObject}
+					loadingAction={loadingAction}
+				/>
 			)}
 			{objectSection === 'reports' && day !== session.today && (
 				<Button onClick={() => void changeDay(session.today)}>

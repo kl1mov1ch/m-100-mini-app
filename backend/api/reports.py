@@ -23,14 +23,12 @@ def bootstrap(request: Request):
     with store.connect() as db:
         hidden = store.hidden_positions(db)
         bitrix = remote_positions(db)
-        links = store.position_links(db)
         return {
             "positions": [
                 {
                     **position,
                     "hidden": position["id"] in hidden,
                     "bitrix": bitrix.get(position["id"]),
-                    "linked_work_id": links.get(position["id"]),
                 }
                 for position in store.positions(db)
             ],

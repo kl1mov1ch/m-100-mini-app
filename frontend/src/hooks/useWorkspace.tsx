@@ -72,11 +72,9 @@ export function useWorkspace() {
 		[userForm, setUserForm] = useState(false),
 		[userId, setUserId] = useState(''),
 		[userName, setUserName] = useState(''),
-		[userRole, setUserRole] = useState('master'),
-		[userEnabled, setUserEnabled] = useState(true);
+		[userRole, setUserRole] = useState('master');
 	const [url, setUrl] = useState(''),
 		[webhook, setWebhook] = useState(''),
-		[fileId, setFileId] = useState<number | null>(null),
 		[aiKey, setAiKey] = useState(''),
 		[aiModel, setAiModel] = useState('deepseek-flash');
 	const [changes, setChanges] = useState<Change[]>([]),
@@ -119,7 +117,13 @@ export function useWorkspace() {
 		}
 	};
 	const changeViewMode = async (mode: ViewMode) => {
-		if (!session?.can_switch_role || mode === session.view_mode || roleSwitch.current) return;
+		if (
+			session?.mode !== 'development' ||
+			!session.can_switch_role ||
+			mode === session.view_mode ||
+			roleSwitch.current
+		)
+			return;
 		roleSwitch.current = true;
 		setSwitchingRole(true);
 		const previousMode = localStorage.getItem('view-mode');
@@ -165,7 +169,6 @@ export function useWorkspace() {
 		if (version !== selectionVersion.current) return;
 		setData(d);
 		setUrl(d.config.public_url);
-		setFileId(d.config.file_id);
 		if (r && (!onlyIfClean || (!editorState.current.dirty && editorState.current.day === day))) {
 			setReport(r);
 			setLines(r.lines);
@@ -695,7 +698,6 @@ export function useWorkspace() {
 				telegram_id: userId,
 				name: userName,
 				role: userRole,
-				enabled: userEnabled,
 			});
 			setUserForm(false);
 			await loadUsers();
@@ -732,7 +734,7 @@ export function useWorkspace() {
 		setBusy(true);
 		const selection = selectionVersion.current;
 		try {
-			await request('/bitrix/connection', { public_url: url, webhook, file_id: fileId }, project);
+			await request('/bitrix/connection', { public_url: url, webhook }, project);
 			setWebhook('');
 			const r = await request<ImportPreview>('/imports/bitrix', {}, project);
 			if (selection !== selectionVersion.current) return;
@@ -972,14 +974,10 @@ export function useWorkspace() {
 		setUserName,
 		userRole,
 		setUserRole,
-		userEnabled,
-		setUserEnabled,
 		url,
 		setUrl,
 		webhook,
 		setWebhook,
-		fileId,
-		setFileId,
 		aiKey,
 		setAiKey,
 		aiModel,

@@ -46,6 +46,7 @@ async def access(request: Request, call_next):
     token = None
     try:
         if request.url.path.startswith("/api"):
+            development = os.getenv("APP_ENV", "development") == "development"
             origin = request.headers.get("origin")
             allowed_origins = {request.url.scheme + "://" + request.headers.get("host", "")}
             allowed_origins.update(
@@ -53,7 +54,7 @@ async def access(request: Request, call_next):
                 for value in os.getenv("APP_ALLOWED_ORIGINS", "").split(",")
                 if value.strip()
             )
-            if os.getenv("APP_ENV", "development") == "development":
+            if development:
                 allowed_origins.update(
                     {
                         "http://127.0.0.1:5173",
@@ -64,18 +65,15 @@ async def access(request: Request, call_next):
                 )
             if origin and origin.rstrip("/") not in allowed_origins:
                 raise HTTPException(403, "Запрос с другого сайта запрещён")
-            if os.getenv("APP_ENV", "development") == "development":
+            if development:
                 ident = request.headers.get("X-Preview-User", "local-admin")
             else:
                 ident = telegram_identity(request.headers.get("X-Telegram-Init-Data", ""))
                 if not ident:
                     raise HTTPException(401, "Откройте приложение через Telegram")
             request.state.user = workspaces.user(ident)
-            request.state.actual_user = request.state.user.copy()
-            if (
-                request.state.user["role"] == "admin"
-                and request.headers.get("X-View-Mode") == "master"
-            ):
+            request.state.can_switch_role = development and request.state.user["role"] == "admin"
+            if request.state.can_switch_role and request.headers.get("X-View-Mode") == "master":
                 request.state.user = {**request.state.user, "role": "master"}
             unscoped = (
                 "/api/session",
@@ -92,7 +90,9 @@ async def access(request: Request, call_next):
                 request.state.project = p
                 modifying_report = request.method == "POST" and (
                     request.url.path == "/api/reports"
-                    or request.url.path.startswith(("/api/imports/", "/api/bitrix/", "/api/object/"))
+                    or request.url.path.startswith(
+                        ("/api/imports/", "/api/bitrix/", "/api/object/")
+                    )
                     or request.url.path.startswith("/api/report/")
                 )
                 if (
@@ -104,7 +104,11 @@ async def access(request: Request, call_next):
                         403, "Администратор просматривает отчёты мастеров без изменения"
                     )
                 token = store.CURRENT_DATABASE.set(p["db_path"])
-                if modifying_report and request.url.path != "/api/bitrix/refresh" and not request.url.path.endswith("/consult"):
+                if (
+                    modifying_report
+                    and request.url.path != "/api/bitrix/refresh"
+                    and not request.url.path.endswith("/consult")
+                ):
                     async with workspaces.mutation_lock(p["id"]):
                         if not workspaces.exists(p["id"]):
                             raise HTTPException(404, "Объект удалён")

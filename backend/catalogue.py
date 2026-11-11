@@ -15,7 +15,6 @@ def position_detail(db, ident):
         **position,
         "bitrix": bitrix,
         "hidden": ident in store.hidden_positions(db),
-        "linked_work_id": store.position_links(db).get(ident),
     }
 
 

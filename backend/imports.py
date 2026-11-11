@@ -4,10 +4,12 @@ import uuid
 from pathlib import Path
 
 from fastapi import HTTPException, Request
+import httpx
 from pydantic import BaseModel, Field
 
 from . import bitrix, reconciliation, store, tables
 from .synchronization import table_lock
+from .table_advice import explain_issues, with_tips
 
 
 class ConfirmImport(BaseModel):
@@ -111,7 +113,14 @@ def register(app, settings, now):
             "name": meta["name"],
             "source": meta["source"],
             **data,
-            "warnings": structural + data["warnings"],
+            "warnings": with_tips(
+                structural + data["warnings"],
+                {
+                    warning["id"]: warning["ai_tip"]
+                    for warning in meta["warnings"]
+                    if warning.get("ai_tip")
+                },
+            ),
             "reconciliation": current_reconciliation(data),
         }
 
@@ -167,12 +176,15 @@ def register(app, settings, now):
             for w in meta["warnings"]
             if any(k in w["id"] for k in ("ai-mapping", "name-guessed", "ambiguous"))
         ]
+        with store.connect() as db:
+            cfg = settings(db)
+        warnings = old + data["warnings"]
         return {
             "token": body.token,
             "name": meta["name"],
             "source": meta["source"],
             **data,
-            "warnings": old + data["warnings"],
+            "warnings": with_tips(warnings, await explain_issues(warnings, cfg)),
             "reconciliation": current_reconciliation(data),
         }
 
@@ -251,13 +263,6 @@ def register(app, settings, now):
                 for p in data["positions"]:
                     store.insert_position(db, p)
                 store.restore_hidden_positions(db, data["positions"])
-                links = store.position_links(db)
-                if links:
-                    ids = {position["id"] for position in data["positions"]}
-                    store.set_setting(
-                        db, "position_links",
-                        json.dumps({material: work for material, work in links.items() if material in ids and work in ids}),
-                    )
                 for e in data["entries"]:
                     db.execute(
                         "INSERT INTO entries VALUES(:item_id,:date,:quantity) ON CONFLICT(item_id,date) DO UPDATE SET quantity=quantity+excluded.quantity",
@@ -266,7 +271,10 @@ def register(app, settings, now):
                 for day in dirty:
                     db.execute("DELETE FROM entries WHERE date=?", (day,))
                 for e in preserved:
-                    db.execute("INSERT INTO entries VALUES(:item_id,:date,:quantity)", e)
+                    db.execute(
+                        "INSERT INTO entries(item_id,date,quantity) VALUES(:item_id,:date,:quantity)",
+                        e,
+                    )
                 for report_day in sorted(report_dates):
                     resolution = body.day_resolutions.get(report_day, "report")
                     if resolution not in ("report", "table"):
@@ -333,7 +341,7 @@ def register(app, settings, now):
                     "bitrix_read_days": "{}",
                 }
                 if meta.get("remote", {}):
-                    values["file_id"] = str(meta["remote"]["file_id"])
+                    values["file_id"] = str(meta["remote"]["file_id"] or 0)
                 for k, v in values.items():
                     store.set_setting(db, k, v)
                 store.set_setting(
@@ -348,6 +356,26 @@ def register(app, settings, now):
                     ),
                 )
                 store.set_setting(db, "pending_import_token", "")
+                webhook = store.setting(db, "webhook")
+                file_id = int(store.setting(db, "file_id", "0"))
+                crew = {
+                    row["date"]: row["crew_count"]
+                    for row in db.execute(
+                        "SELECT date,crew_count FROM reports WHERE sync_status='synced'"
+                    )
+                }
+            if meta["source"] == "bitrix" and webhook and file_id:
+                status, note = "ready", ""
+                try:
+                    await bitrix.upload_journal(webhook, file_id, data["sheets"], crew)
+                except (ValueError, httpx.HTTPError, KeyError, TypeError):
+                    status = "pending"
+                    note = (
+                        "Лист «Журнал работ» будет создан при следующей успешной отправке отчёта."
+                    )
+                with store.connect() as db:
+                    store.set_setting(db, "journal_status", status)
+                    store.set_setting(db, "journal_note", note)
         return {
             "ok": True,
             "positions": len(data["positions"]),

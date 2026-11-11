@@ -1,5 +1,6 @@
 import { Button, Empty, Spin } from 'antd';
 import { History } from 'lucide-react';
+import { useReportDateSwipe } from '../hooks/useReportDateSwipe';
 import { DatePicker } from './ResponsiveDatePicker';
 import { Status } from './SyncStatus';
 import { Money, nf, unit } from '../lib/format';
@@ -7,13 +8,14 @@ import dayjs from '../lib/date';
 import type { WorkspaceView } from '../App';
 
 export function AdminDailyReport({ workspace }: { workspace: WorkspaceView }) {
+	const dateSwipe = useReportDateSwipe(workspace);
 	const { data, active, day, changeDay, lines, byId, amount, report, setPage } = workspace;
 	if (!active) return <Empty description="Выберите объект" image={Empty.PRESENTED_IMAGE_SIMPLE} />;
 	if (!data) return <Spin />;
 	const current = data.history.find((item) => item.date === day);
 	return (
 		<>
-			<div className="page-title">
+			<div className="page-title swipe-surface" {...dateSwipe}>
 				<div>
 					<span className="overline">{active?.owner_name}</span>
 					<h1>{active.name}</h1>

@@ -151,6 +151,11 @@ export function TableImportModal({ workspace }: { workspace: WorkspaceView }) {
 							</div>
 						)}
 						{warning.fix && <p className="table-issue-help">{warning.fix}</p>}
+						{warning.ai_tip && (
+							<p className="table-issue-help">
+								<b>Совет ИИ</b> · {warning.ai_tip}
+							</p>
+						)}
 						{singularCell && warning.sheet && (
 							<div className="table-cell-fix">
 								<div>
