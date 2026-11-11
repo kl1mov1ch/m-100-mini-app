@@ -10,6 +10,8 @@ from fastapi.responses import JSONResponse
 
 from . import store, workspaces
 
+REPORT_DOWNLOAD_PATH = "/api/report-downloads/"
+
 
 def telegram_identity(raw):
     token = os.getenv("TELEGRAM_BOT_TOKEN", "")
@@ -42,10 +44,19 @@ def validate_init_data(raw):
     return telegram_identity(raw) is not None
 
 
+def can_switch_role(user):
+    return user["role"] == "admin" and (
+        os.getenv("APP_ENV", "development") == "development"
+        or user["telegram_id"] == os.getenv("TELEGRAM_ROLE_SWITCH_ID", "").strip()
+    )
+
+
 async def access(request: Request, call_next):
     token = None
     try:
-        if request.url.path.startswith("/api"):
+        if request.url.path.startswith("/api") and not request.url.path.startswith(
+            REPORT_DOWNLOAD_PATH
+        ):
             development = os.getenv("APP_ENV", "development") == "development"
             origin = request.headers.get("origin")
             allowed_origins = {request.url.scheme + "://" + request.headers.get("host", "")}
@@ -72,7 +83,7 @@ async def access(request: Request, call_next):
                 if not ident:
                     raise HTTPException(401, "Откройте приложение через Telegram")
             request.state.user = workspaces.user(ident)
-            request.state.can_switch_role = development and request.state.user["role"] == "admin"
+            request.state.can_switch_role = can_switch_role(request.state.user)
             if request.state.can_switch_role and request.headers.get("X-View-Mode") == "master":
                 request.state.user = {**request.state.user, "role": "master"}
             unscoped = (

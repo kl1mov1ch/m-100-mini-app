@@ -4,12 +4,12 @@ from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import Response
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
 from . import store, workspaces
+from .report_downloads import report_export
 from .reporting import get_report, history
 
 router = APIRouter()
@@ -248,10 +248,23 @@ def export(
     project_id: str | None = None,
     owner_id: str | None = None,
     sort: str = "date_desc",
+    prepare: bool = False,
 ):
-    data = collect(request.state.user, start, end, project_id, owner_id, sort)
-    return Response(
-        export_workbook(request.state.user, data),
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": "attachment; filename=work-reports.xlsx"},
+    user = request.state.user
+    if start and end and start > end:
+        raise HTTPException(422, "Начальная дата должна быть раньше конечной")
+    if project_id:
+        workspaces.project(user, project_id)
+
+    def render(current_user):
+        return export_workbook(
+            current_user, collect(current_user, start, end, project_id, owner_id, sort)
+        )
+
+    return report_export(
+        user,
+        "work-reports.xlsx",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        render,
+        prepare,
     )

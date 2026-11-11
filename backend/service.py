@@ -17,6 +17,7 @@ from .imports import register
 from .notifications import router as reminders_router
 from .notifications import scheduled_reminders
 from .profile import router as profile_router
+from .report_downloads import router as report_downloads_router
 from .reporting import ai_settings
 from .runtime import configure_runtime
 from .security import access
@@ -68,6 +69,7 @@ app.include_router(table_editing_router)
 app.include_router(reminders_router)
 app.include_router(analytics_router)
 app.include_router(profile_router)
+app.include_router(report_downloads_router)
 register(app, ai_settings, now)
 dist = store.ROOT / "frontend/dist"
 if dist.exists():

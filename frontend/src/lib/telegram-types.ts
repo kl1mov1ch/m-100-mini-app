@@ -15,6 +15,7 @@ export type TelegramWebApp = {
 	enableClosingConfirmation(): void;
 	disableClosingConfirmation(): void;
 	openLink(url: string): void;
+	downloadFile?(params: { url: string; file_name: string }): void;
 	onEvent(event: string, handler: () => void): void;
 	offEvent(event: string, handler: () => void): void;
 	BackButton: {

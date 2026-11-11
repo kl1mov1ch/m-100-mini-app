@@ -4,12 +4,12 @@ import json
 from datetime import date
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from .. import matcher, store, workspaces
-from ..clock import now, today
 from ..bitrix_refresh import remote_positions
+from ..clock import now, today
+from ..report_downloads import report_export
 from ..report_snapshots import remember_start, restore_target
 from ..reporting import ai_settings, get_report, history, report_changes, safe_config
 from ..schemas import ParseBody, SaveBody
@@ -195,8 +195,7 @@ async def persist_report(request: Request, body: SaveBody, action="edit_report")
         return {**get_report(db, day), "changed": True, "changes": delta}
 
 
-@router.get("/api/export.csv")
-def export():
+def render_csv(database_path):
     out = io.StringIO(newline="")
     writer = csv.writer(out, delimiter=";")
     writer.writerow(
@@ -210,7 +209,7 @@ def export():
             "Работников",
         ]
     )
-    with store.connect() as db:
+    with store.connect(database_path) as db:
         for r in db.execute(
             "SELECT e.date,p.name,p.unit,e.quantity,p.rate,round(e.quantity*p.rate,2),r.crew_count FROM entries e JOIN positions p ON p.id=e.item_id LEFT JOIN reports r ON r.date=e.date ORDER BY e.date DESC,p.source_row"
         ):
@@ -220,11 +219,17 @@ def export():
                     for v in r
                 ]
             )
-    return Response(
-        "\ufeff" + out.getvalue(),
-        media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition": "attachment; filename=reports.csv"},
-    )
+    return ("\ufeff" + out.getvalue()).encode("utf-8")
+
+
+@router.get("/api/export.csv")
+def export(request: Request, prepare: bool = False):
+    project_id = request.state.project["id"]
+
+    def render(user):
+        return render_csv(workspaces.project(user, project_id)["db_path"])
+
+    return report_export(request.state.user, "reports.csv", "text/csv", render, prepare)
 
 
 @router.post("/api/bitrix/sync/{day}")
