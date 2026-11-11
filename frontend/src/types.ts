@@ -65,6 +65,24 @@ export type BitrixRead = {
 	checked_at: string;
 	updated_at: string | null;
 };
+export type BitrixReviewIssue = {
+	kind: 'cell' | 'layout' | 'planned' | 'rate' | 'remaining' | 'report';
+	title: string;
+	advice: string;
+	sheet?: string | null;
+	row?: number | null;
+	cell?: string | null;
+	position?: string | null;
+	date?: string;
+	value?: string | null;
+	unit?: string;
+	local?: number;
+	remote?: number;
+	suggested?: number;
+	planned?: number;
+	completed?: number;
+	formula?: string | null;
+};
 export type ObjectSection = 'reports' | 'catalogue' | 'table';
 export type CatalogueAction = 'delete' | 'hide' | 'show';
 export type ViewMode = 'admin' | 'master';

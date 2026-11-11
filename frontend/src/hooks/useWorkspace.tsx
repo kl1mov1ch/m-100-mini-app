@@ -721,7 +721,7 @@ export function useWorkspace() {
 			setCheckingConnection(false);
 		}
 	};
-	const importRemote = async () => {
+	const loadRemoteImport = async (reviewOnly: boolean) => {
 		if (data?.project?.id !== project) {
 			message.info('Дождитесь загрузки выбранного объекта');
 			return;
@@ -729,11 +729,14 @@ export function useWorkspace() {
 		setBusy(true);
 		const selection = selectionVersion.current;
 		try {
-			await request('/bitrix/connection', { public_url: url, webhook }, project);
-			setWebhook('');
+			if (!reviewOnly) {
+				await request('/bitrix/connection', { public_url: url, webhook }, project);
+				setWebhook('');
+			}
 			const r = await request<ImportPreview>('/imports/bitrix', {}, project);
 			if (selection !== selectionVersion.current) return;
 			if (
+				!reviewOnly &&
 				!r.warnings.some((warning) => warning.severity !== 'info') &&
 				!r.reconciliation?.needs_confirmation
 			) {
@@ -757,6 +760,7 @@ export function useWorkspace() {
 			setBusy(false);
 		}
 	};
+	const importRemote = () => loadRemoteImport(false);
 	const upload = async (file: File) => {
 		setBusy(true);
 		const selection = selectionVersion.current;
@@ -1011,6 +1015,8 @@ export function useWorkspace() {
 		createObject,
 		grant,
 		importRemote,
+		reviewBitrixChanges: () =>
+			data?.config.pending_import ? resumeImport() : loadRemoteImport(true),
 		upload,
 		commitImport,
 		reviewImport,
