@@ -4,11 +4,10 @@ import uuid
 from pathlib import Path
 
 from fastapi import HTTPException, Request
-import httpx
 from pydantic import BaseModel, Field
 
-from . import bitrix, reconciliation, store, tables
-from .synchronization import table_lock
+from . import bitrix, import_suggestions, reconciliation, store, tables
+from .synchronization import JOURNAL_PENDING_NOTE, table_lock, write_journal
 from .table_advice import explain_issues, with_tips
 
 
@@ -190,6 +189,33 @@ def register(app, settings, now):
             "reconciliation": current_reconciliation(data),
         }
 
+    @app.post("/api/imports/consult")
+    async def consult(request: Request, body: ConfirmImport):
+        if request.state.user["role"] != "master":
+            raise HTTPException(403, "Таблицу проверяет мастер объекта")
+        _, content = read_pending(body.token, request.state.project["id"])
+        try:
+            data = tables.extract(content, import_sheets(body.sheets))
+        except (ValueError, TypeError, KeyError) as error:
+            raise HTTPException(422, str(error)) from error
+        with store.connect() as db:
+            suggestions, unknown_units = import_suggestions.verified_options(db, data)
+            cfg = settings(db)
+        units = await import_suggestions.suggest_units(unknown_units, cfg)
+        for item in unknown_units:
+            ident = item["id"]
+            unit = units.get(ident)
+            if unit in import_suggestions.STANDARD_UNITS:
+                suggestions[ident] = {
+                    "options": [
+                        import_suggestions.candidate(
+                            unit, "Вариант ИИ по названию работы. Сверьте с проектом."
+                        )
+                    ],
+                    "message": "",
+                }
+        return suggestions
+
     @app.post("/api/imports/resolve")
     async def resolve(request: Request, body: ConfirmImport):
         meta, content = read_pending(body.token, request.state.project["id"])
@@ -341,6 +367,8 @@ def register(app, settings, now):
                     "bitrix_read_status": "null",
                     "bitrix_read_positions": "{}",
                     "bitrix_read_days": "{}",
+                    "journal_status": "pending" if meta["source"] == "bitrix" else "",
+                    "journal_note": JOURNAL_PENDING_NOTE if meta["source"] == "bitrix" else "",
                 }
                 if meta.get("remote", {}):
                     values["file_id"] = str(meta["remote"]["file_id"] or 0)
@@ -358,28 +386,10 @@ def register(app, settings, now):
                     ),
                 )
                 store.set_setting(db, "pending_import_token", "")
-                webhook = store.setting(db, "webhook")
-                file_id = int(store.setting(db, "file_id", "0"))
-                crew = {
-                    row["date"]: row["crew_count"]
-                    for row in db.execute(
-                        "SELECT date,crew_count FROM reports WHERE sync_status='synced'"
-                    )
-                }
-            if meta["source"] == "bitrix" and webhook and file_id:
-                status, note = "ready", ""
-                try:
-                    await bitrix.upload_journal(webhook, file_id, data["sheets"], crew)
-                except (ValueError, httpx.HTTPError, KeyError, TypeError):
-                    status = "pending"
-                    note = (
-                        "Лист «Журнал работ» будет создан при следующей успешной отправке отчёта."
-                    )
-                with store.connect() as db:
-                    store.set_setting(db, "journal_status", status)
-                    store.set_setting(db, "journal_note", note)
+        journal = await write_journal(request.state.project) if meta["source"] == "bitrix" else None
         return {
             "ok": True,
             "positions": len(data["positions"]),
             "source": meta["source"],
+            "journal": journal,
         }

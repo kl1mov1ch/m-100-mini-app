@@ -93,26 +93,28 @@ small {
 	gap: 20px;
 }
 .app-wordmark {
-	background: none;
+	background: #0d183b;
 	border: 0;
-	display: flex;
-	align-items: center;
-	gap: 11px;
-	padding: 0;
-	color: #193458;
-}
-.app-wordmark > span {
-	height: 38px;
-	width: 38px;
-	display: grid;
-	place-items: center;
-	background: #edf3ff;
-	color: #2563eb;
 	border-radius: 11px;
+	color: #fff;
+	display: grid;
+	justify-items: center;
+	gap: 3px;
+	padding: 8px 12px 7px;
+	flex-shrink: 0;
 }
-.app-wordmark b {
-	font-size: 17px;
-	letter-spacing: -0.4px;
+.app-wordmark img {
+	display: block;
+	width: 65px;
+	height: auto;
+}
+.app-wordmark span {
+	font-size: 7px;
+	font-weight: 700;
+	line-height: 1.2;
+	letter-spacing: 0.11em;
+	text-transform: uppercase;
+	white-space: nowrap;
 }
 .header-user {
 	display: flex;
@@ -1607,20 +1609,6 @@ small {
 	.app-header {
 		height: 65px;
 		padding: 0 20px;
-	}
-	.app-wordmark {
-		gap: 9px;
-	}
-	.app-wordmark b {
-		font-size: 15px;
-	}
-	.app-wordmark > span {
-		width: 32px;
-		height: 32px;
-		border-radius: 9px;
-	}
-	.app-wordmark svg {
-		width: 20px;
 	}
 	.header-user > span {
 		display: none;

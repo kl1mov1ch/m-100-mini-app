@@ -704,6 +704,23 @@ export function useWorkspace() {
 		}
 	};
 	const [checkingConnection, setCheckingConnection] = useState(false);
+	const retryJournal = async () => {
+		setBusy(true);
+		try {
+			const result = await request<{ status: string; message: string }>(
+				'/bitrix/journal',
+				{},
+				project,
+			);
+			await loadData(project, true);
+			if (result.status === 'ready') message.success(result.message);
+			else message.warning(result.message);
+		} catch (error) {
+			message.error((error as Error).message);
+		} finally {
+			setBusy(false);
+		}
+	};
 	const checkConnection = async () => {
 		setCheckingConnection(true);
 		try {
@@ -803,14 +820,16 @@ export function useWorkspace() {
 		if (!preview) return;
 		setBusy(true);
 		try {
-			await request(
+			const result = await request<{ journal: { status: string; message: string } | null }>(
 				'/imports/confirm',
 				{ token: preview.token, sheets: mapping, acknowledged: ack, ...reconciliation },
 				project,
 			);
 			setPreview(null);
 			await refresh();
-			message.success('Таблица готова к работе');
+			if (result.journal && result.journal.status !== 'ready')
+				message.warning(result.journal.message);
+			else message.success('Таблица готова к работе');
 		} catch (e) {
 			message.error((e as Error).message);
 		} finally {
@@ -893,6 +912,7 @@ export function useWorkspace() {
 	return {
 		openHistoryReport,
 		checkingConnection,
+		retryJournal,
 		checkConnection,
 		refreshBitrix,
 		readingBitrix,

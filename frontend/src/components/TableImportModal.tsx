@@ -1,5 +1,5 @@
 import { Alert, App, Button, Input, InputNumber, Modal, Select, Tabs, Tag } from 'antd';
-import { Check, FileSpreadsheet, Search, Settings2, TriangleAlert } from 'lucide-react';
+import { Check, FileSpreadsheet, Search, Settings2, Sparkles, TriangleAlert } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { WorkspaceView } from '../App';
 import dayjs from '../lib/date';
@@ -14,6 +14,11 @@ import { request } from '../lib/api';
 import { CatalogueReconciliation } from './CatalogueReconciliation';
 import { DatePicker } from './ResponsiveDatePicker';
 import './table-import.css';
+
+type CellSuggestions = Record<
+	string,
+	{ options: { value: string | number; reason: string }[]; message: string }
+>;
 
 export function TableImportModal({ workspace }: { workspace: WorkspaceView }) {
 	const {
@@ -41,6 +46,28 @@ export function TableImportModal({ workspace }: { workspace: WorkspaceView }) {
 	const [strategies, setStrategies] = useState<Record<string, string>>({});
 	const [replacementDates, setReplacementDates] = useState<Record<string, string>>({});
 	const [editing, setEditing] = useState<string | null>(null);
+	const [suggestions, setSuggestions] = useState<CellSuggestions>({});
+	const [suggestionError, setSuggestionError] = useState('');
+	const [suggestionAttempt, setSuggestionAttempt] = useState(0);
+	useEffect(() => {
+		setSuggestions({});
+		setSuggestionError('');
+		if (!preview?.warnings.some((warning) => warning.cell && warning.field)) return;
+		const controller = new AbortController();
+		request<CellSuggestions>(
+			'/imports/consult',
+			{ token: preview.token, sheets: preview.sheets },
+			workspace.project,
+			controller.signal,
+		)
+			.then((result) => {
+				if (!controller.signal.aborted) setSuggestions(result);
+			})
+			.catch((error: Error) => {
+				if (!controller.signal.aborted) setSuggestionError(error.message);
+			});
+		return () => controller.abort();
+	}, [preview, workspace.project, suggestionAttempt]);
 	useEffect(() => {
 		setTab(
 			preview?.reconciliation?.needs_confirmation
@@ -125,6 +152,7 @@ export function TableImportModal({ workspace }: { workspace: WorkspaceView }) {
 			)}
 			{problems.map((warning) => {
 				const singularCell = warning.cell && /^[A-Z]+\d+$/.test(warning.cell);
+				const suggestion = suggestions[warning.id];
 				return (
 					<section
 						className={'table-issue ' + (ack.includes(warning.id) ? 'acknowledged' : '')}
@@ -156,6 +184,19 @@ export function TableImportModal({ workspace }: { workspace: WorkspaceView }) {
 								<b>Совет ИИ</b> · {warning.ai_tip}
 							</p>
 						)}
+						{suggestion?.message && <p className="table-issue-help">{suggestion.message}</p>}
+						{suggestion?.options.map(({ value, reason }) => (
+							<div className="table-suggested-value" key={String(value)}>
+								<span>{reason}</span>
+								<Button
+									size="small"
+									icon={<Sparkles size={14} />}
+									onClick={() => setValue(warning.id, value)}
+								>
+									Подставить {typeof value === 'number' ? nf.format(value) : unit(value)}
+								</Button>
+							</div>
+						))}
 						{singularCell && warning.sheet && (
 							<div className="table-cell-fix">
 								<div>
@@ -165,7 +206,20 @@ export function TableImportModal({ workspace }: { workspace: WorkspaceView }) {
 											placeholder="Ед. изм."
 											value={values[warning.id] || undefined}
 											onChange={(value) => setValue(warning.id, value)}
-											options={['м', 'шт', 'кг', 'компл', 'сист'].map((value) => ({
+											options={[
+												...new Set([
+													'м',
+													'шт',
+													'м²',
+													'м³',
+													'кг',
+													'компл',
+													'сист',
+													'л',
+													'т',
+													...(suggestion?.options.map(({ value }) => String(value)) || []),
+												]),
+											].map((value) => ({
 												value,
 												label: unit(value),
 											}))}
@@ -191,16 +245,6 @@ export function TableImportModal({ workspace }: { workspace: WorkspaceView }) {
 										Исправить
 									</Button>
 								</div>
-								{warning.field !== 'Единица измерения' && (
-									<Button
-										type="text"
-										size="small"
-										loading={busy}
-										onClick={() => fixCell(warning, 0)}
-									>
-										Поставить 0 в ячейке
-									</Button>
-								)}
 							</div>
 						)}
 						{warning.duplicates?.map((group) => {
@@ -273,6 +317,18 @@ export function TableImportModal({ workspace }: { workspace: WorkspaceView }) {
 					</section>
 				);
 			})}
+			{suggestionError && (
+				<Alert
+					type="warning"
+					showIcon
+					message={suggestionError}
+					action={
+						<Button size="small" onClick={() => setSuggestionAttempt(suggestionAttempt + 1)}>
+							Повторить подбор
+						</Button>
+					}
+				/>
+			)}
 			{preview.warnings
 				.filter((warning) => warning.severity === 'info')
 				.map((warning) => (

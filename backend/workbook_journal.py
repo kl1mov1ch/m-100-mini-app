@@ -5,6 +5,7 @@ import openpyxl
 from openpyxl.formatting.rule import CellIsRule
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
+from openpyxl.workbook.properties import CalcProperties
 
 JOURNAL_MARKER = "M100 • Журнал работ"
 AMOUNT_FORMAT = '#,##0.00 "BYN"'
@@ -42,6 +43,8 @@ def format_journal(content, catalogue, entries, crew_by_day, issues):
         ]
     sheet = journal_sheet(book)
     book.active = sheet
+    if book.calculation is None:
+        book.calculation = CalcProperties()
     book.calculation.fullCalcOnLoad = True
     quantities = {}
     for entry in entries:

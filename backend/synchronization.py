@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 from datetime import datetime, timedelta
 from urllib.parse import urlparse
 
@@ -11,6 +12,7 @@ from .reporting import ai_settings, get_report
 from .table_advice import explain_issues
 
 SYNC_LOCKS = {}
+JOURNAL_PENDING_NOTE = "Таблица подтверждена. Лист «Журнал работ» ещё не записан в Битрикс24."
 
 
 def table_lock(project):
@@ -23,6 +25,46 @@ def table_lock(project):
         portal = urlparse(public_url).path.strip("/").split("/")[0]
     key = f"{portal}:{file_id}" if portal and file_id else project["id"]
     return SYNC_LOCKS.setdefault(key, asyncio.Lock())
+
+
+async def write_journal(project):
+    async with table_lock(project):
+        with store.connect(project["db_path"]) as db:
+            if store.setting(db, "source") != "bitrix":
+                return {"status": "local", "message": "Таблица сохранена в приложении."}
+            webhook = store.setting(db, "webhook")
+            file_id = int(store.setting(db, "file_id", "0"))
+            if not webhook or not file_id:
+                message = "Таблица доступна для чтения. Для записи нужен вебхук с правом «Диск»."
+                store.set_setting(db, "journal_status", "read_only")
+                store.set_setting(db, "journal_note", message)
+                return {"status": "read_only", "message": message}
+            mappings = json.loads(store.setting(db, "sheet_mappings", "null"))
+            crew = {
+                row["date"]: row["crew_count"]
+                for row in db.execute(
+                    "SELECT date,crew_count FROM reports WHERE sync_status='synced'"
+                )
+            }
+        status, note = "ready", ""
+        try:
+            await bitrix.upload_journal(webhook, file_id, mappings, crew)
+        except Exception as error:
+            logging.getLogger(__name__).warning(
+                "Bitrix journal write failed: %s", type(error).__name__
+            )
+            status, note = "pending", JOURNAL_PENDING_NOTE
+            if isinstance(error, httpx.HTTPStatusError) and error.response.status_code in (
+                401,
+                403,
+            ):
+                note += " Проверьте права вебхука на изменение файла."
+            elif isinstance(error, httpx.TransportError):
+                note += " Битрикс24 не ответил. Повторите запись."
+        with store.connect(project["db_path"]) as db:
+            store.set_setting(db, "journal_status", status)
+            store.set_setting(db, "journal_note", note)
+        return {"status": status, "message": note or "Лист «Журнал работ» проверен в Битрикс24."}
 
 
 async def send_day(project, day):
@@ -73,6 +115,7 @@ async def send_day(project, day):
                 baselines[day] = {l["item_id"]: l["quantity"] for l in r["lines"]}
                 store.set_setting(db, "remote_days", json.dumps(baselines))
                 store.set_setting(db, "journal_status", "ready")
+                store.set_setting(db, "journal_note", "")
             return {"ok": True, "status": "synced"}
         except (ValueError, httpx.HTTPError, KeyError, TypeError) as e:
             transient = (
