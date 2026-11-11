@@ -1,3 +1,9 @@
+import hashlib
+import hmac
+import json
+import time
+from urllib.parse import urlencode
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -31,3 +37,14 @@ def test_production_starts_without_demo_data_and_rejects_preview(tmp_path, monke
         with workspaces.registry() as database:
             assert database.execute("SELECT count(*) FROM projects").fetchone()[0] == 0
             assert database.execute("SELECT telegram_id FROM users").fetchone()[0] == "12345"
+        values = {"auth_date": str(int(time.time())), "user": json.dumps({"id": 12345})}
+        key = hmac.new(b"WebAppData", b"123:test-token", hashlib.sha256).digest()
+        values["hash"] = hmac.new(
+            key, "\n".join(f"{k}={v}" for k, v in sorted(values.items())).encode(), hashlib.sha256
+        ).hexdigest()
+        session = client.get(
+            "/api/session",
+            headers={"X-Telegram-Init-Data": urlencode(values), "X-View-Mode": "master"},
+        ).json()
+        assert session["view_mode"] == "admin"
+        assert session["can_switch_role"] is False

@@ -58,6 +58,16 @@ def test_master_isolation_including_uploads(client):
     assert len(client.get("/api/session").json()["projects"]) == 3
 
 
+def test_removing_user_revokes_access_and_keeps_objects(client):
+    grant(client, "1001")
+    project = create(client, "1001")
+    assert client.post("/api/admin/users/1001/delete").status_code == 200
+    assert all(user["telegram_id"] != "1001" for user in client.get("/api/admin/users").json())
+    assert client.get("/api/session", headers={"X-Preview-User": "1001"}).status_code == 403
+    assert client.get("/api/bootstrap", headers={"X-Project-Id": project}).status_code == 200
+    assert client.post("/api/admin/users/local-admin/delete").status_code == 409
+
+
 def test_revocation_takes_effect_and_no_self_assignment(client):
     grant(client, "1001")
     create(client, "1001")

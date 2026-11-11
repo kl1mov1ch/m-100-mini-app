@@ -3,6 +3,22 @@
 	gap: 14px;
 	min-width: 0;
 }
+.swipe-surface {
+	touch-action: pan-y;
+}
+.team-actions {
+	display: flex;
+	flex-shrink: 0;
+	gap: 2px;
+}
+.object-danger-zone {
+	margin-top: 4px;
+	padding-top: 8px;
+	border-top: 1px solid #edf1f8;
+}
+.object-danger-zone .ant-btn {
+	min-height: 42px;
+}
 .object-page > h1 {
 	overflow-wrap: anywhere;
 }

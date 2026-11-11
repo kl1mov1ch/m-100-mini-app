@@ -13,6 +13,8 @@ import openpyxl
 from openpyxl.workbook.properties import CalcProperties
 
 from . import matcher
+from .table_advice import explain_issues, with_tips
+from .workbook_journal import is_journal
 
 ALIASES = {
     "name": [
@@ -170,6 +172,8 @@ def header_candidates(values):
         if not label:
             continue
         for key, patterns in ALIASES.items():
+            if key == "planned" and re.search(r"byn|руб|стоимост|сумма", label):
+                continue
             if any(re.search(p, label) for p in patterns):
                 found[key].append(c)
     return found
@@ -180,7 +184,7 @@ def discover(content):
     sheets = []
     warnings = []
     for s in w:
-        if s.title in ("Расчёт бригады", "Итоги объекта"):
+        if s.title in ("Расчёт бригады", "Итоги объекта") or is_journal(s):
             continue
         if not any(cell.value is not None for row in s for cell in row):
             continue
@@ -490,7 +494,9 @@ async def analyze(content, settings=None):
                 }
             )
     data = extract(content, sheets)
-    return {**data, "warnings": warnings + data["warnings"]}
+    warnings = warnings + data["warnings"]
+    tips = await explain_issues(warnings, settings)
+    return {**data, "warnings": with_tips(warnings, tips)}
 
 
 def patch(content, day, lines, catalogue, mappings):

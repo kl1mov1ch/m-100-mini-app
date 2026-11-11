@@ -66,7 +66,7 @@ def session(request: Request, date: date | None = None):
         "today": today(),
         "selected_date": selected_date,
         "ai_connected": bool(matcher.provider(workspaces.shared())["key"]),
-        "can_switch_role": request.state.actual_user["role"] == "admin",
+        "can_switch_role": request.state.can_switch_role,
         "view_mode": request.state.user["role"],
     }
 
@@ -78,7 +78,7 @@ def users(request: Request):
         return [
             dict(r)
             for r in db.execute(
-                "SELECT u.*,count(p.id) projects FROM users u LEFT JOIN projects p ON p.owner_id=u.telegram_id GROUP BY u.telegram_id ORDER BY u.role,u.name"
+                "SELECT u.*,count(p.id) projects FROM users u LEFT JOIN projects p ON p.owner_id=u.telegram_id WHERE u.enabled=1 GROUP BY u.telegram_id ORDER BY u.role,u.name"
             )
         ]
 
@@ -97,6 +97,20 @@ def grant(request: Request, body: UserBody):
             "INSERT INTO users(telegram_id,name,role,enabled) VALUES(?,?,?,?) ON CONFLICT(telegram_id) DO UPDATE SET name=excluded.name,role=excluded.role,enabled=excluded.enabled",
             (body.telegram_id, body.name.strip(), body.role, int(body.enabled)),
         )
+    return {"ok": True}
+
+
+@router.post("/api/admin/users/{telegram_id}/delete")
+def delete_user(request: Request, telegram_id: str):
+    admin(request)
+    if telegram_id in workspaces.admins() or telegram_id in (
+        request.state.user["telegram_id"],
+        "local-admin",
+    ):
+        raise HTTPException(409, "Собственный аккаунт и главного администратора удалить нельзя")
+    with workspaces.registry() as db:
+        db.execute("UPDATE users SET enabled=0 WHERE telegram_id=?", (telegram_id,))
+        db.execute("DELETE FROM profile_avatars WHERE telegram_id=?", (telegram_id,))
     return {"ok": True}
 
 

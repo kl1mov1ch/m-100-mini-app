@@ -79,31 +79,33 @@ async def check_connection():
 @router.post("/api/bitrix/connection")
 async def connection(body: Connection):
     try:
-        file_id = body.file_id
-        if body.public_url:
-            bitrix.validate_public(body.public_url)
-            if not file_id:
-                _, metadata = await bitrix.fetch_public(body.public_url)
-                file_id = int(metadata["file_id"])
-        if body.webhook:
-            if not file_id:
-                raise ValueError("Укажите ID файла на Диске")
-            await bitrix.download_rest(body.webhook, file_id)
         with store.connect() as db:
-            if (
-                store.setting(db, "source") == "bitrix"
-                and int(store.setting(db, "file_id", "0")) != file_id
-            ):
+            saved_webhook = store.setting(db, "webhook")
+            saved_id = int(store.setting(db, "file_id", "0"))
+            saved_url = store.setting(db, "public_url")
+        webhook = body.webhook.strip() or saved_webhook
+        url = body.public_url.strip() or saved_url
+        file_id = body.file_id or saved_id or None
+        if url:
+            file_id = await bitrix.resolve_public_file(url, webhook, file_id)
+        elif webhook and file_id:
+            await bitrix.download_rest(webhook, file_id)
+        else:
+            raise ValueError("Укажите публичную ссылку на таблицу Битрикс24")
+        with store.connect() as db:
+            if store.setting(db, "source") == "bitrix" and saved_id and saved_id != file_id:
                 raise HTTPException(409, "Для другого файла добавьте отдельный объект")
             for k, v in [
-                ("public_url", body.public_url),
+                ("public_url", url),
                 ("file_id", str(file_id or 0)),
             ]:
                 store.set_setting(db, k, v)
             if body.webhook:
                 store.set_setting(db, "webhook", body.webhook)
             return safe_config(db)
-    except (ValueError, httpx.HTTPError, KeyError):
+    except ValueError as error:
+        raise HTTPException(400, str(error)) from error
+    except (httpx.HTTPError, KeyError, TypeError):
         raise HTTPException(
             400, "Не удалось подключиться. Проверьте вебхук, ID файла и право «Диск»."
         )

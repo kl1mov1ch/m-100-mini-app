@@ -1,5 +1,5 @@
-import { Alert, Button, Input, InputNumber, Upload } from 'antd';
-import { Unlink } from 'lucide-react';
+import { Alert, Button, Input, Upload } from 'antd';
+import { Trash2, Unlink } from 'lucide-react';
 import { useState } from 'react';
 import type { WorkspaceView } from '../App';
 import { FieldHelp } from './FieldHelp';
@@ -9,9 +9,13 @@ import { ObjectTableCard } from './ObjectTableCard';
 export function ObjectTablePanel({
 	workspace,
 	onDetach,
+	onDelete,
+	loadingAction,
 }: {
 	workspace: WorkspaceView;
 	onDetach: () => void;
+	onDelete: () => void;
+	loadingAction: boolean;
 }) {
 	const [configuring, setConfiguring] = useState(false);
 	const {
@@ -19,8 +23,6 @@ export function ObjectTablePanel({
 		positions,
 		url,
 		setUrl,
-		fileId,
-		setFileId,
 		webhook,
 		setWebhook,
 		busy,
@@ -48,6 +50,9 @@ export function ObjectTablePanel({
 				<>
 					<ObjectTableCard workspace={workspace} />
 					<BitrixReadStatus workspace={workspace} />
+					{config.journal_status === 'pending' && config.journal_note && (
+						<Alert type="warning" showIcon message={config.journal_note} />
+					)}
 				</>
 			) : (
 				<>
@@ -99,15 +104,6 @@ export function ObjectTablePanel({
 					<details>
 						<summary>Доступ для автоматической отправки</summary>
 						<label>
-							ID файла
-							<InputNumber
-								min={1}
-								value={fileId || null}
-								onChange={setFileId}
-								placeholder="Определяется по ссылке"
-							/>
-						</label>
-						<label>
 							Вебхук с правом «Диск» <FieldHelp topic="bitrix" />
 							<Input.Password
 								value={webhook}
@@ -122,7 +118,7 @@ export function ObjectTablePanel({
 					<Button
 						type="primary"
 						loading={busy}
-						disabled={!url.trim() && !(fileId && (webhook.trim() || config.has_webhook))}
+						disabled={!url.trim() && !(config.file_id && (webhook.trim() || config.has_webhook))}
 						onClick={importRemote}
 					>
 						Прочитать таблицу
@@ -146,6 +142,17 @@ export function ObjectTablePanel({
 					Проверить смету
 				</Button>
 			)}
+			<div className="object-danger-zone">
+				<Button
+					type="text"
+					danger
+					icon={<Trash2 size={17} />}
+					loading={loadingAction}
+					onClick={onDelete}
+				>
+					Удалить объект
+				</Button>
+			</div>
 		</section>
 	);
 }

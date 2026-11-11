@@ -8,7 +8,6 @@ import {
 	Modal,
 	Select,
 	Spin,
-	Switch,
 } from 'antd';
 import ruRU from 'antd/locale/ru_RU';
 import 'dayjs/locale/ru';
@@ -91,8 +90,6 @@ export function WorkspaceApp() {
 		setUserName,
 		userRole,
 		setUserRole,
-		userEnabled,
-		setUserEnabled,
 		ownerFilter,
 		active,
 		positions,
@@ -318,10 +315,6 @@ export function WorkspaceApp() {
 							{ value: 'admin', label: 'Администратор — все объекты' },
 						]}
 					/>
-					<div className="switch-row">
-						<span>Доступ разрешён</span>
-						<Switch checked={userEnabled} onChange={setUserEnabled} />
-					</div>
 				</div>
 			</Modal>
 			<TableImportModal workspace={workspace} />

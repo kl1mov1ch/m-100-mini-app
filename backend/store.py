@@ -115,10 +115,6 @@ def hidden_positions(db):
     return json.loads(setting(db, "hidden_positions", "{}"))
 
 
-def position_links(db):
-    return json.loads(setting(db, "position_links", "{}"))
-
-
 def position_identity(position):
     return [str(position[key] or "").strip().casefold() for key in ("name", "unit", "section")]
 

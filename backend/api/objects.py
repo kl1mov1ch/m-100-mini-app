@@ -5,7 +5,8 @@ import httpx
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
-from .. import catalogue, matcher, store, workspaces
+from .. import catalogue, matcher, object_plan, store, workspaces
+from ..bitrix_refresh import freshness
 from ..clock import now
 from ..imports import remove_project_imports
 from ..reporting import ai_settings
@@ -43,7 +44,6 @@ def management(request: Request):
             "pending": db.execute(
                 "SELECT count(*) FROM reports WHERE sync_status IN ('pending','error')"
             ).fetchone()[0],
-            "used_positions": sorted(position_usage(db)),
         }
 
 
@@ -111,12 +111,6 @@ async def update_position(request: Request, position_id: str, body: PositionActi
                     )
                 db.execute("DELETE FROM positions WHERE id=?", (position_id,))
                 hidden.pop(position_id, None)
-                links = {
-                    material: work
-                    for material, work in store.position_links(db).items()
-                    if position_id not in (material, work)
-                }
-                store.set_setting(db, "position_links", json.dumps(links))
             elif body.action == "hide":
                 if not catalogue.has_overrun(position):
                     raise HTTPException(
@@ -147,56 +141,30 @@ async def update_position(request: Request, position_id: str, body: PositionActi
 
 
 @router.get("/positions/{position_id}/history")
-def history(position_id: str, limit: Annotated[int, Query(ge=1, le=500)] = 100):
+def history(request: Request, position_id: str, limit: Annotated[int, Query(ge=1, le=500)] = 100):
+    user = request.state.user
+    can_manage = (
+        user["role"] == "master" and user["telegram_id"] == request.state.project["owner_id"]
+    )
     with store.connect() as db:
         catalogue.position_detail(db, position_id)
-        return catalogue.position_history(db, position_id, limit)
-
-
-class LinkedWork(BaseModel):
-    work_id: str | None = None
-
-
-@router.post("/positions/{position_id}/link")
-async def link_position(request: Request, position_id: str, body: LinkedWork):
-    owned_object(request)
-    if body.work_id == position_id:
-        raise HTTPException(422, "Выберите другую позицию сметы")
-    with store.connect() as db:
-        db.execute("BEGIN IMMEDIATE")
-        position = catalogue.position_detail(db, position_id)
-        work = catalogue.position_detail(db, body.work_id) if body.work_id else None
-        links = store.position_links(db)
-        if work:
-            links[position_id] = work["id"]
-        else:
-            links.pop(position_id, None)
-        store.set_setting(db, "position_links", json.dumps(links))
-        checked = now()
-        db.execute(
-            "INSERT INTO audit(date,payload,created_at) VALUES(?,?,?)",
-            (
-                checked[:10],
-                json.dumps(
-                    {
-                        "action": "catalogue_position_link"
-                        if work
-                        else "catalogue_position_unlink",
-                        "position_id": position_id,
-                        "position_name": position["name"],
-                        "work_name": work["name"] if work else None,
-                        "actor_name": request.state.user["name"],
-                    },
-                    ensure_ascii=False,
-                ),
-                checked,
-            ),
-        )
-    return {"ok": True}
+        return {
+            **catalogue.position_history(db, position_id, limit),
+            "can_delete": can_manage and position_id not in position_usage(db),
+        }
 
 
 class Consultation(BaseModel):
     question: str = Field(default="", max_length=1000)
+
+
+@router.get("/plan")
+async def plan(request: Request):
+    owned_object(request)
+    with store.connect() as db:
+        value = object_plan.make_plan(db)
+        settings = ai_settings(db)
+    return {**value, "steps": await object_plan.suggest_sequence(value, settings)}
 
 
 @router.post("/positions/{position_id}/consult")
@@ -204,6 +172,11 @@ async def consult_position(request: Request, position_id: str, body: Consultatio
     owned_object(request)
     with store.connect() as db:
         position = catalogue.position_detail(db, position_id)
+        status = (freshness(db) or {}).get("status")
+        if store.setting(db, "source") != "bitrix" or (
+            position["bitrix"] is not None and status != "unavailable"
+        ):
+            raise HTTPException(409, "Данные позиции загружены. Проверьте значения в карточке.")
         history = catalogue.position_history(db, position_id, 30)
         settings = ai_settings(db)
     if not matcher.provider(settings)["key"]:
@@ -218,7 +191,12 @@ async def consult_position(request: Request, position_id: str, body: Consultatio
             "Не выдумывай изменения и не утверждай, что исправил таблицу. Отвечай кратко по-русски. "
             'Верни JSON {"answer":"текст консультации","checks":["что проверить"]}.',
             json.dumps(
-                {"position": position, "history": history, "question": body.question},
+                {
+                    "position": position,
+                    "history": history,
+                    "bitrix_status": status,
+                    "question": body.question,
+                },
                 ensure_ascii=False,
             ),
             settings,

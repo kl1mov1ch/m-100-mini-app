@@ -97,6 +97,8 @@ def safe_config(db):
         "connection_check": json.loads(store.setting(db, "connection_check", "null")),
         "detail_url": store.setting(db, "table_detail_url"),
         "bitrix_read": json.loads(store.setting(db, "bitrix_read_status", "null")),
+        "journal_status": store.setting(db, "journal_status"),
+        "journal_note": store.setting(db, "journal_note"),
     }
 
 

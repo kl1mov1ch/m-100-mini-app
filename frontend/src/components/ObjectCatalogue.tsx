@@ -1,27 +1,23 @@
-import { Alert, Button, Empty, Input, Spin, Tag } from 'antd';
-import { ChevronRight, Eye, EyeOff, Search, Trash2, TriangleAlert } from 'lucide-react';
+import { Button, Empty, Input, Tag } from 'antd';
+import { ChevronRight, Search, TriangleAlert } from 'lucide-react';
 import { useState } from 'react';
 import type { WorkspaceView } from '../App';
-import { Money, nf, unit } from '../lib/format';
-import type { ObjectManagement, Position } from '../types';
+import { Money, unit } from '../lib/format';
+import type { Position } from '../types';
 import { BitrixReadStatus } from './BitrixReadStatus';
-import { positionOverrun } from './PositionDetails';
+import { ObjectPlan } from './ObjectPlan';
+import { formatVolume, positionOverrun } from '../lib/position-volume';
 
 export function ObjectCatalogue({
 	workspace,
-	management,
-	error,
-	onManage,
 	onView,
 }: {
 	workspace: WorkspaceView;
-	management: ObjectManagement | null;
-	error: string;
-	onManage: (position: Position) => void;
 	onView: (position: Position) => void;
 }) {
 	const [query, setQuery] = useState('');
-	const { allPositions, positions, byId, openObjectSection } = workspace;
+	const [planOpen, setPlanOpen] = useState(false);
+	const { allPositions, positions, openObjectSection } = workspace;
 	const term = query.trim().toLocaleLowerCase('ru');
 	const matching = allPositions
 		.filter((position) =>
@@ -31,7 +27,7 @@ export function ObjectCatalogue({
 				.toLocaleLowerCase('ru')
 				.includes(term),
 		)
-		.sort((left, right) => Number(positionOverrun(left) > 0) - Number(positionOverrun(right) > 0));
+		.sort((left, right) => Number(!!positionOverrun(left)) - Number(!!positionOverrun(right)));
 	if (!allPositions.length) {
 		return (
 			<section className="object-panel">
@@ -46,9 +42,9 @@ export function ObjectCatalogue({
 		<section className="object-panel">
 			<div className="object-panel-heading">
 				<h2>Смета</h2>
-				<Tag>
-					{positions.length} из {allPositions.length} в подборе
-				</Tag>
+				<Button size="small" onClick={() => setPlanOpen(true)}>
+					План работ
+				</Button>
 			</div>
 			<BitrixReadStatus workspace={workspace} />
 			<Input
@@ -59,53 +55,35 @@ export function ObjectCatalogue({
 				value={query}
 				onChange={(event) => setQuery(event.target.value)}
 			/>
-			{error && <Alert type="warning" showIcon message={error} />}
-			{!management && !error && <Spin size="small" />}
+
 			{!matching.length && (
 				<Empty description="Работы не найдены" image={Empty.PRESENTED_IMAGE_SIMPLE} />
 			)}
 			<ul className="object-catalogue">
 				{matching.map((position) => {
-					const used = management?.used_positions.includes(position.id);
 					const overrun = positionOverrun(position);
-					const linked = position.linked_work_id ? byId[position.linked_work_id] : null;
-					const label = position.hidden
-						? 'Вернуть в подбор'
-						: overrun > 0
-							? 'Скрыть из подбора'
-							: 'Удалить из сметы';
-					const Icon = position.hidden ? Eye : overrun > 0 ? EyeOff : Trash2;
+					const values = overrun || position.bitrix || position;
 					return (
-						<li key={position.id} className={overrun > 0 ? 'catalogue-overrun' : undefined}>
+						<li key={position.id} className={overrun ? 'catalogue-overrun' : undefined}>
 							<button type="button" className="catalogue-position" onClick={() => onView(position)}>
 								<b>{position.name}</b>
 								<small>
-									План {nf.format(position.planned)} · Выполнено {nf.format(position.completed)} ·
-									Остаток {nf.format(position.remaining)} {unit(position.unit)}
+									План {formatVolume(values.planned, position.unit)} · Выполнено{' '}
+									{formatVolume(values.completed, position.unit)}
+									{!overrun && <> · Остаток {formatVolume(values.remaining, position.unit)}</>}
 								</small>
 								<small>
-									<Money value={position.rate} /> / {unit(position.unit)}
+									<Money value={values.rate} /> / {unit(position.unit)}
 								</small>
-								{linked && <small>Работа: {linked.name}</small>}
-								{overrun > 0 && (
+								{overrun && (
 									<span className="catalogue-overrun-label">
-										<TriangleAlert size={14} /> Перерасход {nf.format(overrun)}{' '}
-										{unit(position.unit)}
+										<TriangleAlert size={14} /> Остаток{' '}
+										{formatVolume(overrun.remaining, position.unit)} · перерасход
 									</span>
 								)}
 								{position.hidden && <Tag color="gold">Скрыта из подбора</Tag>}
 								<ChevronRight className="catalogue-position-arrow" size={17} />
 							</button>
-							{management && (position.hidden || overrun > 0 || !used) && (
-								<Button
-									size="small"
-									danger={!position.hidden && !overrun}
-									aria-label={label + ' — ' + position.name}
-									title={label}
-									icon={<Icon size={17} />}
-									onClick={() => onManage(position)}
-								/>
-							)}
 						</li>
 					);
 				})}
@@ -115,6 +93,7 @@ export function ObjectCatalogue({
 					Заполнить первый отчёт
 				</Button>
 			)}
+			{planOpen && <ObjectPlan project={workspace.project} close={() => setPlanOpen(false)} />}
 		</section>
 	);
 }

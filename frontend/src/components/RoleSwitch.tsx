@@ -43,7 +43,7 @@ export function RoleSwitch({
 		if (Math.abs(horizontal) < 38 || Math.abs(horizontal) < Math.abs(vertical) * 1.5) return;
 		selectMode(horizontal > 0 ? 'master' : 'admin');
 	};
-	if (!session.can_switch_role) return null;
+	if (session.mode !== 'development' || !session.can_switch_role) return null;
 	return (
 		<div
 			className="role-switch"

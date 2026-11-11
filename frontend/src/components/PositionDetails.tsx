@@ -1,11 +1,13 @@
-import { Alert, Button, Empty, Input, Modal, Select, Spin, Tabs } from 'antd';
-import { Sparkles, TriangleAlert } from 'lucide-react';
+import { Alert, Button, Empty, Input, Modal, Spin, Tabs } from 'antd';
+import { Settings2, Sparkles, Trash2, TriangleAlert } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { WorkspaceView } from '../App';
 import { request } from '../lib/api';
 import dayjs from '../lib/date';
-import { Money, nf, unit } from '../lib/format';
-import type { Position, PositionHistory } from '../types';
+import { Money } from '../lib/format';
+import { formatVolume, positionOverrun } from '../lib/position-volume';
+import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
+import type { CatalogueAction, Position, PositionHistory } from '../types';
 
 const historyLabels: Record<string, string> = {
 	report: 'Изменён отчёт',
@@ -28,10 +30,6 @@ const fieldLabels: Record<string, string> = {
 };
 type Advice = { answer: string; checks: string[] };
 
-export function positionOverrun(position: Position) {
-	return Math.max(0, -position.remaining, -(position.bitrix?.remaining ?? 0));
-}
-
 export function PositionDetails({
 	workspace,
 	position,
@@ -41,25 +39,32 @@ export function PositionDetails({
 	workspace: WorkspaceView;
 	position: Position;
 	close: () => void;
-	manage: (position: Position) => void;
+	manage: (position: Position, action: CatalogueAction) => void;
 }) {
-	const { project, allPositions, byId, refresh, session } = workspace;
+	const { project, data, session } = workspace;
 	const [history, setHistory] = useState<PositionHistory | null>(null);
 	const [error, setError] = useState('');
-	const [historyVersion, setHistoryVersion] = useState(0);
-	const [linkedWork, setLinkedWork] = useState(position.linked_work_id || undefined);
-	const [linkBusy, setLinkBusy] = useState(false);
-	const [linkError, setLinkError] = useState('');
 	const [question, setQuestion] = useState('');
 	const [advice, setAdvice] = useState<Advice | null>(null);
 	const [consulting, setConsulting] = useState(false);
 	const [adviceError, setAdviceError] = useState('');
 	const endpoint = '/object/positions/' + encodeURIComponent(position.id);
-	const measurement = unit(position.unit);
+	const [tab, setTab] = useState('history');
 	const overrun = positionOverrun(position);
 	const source = position.bitrix;
-	const linked = position.linked_work_id ? byId[position.linked_work_id] : null;
-	const quantity = (value: number) => nf.format(value) + ' ' + measurement;
+	const quantity = (value: number) => formatVolume(value, position.unit);
+	const missingBitrix =
+		data?.config.source === 'bitrix' &&
+		(!source || data.config.bitrix_read?.status === 'unavailable');
+	const activeTab = tab === 'ai' && !missingBitrix ? 'history' : tab;
+	const tabs = missingBitrix ? ['history', 'settings', 'ai'] : ['history', 'settings'];
+	const tabSwipe = useHorizontalSwipe((step) => {
+		const next = tabs[tabs.indexOf(activeTab) + step];
+		if (next) setTab(next);
+	});
+	const recalculated = overrun ? overrun.planned - overrun.completed : 0;
+	const inconsistent = overrun && Math.abs(overrun.remaining - recalculated) > 0.0001;
+
 	useEffect(() => {
 		const controller = new AbortController();
 		setError('');
@@ -71,21 +76,8 @@ export function PositionDetails({
 				if (!controller.signal.aborted) setError((failure as Error).message);
 			});
 		return () => controller.abort();
-	}, [endpoint, project, historyVersion]);
+	}, [endpoint, project, position.hidden]);
 
-	const saveLink = async () => {
-		setLinkBusy(true);
-		setLinkError('');
-		try {
-			await request(endpoint + '/link', { work_id: linkedWork || null }, project);
-			await refresh(true);
-			setHistoryVersion((value) => value + 1);
-		} catch (failure) {
-			setLinkError((failure as Error).message);
-		} finally {
-			setLinkBusy(false);
-		}
-	};
 	const consult = async () => {
 		setConsulting(true);
 		setAdviceError('');
@@ -107,7 +99,7 @@ export function PositionDetails({
 		);
 	return (
 		<Modal open title={position.name} onCancel={close} footer={null} width={650}>
-			<div className="position-details">
+			<div className="position-details swipe-surface" {...tabSwipe}>
 				<div className="position-totals">
 					<span>
 						План <b>{quantity(position.planned)}</b>
@@ -121,36 +113,41 @@ export function PositionDetails({
 				</div>
 				{source && (
 					<p className="position-source">
-						В Битрикс24 · план {quantity(source.planned)} · выполнено {quantity(source.completed)} ·
-						остаток <b>{quantity(source.remaining)}</b>
+						{data?.config.bitrix_read?.status === 'unavailable'
+							? 'Последнее чтение Битрикс24'
+							: 'Битрикс24'}{' '}
+						· план {quantity(source.planned)} · выполнено {quantity(source.completed)} · остаток{' '}
+						<b>{quantity(source.remaining)}</b>
 					</p>
 				)}
-				{(overrun > 0 || position.hidden) && (
+				{overrun && (
 					<Alert
 						type="warning"
 						showIcon
 						icon={<TriangleAlert size={18} />}
-						message={
-							position.hidden ? 'Позиция скрыта из подбора' : 'Перерасход ' + quantity(overrun)
-						}
+						message={`Остаток ${quantity(overrun.remaining)} · перерасход`}
 						description={
-							position.hidden
-								? 'Смета и история доступны.'
-								: 'Если работу больше не нужно предлагать при заполнении отчёта, её можно скрыть из подбора.'
-						}
-						action={
-							<Button size="small" onClick={() => manage(position)}>
-								{position.hidden ? 'Вернуть в подбор' : 'Скрыть из подбора'}
-							</Button>
+							<>
+								<p>
+									{overrun.fromBitrix ? 'Битрикс24' : 'Приложение'} · план{' '}
+									{quantity(overrun.planned)} · выполнено {quantity(overrun.completed)}.
+								</p>
+								{inconsistent ? (
+									<p>
+										По плану и факту остаток должен быть {quantity(recalculated)}. Проверьте формулу
+										остатка.
+									</p>
+								) : (
+									<p>Выполнено сверх плана на {quantity(-overrun.remaining)}.</p>
+								)}
+							</>
 						}
 					/>
 				)}
-				{linked && (
-					<p>
-						<b>Связанная работа</b> · {linked.name}
-					</p>
-				)}
+				{position.hidden && <p className="position-source">Позиция скрыта из подбора.</p>}
 				<Tabs
+					activeKey={activeTab}
+					onChange={setTab}
 					items={[
 						{
 							key: 'history',
@@ -205,75 +202,81 @@ export function PositionDetails({
 							),
 						},
 						{
-							key: 'link',
-							label: 'Связать работу',
+							key: 'settings',
+							label: 'Настройки',
+							icon: <Settings2 size={15} />,
 							children: (
 								<div className="position-history">
-									<Select
-										aria-label="Связанная работа"
-										placeholder="Выберите работу из сметы"
-										showSearch
-										allowClear
-										optionFilterProp="label"
-										value={linkedWork}
-										onChange={setLinkedWork}
-										options={allPositions
-											.filter((item) => item.id !== position.id)
-											.map((item) => ({ value: item.id, label: item.name }))}
-									/>
-									{linkError && <Alert type="error" showIcon message={linkError} />}
+									{(overrun || position.hidden) && (
+										<Button onClick={() => manage(position, position.hidden ? 'show' : 'hide')}>
+											{position.hidden ? 'Вернуть в подбор' : 'Скрыть из подбора'}
+										</Button>
+									)}
 									<Button
-										type="primary"
-										loading={linkBusy}
-										disabled={(linkedWork || null) === (position.linked_work_id || null)}
-										onClick={saveLink}
+										danger
+										icon={<Trash2 size={16} />}
+										disabled={!history?.can_delete}
+										onClick={() => manage(position, 'delete')}
 									>
-										Сохранить связь
+										Удалить из сметы
 									</Button>
+									{history && !history.can_delete && (
+										<small>Позиция используется в истории. Удаление недоступно.</small>
+									)}
+									{error && <Alert type="warning" showIcon message={error} />}
 								</div>
 							),
 						},
-						{
-							key: 'ai',
-							label: 'Консультация ИИ',
-							children: (
-								<div className="position-history">
-									<Input.TextArea
-										aria-label="Вопрос по позиции"
-										value={question}
-										onChange={(event) => setQuestion(event.target.value)}
-										maxLength={1000}
-										autoSize={{ minRows: 2, maxRows: 5 }}
-										placeholder="Например, почему остаток отрицательный?"
-									/>
-									<Button
-										icon={<Sparkles size={16} />}
-										type="primary"
-										loading={consulting}
-										disabled={!session.ai_connected}
-										onClick={consult}
-									>
-										Проверить с ИИ
-									</Button>
-									{!session.ai_connected && (
-										<small>Администратор может подключить ИИ в настройках.</small>
-									)}
-									{adviceError && <Alert type="warning" showIcon message={adviceError} />}
-									{advice && (
-										<section>
-											<p>{advice.answer}</p>
-											{advice.checks.length > 0 && (
-												<ul>
-													{advice.checks.map((check, index) => (
-														<li key={index}>{check}</li>
-													))}
-												</ul>
-											)}
-										</section>
-									)}
-								</div>
-							),
-						},
+						...(missingBitrix
+							? [
+									{
+										key: 'ai',
+										label: 'Помощь ИИ',
+										children: (
+											<div className="position-history">
+												<Alert
+													type="warning"
+													showIcon
+													message="Актуальные данные Битрикс24 по позиции пока не загружены"
+												/>
+												<Input.TextArea
+													aria-label="Вопрос по позиции"
+													value={question}
+													onChange={(event) => setQuestion(event.target.value)}
+													maxLength={1000}
+													autoSize={{ minRows: 2, maxRows: 5 }}
+													placeholder="Например, что проверить, если позиция не загрузилась?"
+												/>
+												<Button
+													icon={<Sparkles size={16} />}
+													type="primary"
+													loading={consulting}
+													disabled={!session.ai_connected}
+													onClick={consult}
+												>
+													Проверить с ИИ
+												</Button>
+												{!session.ai_connected && (
+													<small>Администратор может подключить ИИ в настройках.</small>
+												)}
+												{adviceError && <Alert type="warning" showIcon message={adviceError} />}
+												{advice && (
+													<section>
+														<p>{advice.answer}</p>
+														{advice.checks.length > 0 && (
+															<ul>
+																{advice.checks.map((check, index) => (
+																	<li key={index}>{check}</li>
+																))}
+															</ul>
+														)}
+													</section>
+												)}
+											</div>
+										),
+									},
+								]
+							: []),
 					]}
 				/>
 			</div>
