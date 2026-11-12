@@ -1,5 +1,4 @@
-import { Alert, App } from 'antd';
-import { TriangleAlert } from 'lucide-react';
+import { App } from 'antd';
 import { nf, unit } from '../lib/format';
 
 export function useConfirmWorkRemoval() {
@@ -10,29 +9,28 @@ export function useConfirmWorkRemoval() {
 	) => {
 		modal.confirm({
 			title: 'Убрать работу из отчёта?',
-			icon: <TriangleAlert color="#a66b00" size={22} />,
+			icon: null,
+			className: 'action-confirm-sheet',
 			okText: 'Убрать работу',
 			cancelText: 'Оставить',
 			okButtonProps: { danger: true },
 			content: (
-				<Alert
-					type="warning"
-					message={work.name}
-					description={
-						<>
-							{work.quantity != null && (
-								<p>
-									Объём {nf.format(work.quantity)} {unit(work.unit || 'ед.')}
-								</p>
-							)}
-							<p>
-								{work.saved
-									? 'Сумма и доля на человека пересчитаются. В сохранённом отчёте объём изменится после подтверждения.'
-									: 'Работа исчезнет из черновика. Сумма и доля на человека пересчитаются.'}
-							</p>
-						</>
-					}
-				/>
+				<div className="action-confirm-content">
+					<div className="action-confirm-item">
+						<strong>{work.name}</strong>
+						{work.quantity != null && (
+							<span>
+								{nf.format(work.quantity)} {unit(work.unit || 'ед.')}
+							</span>
+						)}
+					</div>
+					<p>
+						{work.saved
+							? 'Работа будет убрана из сохранённого отчёта после подтверждения изменений.'
+							: 'Работа будет убрана из черновика.'}{' '}
+						Сумма и доля на человека пересчитаются.
+					</p>
+				</div>
 			),
 			onOk: remove,
 		});

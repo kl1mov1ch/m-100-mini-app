@@ -63,3 +63,41 @@ def test_master_reuses_private_webhook_across_objects(client, monkeypatch):
     object_two = workspaces.project(workspaces.user("9001"), projects[1])
     with store.connect(object_two["db_path"]) as db:
         assert store.setting(db, "webhook") == url
+
+
+def test_webhook_edit_delete_are_owner_scoped(client):
+    from backend import profile_webhooks
+
+    grant(client, "9001")
+    grant(client, "9002")
+    owner = {"X-Preview-User": "9001"}
+    other = {"X-Preview-User": "9002"}
+    endpoint = "/api/profile/disk-webhooks"
+    original_url = "https://example.bitrix24.by/rest/1/original/"
+    replacement = "https://example.bitrix24.by/rest/1/replacement/"
+    saved = client.post(
+        endpoint, headers=owner, json={"name": "Портал", "url": original_url}
+    ).json()
+    edit = endpoint + "/" + saved["id"] + "/update"
+    delete = endpoint + "/" + saved["id"] + "/delete"
+    assert client.post(edit, headers=other, json={"name": "Чужой"}).status_code == 404
+    assert client.post(delete, headers=other, json={}).status_code == 404
+    assert client.post(edit, json={"name": "Админ"}).status_code == 403
+    renamed = client.post(edit, headers=owner, json={"name": "Новое название", "url": ""})
+    assert renamed.status_code == 200
+    assert renamed.json()["name"] == "Новое название"
+    assert profile_webhooks.webhook_url("9001", saved["id"]) == original_url
+    invalid = client.post(edit, headers=owner, json={"name": "Имя", "url": "invalid"})
+    assert invalid.status_code == 422
+    assert profile_webhooks.webhook_url("9001", saved["id"]) == original_url
+    updated = client.post(edit, headers=owner, json={"name": "Новый ключ", "url": replacement})
+    assert updated.json()["id"] == saved["id"]
+    assert replacement not in updated.text
+    assert profile_webhooks.webhook_url("9001", saved["id"]) == replacement
+    repeated = client.post(endpoint, headers=owner, json={"url": replacement})
+    assert repeated.json() == updated.json()
+    duplicate = client.post(endpoint, headers=owner, json={"url": original_url}).json()
+    assert client.post(edit, headers=owner, json={"url": original_url}).status_code == 409
+    assert client.post(delete, headers=owner, json={}).status_code == 200
+    assert client.post(delete, headers=owner, json={}).status_code == 404
+    assert client.get(endpoint, headers=owner).json() == [duplicate]

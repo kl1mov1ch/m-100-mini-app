@@ -900,6 +900,19 @@ export function useWorkspace() {
 		);
 		return saved;
 	};
+	const updateDiskWebhook = async (id: string, body: { name: string; url: string }) => {
+		const saved = await request<DiskWebhook>(
+			'/profile/disk-webhooks/' + encodeURIComponent(id) + '/update',
+			body,
+		);
+		setDiskWebhooks((current) => current.map((item) => (item.id === saved.id ? saved : item)));
+		return saved;
+	};
+	const deleteDiskWebhook = async (id: string) => {
+		await request('/profile/disk-webhooks/' + encodeURIComponent(id) + '/delete', {});
+		setDiskWebhooks((current) => current.filter((item) => item.id !== id));
+		setWebhookId((current) => (current === id ? undefined : current));
+	};
 	const upload = async (file: File) => {
 		setBusy(true);
 		const selection = selectionVersion.current;
@@ -1117,6 +1130,8 @@ export function useWorkspace() {
 		setWebhookId,
 		diskWebhooks,
 		saveDiskWebhook,
+		updateDiskWebhook,
+		deleteDiskWebhook,
 		aiKey,
 		setAiKey,
 		aiModel,

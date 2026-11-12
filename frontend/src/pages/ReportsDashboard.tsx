@@ -5,7 +5,7 @@ import { DatePicker } from '../components/ResponsiveDatePicker';
 import { Status } from '../components/SyncStatus';
 import { request } from '../lib/api';
 import dayjs from '../lib/date';
-import { Money } from '../lib/format';
+import { Money, countLabel } from '../lib/format';
 import { downloadReport } from '../lib/report-download';
 import type { HistoryRow } from '../types';
 import type { WorkspaceView } from '../App';
@@ -71,7 +71,6 @@ export function ReportsPage({ workspace }: { workspace: WorkspaceView }) {
 		<>
 			<div className="page-title">
 				<div>
-					<span className="overline">ПОКАЗАТЕЛИ И ВЫРАБОТКА</span>
 					<h1>История работ</h1>
 				</div>
 				<Button icon={<ArrowDownToLine size={17} />} loading={downloading} onClick={exportReport}>
@@ -199,13 +198,14 @@ export function ReportsPage({ workspace }: { workspace: WorkspaceView }) {
 							<Money value={summary.amount} />
 						</strong>
 						<small>
-							{summary.days} дней · {summary.projects} объектов
+							{countLabel(summary.days, 'день', 'дня', 'дней')} ·{' '}
+							{countLabel(summary.projects, 'объект', 'объекта', 'объектов')}
 						</small>
 					</div>
 					<div>
 						<span>Выполнено работ</span>
 						<strong>{summary.positions}</strong>
-						<small>{summary.reports} отчётов</small>
+						<small>{countLabel(summary.reports, 'отчёт', 'отчёта', 'отчётов')}</small>
 					</div>
 					<div>
 						<span>Средняя доля</span>
@@ -216,8 +216,11 @@ export function ReportsPage({ workspace }: { workspace: WorkspaceView }) {
 					</div>
 					<div>
 						<span>Бригада за период</span>
-						<strong>{summary.worker_days}</strong>
-						<small>Человеко-дней · {summary.pending} ждут Битрикс</small>
+						<strong>{summary.worker_days || '—'}</strong>
+						<small>
+							{summary.worker_days ? 'Человеко-дней' : 'Бригада не указана'}
+							{summary.pending > 0 ? ` · ${summary.pending} ждут Битрикс` : ''}
+						</small>
 					</div>
 				</section>
 			)}
@@ -228,10 +231,16 @@ export function ReportsPage({ workspace }: { workspace: WorkspaceView }) {
 							<button
 								className="history-open"
 								onClick={() => openHistoryReport(row.project_id, row.date)}
+								aria-label={
+									'Открыть отчёт: ' +
+									row.project_name +
+									', ' +
+									dayjs(row.date).format('D MMMM YYYY')
+								}
 							>
 								<div className="history-day">
 									<span>{dayjs(row.date).format('DD')}</span>
-									<small>{dayjs(row.date).format('MMM')}</small>
+									<small>{dayjs(row.date).format('MMM').replace(/\.$/, '')}</small>
 								</div>
 								<div className="history-main">
 									<b>{row.project_name}</b>
@@ -249,13 +258,16 @@ export function ReportsPage({ workspace }: { workspace: WorkspaceView }) {
 									</strong>
 								</span>
 								<span>
-									На человека
-									<strong>{row.crew_count ? <Money value={row.per_person} /> : '—'}</strong>
+									{row.crew_count ? 'На человека' : 'Бригада'}
+									<strong>
+										{row.crew_count ? <Money value={row.per_person} /> : <small>Не указана</small>}
+									</strong>
 								</span>
 							</div>
 							<div className="history-bottom">
 								<span>
-									{row.positions} работ{row.crew_count ? ` · ${row.crew_count} чел.` : ''}
+									{countLabel(row.positions, 'работа', 'работы', 'работ')}
+									{row.crew_count ? ` · ${row.crew_count} чел.` : ''}
 								</span>
 								<Status status={row.sync_status} />
 							</div>
