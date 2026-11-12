@@ -134,20 +134,29 @@
 	margin: 6px 0 0;
 }
 .object-catalogue .catalogue-overrun {
-	background: var(--ios-warning-fill);
-	border: 1px solid var(--ios-warning-text);
+	background: var(--ios-fill);
+	border: 1px solid var(--ios-separator);
 	border-radius: 10px;
-	margin-block: 4px;
-	padding-inline: 9px;
+	margin-block: 6px;
+	padding: 6px 10px;
 }
 .catalogue-overrun-label {
 	display: flex;
 	align-items: center;
-	gap: 5px;
+	gap: 6px;
 	margin-top: 6px;
 	color: var(--ios-danger);
-	font-size: 12px;
-	font-weight: 700;
+	font-size: 13px;
+	font-weight: 600;
+}
+.object-catalogue .catalogue-volumes {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 2px 12px;
+}
+.catalogue-volumes strong {
+	color: var(--ios-label);
+	font-weight: 600;
 }
 .bitrix-read-status {
 	display: flex;

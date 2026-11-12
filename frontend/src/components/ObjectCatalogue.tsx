@@ -62,21 +62,35 @@ export function ObjectCatalogue({
 						<li key={position.id} className={overrun ? 'catalogue-overrun' : undefined}>
 							<button type="button" className="catalogue-position" onClick={() => onView(position)}>
 								<b>{position.name}</b>
-								<small>
-									План {formatVolume(values.planned, position.unit)} · Выполнено{' '}
-									{formatVolume(values.completed, position.unit)}
-									{!overrun && <> · {estimateStatus(values, position.unit)}</>}
-								</small>
-								<small>
-									<Money value={values.rate} /> / {unit(position.unit)}
-								</small>
 								{overrun && (
-									<span className="catalogue-overrun-label">
-										<TriangleAlert size={14} />{' '}
-										{overrun.completed > overrun.planned
-											? estimateStatus(overrun, position.unit)
-											: 'Проверьте остаток'}
-									</span>
+									<>
+										<span className="catalogue-overrun-label">
+											<TriangleAlert size={14} aria-hidden />
+											{overrun.completed > overrun.planned
+												? estimateStatus(overrun, position.unit)
+												: 'Проверьте остаток'}
+										</span>
+										<small className="catalogue-volumes">
+											<span>
+												По смете <strong>{formatVolume(values.planned, position.unit)}</strong>
+											</span>
+											<span>
+												Выполнено <strong>{formatVolume(values.completed, position.unit)}</strong>
+											</span>
+										</small>
+									</>
+								)}
+								{!overrun && (
+									<>
+										<small>
+											План {formatVolume(values.planned, position.unit)} · Выполнено{' '}
+											{formatVolume(values.completed, position.unit)} ·{' '}
+											{estimateStatus(values, position.unit)}
+										</small>
+										<small>
+											<Money value={values.rate} /> / {unit(position.unit)}
+										</small>
+									</>
 								)}
 								{position.hidden && <Tag color="gold">Скрыта из подбора</Tag>}
 								<ChevronRight className="catalogue-position-arrow" size={17} />

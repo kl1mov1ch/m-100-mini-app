@@ -6,31 +6,35 @@ import './work-estimate.css';
 type WorkBalance = ReturnType<typeof estimateBalance>;
 
 export function WorkEstimate({ balance, unit }: { balance: WorkBalance; unit: string }) {
-	const fields = [
-		['По смете', balance.planned],
-		['До отчёта', balance.available],
-		['За день', balance.today],
-		['Остаток после', balance.remaining],
-	] as const;
+	const fields: [string, number][] =
+		balance.excess > 0
+			? [
+					['По смете', balance.planned],
+					['Выполнено всего', balance.completed],
+					['Перерасход', balance.excess],
+				]
+			: [
+					['По смете', balance.planned],
+					['До отчёта', balance.available],
+					['За день', balance.today],
+					['Остаток после', balance.remaining],
+				];
 	return (
 		<div className="work-estimate">
-			<dl>
+			<dl className={balance.excess > 0 ? 'work-estimate-excess' : undefined}>
 				{fields.map(([label, value]) => (
-					<div key={label}>
+					<div
+						key={label}
+						className={label === 'Перерасход' ? 'work-estimate-excess-value' : undefined}
+					>
 						<dt>{label}</dt>
-						<dd>{formatWorkVolume(value, unit)}</dd>
+						<dd>
+							{label === 'Перерасход' && '+'}
+							{formatWorkVolume(value, unit)}
+						</dd>
 					</div>
 				))}
 			</dl>
-			{balance.excess > 0 && (
-				<div className="work-estimate-warning">
-					<TriangleAlert size={16} aria-hidden />
-					<span>
-						Выполнено всего <b>{formatWorkVolume(balance.completed, unit)}</b> · перерасход на{' '}
-						<b>{formatWorkVolume(balance.excess, unit)}</b>
-					</span>
-				</div>
-			)}
 		</div>
 	);
 }
