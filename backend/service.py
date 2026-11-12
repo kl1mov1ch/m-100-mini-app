@@ -38,6 +38,12 @@ async def lifespan(app):
         and workspaces.exists("default")
     ):
         store.init()
+    if os.getenv("APP_BACKGROUND_TASKS", "1") == "0":
+        try:
+            yield
+        finally:
+            postgres.close_pool()
+        return
     retry_task = asyncio.create_task(retry_pending_reports())
     bitrix_read_task = asyncio.create_task(refresh_linked_tables())
     reminders_task = asyncio.create_task(scheduled_reminders())
