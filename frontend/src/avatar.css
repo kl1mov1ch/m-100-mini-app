@@ -6,11 +6,11 @@
 }
 .profile-button {
 	padding: 0 !important;
-	width: 40px !important;
-	height: 40px !important;
-	min-width: 40px;
-	min-height: 40px;
-	flex: 0 0 40px;
+	width: 44px;
+	height: 44px;
+	min-width: 44px;
+	min-height: 44px;
+	flex: 0 0 44px;
 	aspect-ratio: 1;
 	border-radius: 50%;
 	overflow: hidden;
@@ -24,8 +24,8 @@
 	aspect-ratio: 1;
 	overflow: hidden;
 	border-radius: 50%;
-	background: #e5efff;
-	color: #2355a0;
+	background: var(--ios-fill);
+	color: var(--ios-accent);
 	font-weight: 700;
 	line-height: 1;
 	vertical-align: middle;

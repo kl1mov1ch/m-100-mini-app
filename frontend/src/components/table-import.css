@@ -12,8 +12,8 @@
 	display: flex;
 	align-items: center;
 	gap: 12px;
-	background: #f2f6ff;
-	border: 1px solid #dce7fb;
+	background: var(--ios-surface);
+	border: 1px solid var(--ios-fill);
 	border-radius: 12px;
 	padding: 14px;
 	margin-bottom: 8px;
@@ -24,8 +24,8 @@
 	width: 37px;
 	height: 37px;
 	border-radius: 10px;
-	background: #e1ecff;
-	color: #5a86ca;
+	background: var(--ios-fill);
+	color: var(--ios-secondary);
 	flex-shrink: 0;
 }
 .import-file-heading > div {
@@ -36,14 +36,14 @@
 	display: block;
 	font-size: 13px;
 	font-weight: 600;
-	color: #365c91;
+	color: var(--ios-secondary);
 	overflow-wrap: anywhere;
 	line-height: 1.7;
 }
 .import-file-heading small {
 	display: block;
 	font-size: 13px;
-	color: #8096b5;
+	color: var(--ios-tertiary);
 	margin-top: 3px;
 }
 .import-file-heading .ant-btn {
@@ -70,20 +70,20 @@
 	gap: 13px;
 }
 .table-issue {
-	border: 1px solid #edcf76;
+	border: 1px solid var(--ios-warning-line);
 	border-radius: 12px;
-	background: #fffbec;
+	background: var(--ios-warning-fill);
 	padding: 17px;
 }
 .table-issue.acknowledged {
-	border-color: #b9d5f6;
-	background: #f5f9ff;
+	border-color: var(--ios-separator);
+	background: var(--ios-surface);
 }
 .table-issue-title {
 	display: flex;
 	align-items: center;
 	gap: 7px;
-	color: #a78422;
+	color: var(--ios-warning-text);
 }
 .table-issue-title b {
 	font-size: 12px;
@@ -95,14 +95,14 @@
 	font-size: 13px;
 	font-weight: 600;
 	white-space: nowrap;
-	color: #967721;
-	background: #f8ebbb;
+	color: var(--ios-warning-text);
+	background: var(--ios-warning-line);
 	padding: 4px 6px;
 	border-radius: 5px;
 }
 .table-issue-location {
 	font-size: 13px;
-	color: #ac944e;
+	color: var(--ios-warning-text);
 	line-height: 1.8;
 	margin-top: 9px;
 }
@@ -111,41 +111,41 @@
 	font-size: 12px;
 	line-height: 1.8;
 	font-weight: 600;
-	color: #806d34;
+	color: var(--ios-warning-text);
 	margin-top: 10px;
 }
 .table-issue > p {
 	font-size: 14px;
 	line-height: 1.8;
-	color: #9b8546;
+	color: var(--ios-warning-text);
 	margin: 9px 0;
 }
 .table-issue-value {
 	display: flex;
 	gap: 10px;
 	padding: 9px 11px;
-	border: 1px solid #f1e0a6;
+	border: 1px solid var(--ios-warning-line);
 	border-radius: 7px;
-	background: #fffdf5;
+	background: var(--ios-warning-fill);
 	margin: 10px 0;
 	align-items: flex-start;
 }
 .table-issue-value > span {
 	font-size: 12px;
-	color: #b29d64;
+	color: var(--ios-warning-text);
 	flex-shrink: 0;
 	line-height: 1.8;
 }
 .table-issue-value > b {
 	font-size: 13px;
 	font-weight: 500;
-	color: #907429;
+	color: var(--ios-warning-text);
 	overflow-wrap: anywhere;
 	line-height: 1.8;
 }
 .table-issue-help {
 	font-size: 10px !important;
-	color: #ad985f !important;
+	color: var(--ios-warning-text) !important;
 }
 .table-cell-fix {
 	margin: 14px 0;
@@ -168,7 +168,7 @@
 	font-size: 12px;
 	margin-top: 4px;
 	padding-left: 0;
-	color: #9d873d;
+	color: var(--ios-warning-text);
 }
 .table-issue > .ant-btn {
 	font-size: 13px;
@@ -182,14 +182,14 @@
 .duplicate-fix {
 	padding-top: 12px;
 	margin: 13px 0;
-	border-top: 1px solid #f0dfa5;
+	border-top: 1px solid var(--ios-warning-line);
 	display: flex;
 	flex-direction: column;
 	gap: 9px;
 }
 .duplicate-fix > label {
 	font-size: 13px;
-	color: #a78a3e;
+	color: var(--ios-warning-text);
 	line-height: 1.8;
 }
 .duplicate-fix .ant-select {
@@ -208,15 +208,15 @@
 	position: sticky;
 	top: 0;
 	z-index: 2;
-	background: #fff;
+	background: var(--ios-surface);
 	margin-bottom: 4px;
 	font-size: 12px;
 	flex-shrink: 0;
 }
 .import-position-card {
 	padding: 15px;
-	border: 1px solid #dfe8f5;
-	background: #fff;
+	border: 1px solid var(--ios-fill);
+	background: var(--ios-surface);
 	border-radius: 12px;
 }
 .import-position-title {
@@ -226,8 +226,8 @@
 }
 .import-position-title > span {
 	font-size: 13px;
-	color: #86a1c5;
-	background: #f0f5ff;
+	color: var(--ios-tertiary);
+	background: var(--ios-fill);
 	border-radius: 5px;
 	min-width: 26px;
 	height: 25px;
@@ -239,7 +239,7 @@
 	flex: 1;
 	font-size: 12px;
 	font-weight: 550;
-	color: #46678f;
+	color: var(--ios-secondary);
 	line-height: 1.8;
 	overflow-wrap: anywhere;
 }
@@ -247,7 +247,7 @@
 	height: 26px;
 	width: 26px;
 	padding: 0;
-	color: #8ba6ca;
+	color: var(--ios-tertiary);
 	flex-shrink: 0;
 }
 .import-position-values {
@@ -255,16 +255,16 @@
 	flex-wrap: wrap;
 	gap: 7px 15px;
 	font-size: 12px;
-	color: #91a4be;
+	color: var(--ios-tertiary);
 	margin-top: 12px;
 	line-height: 1.8;
 }
 .import-position-values b {
 	font-weight: 500;
-	color: #7290b7;
+	color: var(--ios-tertiary);
 }
 .position-inline-editor {
-	border-top: 1px solid #e9eff8;
+	border-top: 1px solid var(--ios-fill);
 	padding-top: 14px;
 	margin-top: 14px;
 	display: grid;
@@ -276,7 +276,7 @@
 	flex-direction: column;
 	gap: 7px;
 	font-size: 13px;
-	color: #8199b9;
+	color: var(--ios-tertiary);
 	min-width: 0;
 }
 .position-inline-editor .ant-input-number {
@@ -293,7 +293,7 @@
 	gap: 15px;
 }
 .import-mapping-card {
-	border: 1px solid #e0e8f4;
+	border: 1px solid var(--ios-fill);
 	padding: 18px;
 	border-radius: 12px;
 	display: grid;
@@ -302,14 +302,14 @@
 }
 .import-mapping-card > h3 {
 	font-size: 13px;
-	color: #6383ae;
+	color: var(--ios-secondary);
 	grid-column: 1/-1;
 	margin-bottom: 1px;
 	overflow-wrap: anywhere;
 }
 .import-mapping-card > label {
 	font-size: 13px;
-	color: #8da2c0;
+	color: var(--ios-tertiary);
 	display: flex;
 	flex-direction: column;
 	gap: 7px;
@@ -328,7 +328,7 @@
 }
 .table-import-footer > span {
 	font-size: 13px;
-	color: #8299b9;
+	color: var(--ios-tertiary);
 }
 .table-import-footer > .ant-btn {
 	font-size: 12px;

@@ -3,7 +3,7 @@
 }
 .confirmation-date {
 	font-size: 12px;
-	color: #8098bb;
+	color: var(--ios-tertiary);
 	display: flex;
 	justify-content: space-between;
 	gap: 10px;
@@ -11,7 +11,7 @@
 }
 .confirmation-date > span {
 	font-size: 10px;
-	color: #a7b6cc;
+	color: var(--ios-tertiary);
 }
 .confirmation-work-list {
 	display: flex;
@@ -23,7 +23,7 @@
 	padding-right: 3px;
 }
 .confirmation-work {
-	border: 1px solid #dfe8f7;
+	border: 1px solid var(--ios-fill);
 	border-radius: 12px;
 	padding: 15px;
 }
@@ -37,35 +37,35 @@
 	line-height: 1.7;
 	flex: 1;
 	font-weight: 600;
-	color: #6081ac;
+	color: var(--ios-secondary);
 	overflow-wrap: anywhere;
 }
 .confirmation-work-icon {
 	display: grid;
 	place-items: center;
-	background: #edf4ff;
-	color: #80a6dd;
+	background: var(--ios-fill);
+	color: var(--ios-tertiary);
 	height: 23px;
 	width: 23px;
 	border-radius: 6px;
 	flex-shrink: 0;
 }
 .confirmation-work.removed {
-	background: #fffafa;
-	border-color: #f0e4e4;
+	background: var(--ios-danger-fill);
+	border-color: var(--ios-danger-fill);
 }
 .confirmation-work.removed .confirmation-work-icon {
-	background: #fceeee;
-	color: #ce9797;
+	background: var(--ios-danger-fill);
+	color: var(--ios-danger-line);
 }
 .confirmation-change-label {
 	font-size: 8px;
-	color: #9eb2d0;
+	color: var(--ios-tertiary);
 	line-height: 1.7;
 	margin-top: 3px;
 }
 .confirmation-work.removed .confirmation-change-label {
-	color: #c7a1a1;
+	color: var(--ios-danger-line);
 }
 .confirmation-values {
 	display: flex;
@@ -74,24 +74,24 @@
 	gap: 9px;
 	font-size: 11px;
 	margin-top: 13px;
-	color: #9cb0cd;
+	color: var(--ios-tertiary);
 }
 .confirmation-values > span:first-child {
 	margin-right: auto;
 	font-size: 10px;
-	color: #adbbce;
+	color: var(--ios-tertiary);
 }
 .confirmation-values del {
-	color: #a9b6c9;
+	color: var(--ios-tertiary);
 	text-decoration: none;
 }
 .confirmation-values strong {
 	font-size: 12px;
-	color: #5d83b9;
+	color: var(--ios-secondary);
 	font-weight: 600;
 }
 .confirmation-values svg {
-	color: #b9c7db;
+	color: var(--ios-separator);
 }
 .amount-values {
 	margin-top: 8px;
@@ -106,7 +106,7 @@
 	align-items: center;
 	gap: 12px;
 	margin: 17px 0;
-	color: #819bbc;
+	color: var(--ios-tertiary);
 	font-size: 11px;
 }
 .confirmation-crew > span {
@@ -120,16 +120,16 @@
 	align-items: center;
 }
 .confirmation-crew del {
-	color: #a9b9cf;
+	color: var(--ios-tertiary);
 	text-decoration: none;
 }
 .confirmation-crew strong {
-	color: #6088be;
+	color: var(--ios-secondary);
 	font-weight: 600;
 }
 .confirmation-total {
-	background: #f0f5ff;
-	border: 1px solid #dce7fa;
+	background: var(--ios-fill);
+	border: 1px solid var(--ios-fill);
 	border-radius: 13px;
 	padding: 19px;
 	margin-top: 18px;
@@ -139,11 +139,11 @@
 	justify-content: space-between;
 	gap: 12px;
 	font-size: 11px;
-	color: #83a0c5;
+	color: var(--ios-tertiary);
 }
 .confirmation-total-heading small {
 	font-size: 9px;
-	color: #adbed8;
+	color: var(--ios-tertiary);
 }
 .confirmation-total-amount {
 	display: flex;
@@ -155,26 +155,26 @@
 	font-size: 18px;
 	letter-spacing: -0.4px;
 	text-decoration: none;
-	color: #a0b4d3;
+	color: var(--ios-tertiary);
 }
 .confirmation-total-amount strong {
 	font-size: 28px;
 	letter-spacing: -0.8px;
-	color: #3d74bf;
+	color: var(--ios-secondary);
 	font-weight: 650;
 }
 .confirmation-total-amount > svg {
-	color: #a9c0df;
+	color: var(--ios-tertiary);
 }
 .confirmation-person {
-	border-top: 1px solid #dce6f7;
+	border-top: 1px solid var(--ios-fill);
 	display: flex;
 	justify-content: space-between;
 	gap: 12px;
 	padding-top: 14px;
 	margin-top: 16px;
 	font-size: 10px;
-	color: #8da7cc;
+	color: var(--ios-tertiary);
 }
 .confirmation-person > div {
 	display: flex;
@@ -183,17 +183,17 @@
 }
 .confirmation-person del {
 	text-decoration: none;
-	color: #adbfda;
+	color: var(--ios-tertiary);
 }
 .confirmation-person strong {
-	color: #6b91c4;
+	color: var(--ios-tertiary);
 	font-weight: 600;
 }
 .confirmation-delivery {
 	display: flex;
 	gap: 9px;
 	align-items: flex-start;
-	color: #8ca6c9;
+	color: var(--ios-tertiary);
 	font-size: 10px;
 	line-height: 1.8;
 	margin: 17px 0 0;
@@ -203,7 +203,7 @@
 	flex-shrink: 0;
 }
 .confirmation-delivery.not-connected {
-	color: #b29b70;
+	color: var(--ios-warning-line);
 }
 .confirmation-detail > .ant-alert {
 	margin-top: 16px;
@@ -215,7 +215,7 @@
 }
 .report-confirmation-modal .ant-modal-confirm-title {
 	font-size: 19px;
-	color: #4a6f9f;
+	color: var(--ios-secondary);
 }
 .report-confirmation-modal .ant-modal-confirm-content {
 	margin: 0 !important;

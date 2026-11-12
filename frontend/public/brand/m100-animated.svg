@@ -16,8 +16,7 @@
       to { opacity: 1; transform: translateY(0); }
     }
   </style>
-  <rect width="120" height="36" fill="#0d183b"/>
-  <g fill="#fff">
+  <g fill="#18181a">
     <path class="mark" d="M.5 0H8.5L26 20.75L20.75 27L8.5 12.5V36H.5Z M33.5 0H41.5V36H33.5V12H23.5Z"/>
     <use class="mark second" href="#zero"/>
     <g transform="translate(39 0)">

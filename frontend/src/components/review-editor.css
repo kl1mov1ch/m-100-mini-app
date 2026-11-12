@@ -4,7 +4,7 @@
 }
 .review-editor-hint {
 	font-size: 13px;
-	color: #526d87;
+	color: var(--ios-secondary);
 	line-height: 1.5;
 	margin: 0;
 }
@@ -29,14 +29,14 @@
 	display: grid;
 	gap: 10px;
 	padding: 14px;
-	border: 1px solid #d4e3f7;
+	border: 1px solid var(--ios-separator);
 	border-radius: 14px;
-	background: #f7faff;
+	background: var(--ios-surface);
 	min-width: 0;
 }
 .review-editor-work.removed {
-	background: #fff5f5;
-	border-color: #f1caca;
+	background: var(--ios-danger-fill);
+	border-color: var(--ios-danger-line);
 }
 .review-editor-heading {
 	align-items: flex-start;
@@ -45,21 +45,21 @@
 	font-size: 14px;
 	line-height: 1.5;
 	overflow-wrap: anywhere;
-	color: #234360;
+	color: var(--ios-label);
 }
 .review-editor-heading > .ant-btn {
 	flex: none;
-	color: #a24a4a;
+	color: var(--ios-danger);
 	min-height: 32px;
 	min-width: 32px;
 }
 .review-editor-comparison {
 	flex-wrap: wrap;
 	font-size: 12px;
-	color: #536b84;
+	color: var(--ios-secondary);
 }
 .review-editor-comparison > b {
-	color: #245ba3;
+	color: var(--ios-accent);
 }
 .review-editor-values {
 	display: grid;
@@ -73,7 +73,7 @@
 	gap: 6px;
 	min-width: 0;
 	font-size: 12px;
-	color: #536b84;
+	color: var(--ios-secondary);
 }
 .review-editor-values > div {
 	text-align: right;
@@ -84,7 +84,7 @@
 	display: flex;
 	align-items: center;
 	justify-content: flex-end;
-	color: #245ba3;
+	color: var(--ios-accent);
 }
 .review-editor .ant-input-number-group-wrapper,
 .review-editor .ant-input-number,
