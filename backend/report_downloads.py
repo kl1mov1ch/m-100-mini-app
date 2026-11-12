@@ -3,6 +3,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from threading import Lock
+from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
@@ -31,12 +32,17 @@ downloads_lock = Lock()
 
 
 def file_response(content, filename, content_type):
+    disposition = (
+        f'attachment; filename="{filename}"'
+        if filename.isascii()
+        else "attachment; filename=report.xlsx; filename*=UTF-8''" + quote(filename, safe="")
+    )
     return Response(
         content,
         media_type=content_type,
         headers={
             **PRIVATE_HEADERS,
-            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Disposition": disposition,
             "Access-Control-Allow-Origin": "https://web.telegram.org",
             "Access-Control-Expose-Headers": "Content-Disposition",
             "X-Content-Type-Options": "nosniff",
