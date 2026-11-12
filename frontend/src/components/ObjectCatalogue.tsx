@@ -5,8 +5,7 @@ import type { WorkspaceView } from '../App';
 import { Money, unit } from '../lib/format';
 import type { Position } from '../types';
 import { BitrixReadStatus } from './BitrixReadStatus';
-import { ObjectPlan } from './ObjectPlan';
-import { formatVolume, positionOverrun } from '../lib/position-volume';
+import { estimateStatus, formatVolume, positionOverrun } from '../lib/position-volume';
 
 export function ObjectCatalogue({
 	workspace,
@@ -16,7 +15,6 @@ export function ObjectCatalogue({
 	onView: (position: Position) => void;
 }) {
 	const [query, setQuery] = useState('');
-	const [planOpen, setPlanOpen] = useState(false);
 	const { allPositions, positions, openObjectSection } = workspace;
 	const term = query.trim().toLocaleLowerCase('ru');
 	const matching = allPositions
@@ -42,9 +40,6 @@ export function ObjectCatalogue({
 		<section className="object-panel">
 			<div className="object-panel-heading">
 				<h2>Смета</h2>
-				<Button size="small" onClick={() => setPlanOpen(true)}>
-					План работ
-				</Button>
 			</div>
 			<BitrixReadStatus workspace={workspace} />
 			<Input
@@ -70,15 +65,17 @@ export function ObjectCatalogue({
 								<small>
 									План {formatVolume(values.planned, position.unit)} · Выполнено{' '}
 									{formatVolume(values.completed, position.unit)}
-									{!overrun && <> · Остаток {formatVolume(values.remaining, position.unit)}</>}
+									{!overrun && <> · {estimateStatus(values, position.unit)}</>}
 								</small>
 								<small>
 									<Money value={values.rate} /> / {unit(position.unit)}
 								</small>
 								{overrun && (
 									<span className="catalogue-overrun-label">
-										<TriangleAlert size={14} /> Остаток{' '}
-										{formatVolume(overrun.remaining, position.unit)} · перерасход
+										<TriangleAlert size={14} />{' '}
+										{overrun.completed > overrun.planned
+											? estimateStatus(overrun, position.unit)
+											: 'Проверьте остаток'}
 									</span>
 								)}
 								{position.hidden && <Tag color="gold">Скрыта из подбора</Tag>}
@@ -93,7 +90,6 @@ export function ObjectCatalogue({
 					Заполнить первый отчёт
 				</Button>
 			)}
-			{planOpen && <ObjectPlan project={workspace.project} close={() => setPlanOpen(false)} />}
 		</section>
 	);
 }

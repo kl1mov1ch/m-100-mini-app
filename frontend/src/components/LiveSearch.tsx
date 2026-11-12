@@ -2,7 +2,8 @@ import { Alert, Empty, Input } from 'antd';
 import { Check, FileSpreadsheet, LoaderCircle, Plus, Search } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { request } from '../lib/api';
-import { Money, nf, shortName, unit } from '../lib/format';
+import { Money, shortName, unit } from '../lib/format';
+import { estimateStatus } from '../lib/position-volume';
 import type { Position, SearchResult } from '../types';
 export function LiveSearch({
 	project,
@@ -140,10 +141,7 @@ export function LiveSearch({
 							<span className="option-full">{p.name !== shortName(p) ? p.name : p.section}</span>
 							<span className="option-meta">
 								<span>
-									Остаток{' '}
-									<strong>
-										{nf.format(p.remaining)} {unit(p.unit)}
-									</strong>
+									<strong>{estimateStatus(p.bitrix || p, p.unit)}</strong>
 								</span>
 								<span>
 									<Money value={p.rate} /> / {unit(p.unit)}
