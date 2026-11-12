@@ -1,10 +1,11 @@
-import { Alert, Button, Input, Upload } from 'antd';
-import { Trash2, Unlink } from 'lucide-react';
+import { Alert, App, Button, Input, Upload } from 'antd';
+import { Download, Trash2, Unlink } from 'lucide-react';
 import { useState } from 'react';
 import type { WorkspaceView } from '../App';
 import { FieldHelp } from './FieldHelp';
 import { BitrixReadStatus } from './BitrixReadStatus';
 import { ObjectTableCard } from './ObjectTableCard';
+import { downloadReport } from '../lib/report-download';
 
 export function ObjectTablePanel({
 	workspace,
@@ -18,6 +19,7 @@ export function ObjectTablePanel({
 	loadingAction: boolean;
 }) {
 	const [configuring, setConfiguring] = useState(false);
+	const { message } = App.useApp();
 	const {
 		data,
 		positions,
@@ -99,6 +101,18 @@ export function ObjectTablePanel({
 					<Upload accept=".xlsx,.csv" maxCount={1} showUploadList={false} beforeUpload={upload}>
 						<Button loading={busy}>Загрузить Excel</Button>
 					</Upload>
+				)}
+				{config.source === 'file' && ready && (
+					<Button
+						icon={<Download size={16} />}
+						onClick={() =>
+							void downloadReport('/imports/workbook.xlsx', workspace.project).catch(
+								(error: Error) => message.error(error.message),
+							)
+						}
+					>
+						Скачать журнал
+					</Button>
 				)}
 			</div>
 			{configuring && (

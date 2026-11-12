@@ -5,8 +5,15 @@ import dayjs from '../lib/date';
 import { openExternalLink } from '../lib/telegram';
 
 export function ObjectTableCard({ workspace }: { workspace: WorkspaceView }) {
-	const { data, active, positions, checkingConnection, checkConnection, importRemote, busy } =
-		workspace;
+	const {
+		data,
+		active,
+		positions,
+		checkingConnection,
+		checkConnection,
+		reviewBitrixChanges,
+		busy,
+	} = workspace;
 	if (!data || !active || data.project?.id !== active.id || data.config.source !== 'bitrix')
 		return null;
 	const config = data.config;
@@ -31,24 +38,26 @@ export function ObjectTableCard({ workspace }: { workspace: WorkspaceView }) {
 					}
 				>
 					<b>{check.message}</b>
-					<span>{dayjs(check.checked_at).format('D MMMM, HH:mm')} · Минск</span>
+					{!check.issues.length && (
+						<span>{dayjs(check.checked_at).format('D MMMM, HH:mm')} · Минск</span>
+					)}
 					{check.reachable && check.issues.length > 0 && (
-						<details className="table-check-issues">
-							<summary>Замечания к данным: {check.issues.length}</summary>
-							<ul>
-								{check.issues.map((issue) => (
-									<li key={issue.id}>
-										<strong>{[issue.sheet, issue.cell].filter(Boolean).join(' · ')}</strong>
-										<span>{issue.message}</span>
-										{issue.position_name && <span>{issue.position_name}</span>}
-										{issue.fix && <small>{issue.fix}</small>}
-									</li>
-								))}
-							</ul>
-							<Button size="small" onClick={importRemote} loading={busy}>
-								Проверить и исправить
+						<>
+							<span>
+								{[
+									check.issues[0].sheet,
+									check.issues[0].affected_rows?.length
+										? `столбец ${check.issues[0].column}`
+										: check.issues[0].cell,
+								]
+									.filter(Boolean)
+									.join(' · ')}
+								{check.issues.length > 1 && ` · ещё ${check.issues.length - 1}`}
+							</span>
+							<Button size="small" onClick={reviewBitrixChanges} loading={busy}>
+								Исправить
 							</Button>
-						</details>
+						</>
 					)}
 				</div>
 			)}

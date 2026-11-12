@@ -19,6 +19,31 @@ def candidate(value, reason):
     return {"value": value, "reason": reason}
 
 
+def restore_day_values(db, positions, day):
+    report = db.execute("SELECT revision FROM reports WHERE date=?", (day,)).fetchone()
+    if report and report[0] > 0:
+        saved = {
+            row["item_id"]: row["quantity"]
+            for row in db.execute("SELECT item_id,quantity FROM entries WHERE date=?", (day,))
+        }
+    else:
+        baseline = json.loads(store.setting(db, "remote_days", "{}"))
+        if day not in baseline:
+            return {}
+        saved = baseline[day]
+    existing = defaultdict(list)
+    for position in store.positions(db):
+        key = (tables.text(position["name"]), normalized_unit(position["unit"]))
+        existing[key].append(position["id"])
+    result = {}
+    for position in positions:
+        key = (tables.text(position["name"]), normalized_unit(position["unit"]))
+        matches = existing[key]
+        if len(matches) == 1:
+            result[position["id"]] = saved.get(matches[0], 0)
+    return result
+
+
 def verified_options(db, analysis):
     existing = defaultdict(list)
     for position in store.positions(db):

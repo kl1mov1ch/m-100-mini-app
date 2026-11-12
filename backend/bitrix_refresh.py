@@ -55,7 +55,13 @@ def match_positions(local, incoming):
     for position in incoming:
         rows[position["source_row"]].append(position)
     matched = {}
+    journal_ids = {
+        position["id"]: position for position in incoming if position.get("journal_position")
+    }
     for position in local:
+        if position["id"] in journal_ids:
+            matched[position["id"]] = (position["id"], journal_ids[position["id"]])
+            continue
         same = [
             candidate
             for candidate in rows[position["source_row"]]
@@ -85,10 +91,10 @@ def apply_read(db, extracted):
             totals[ident] += quantity
     snapshot = {}
     for ident, position in matched.values():
-        completed = position["workbook_completed"]
+        completed = None if position.get("journal_position") else position["workbook_completed"]
         if completed is None:
             completed = position["baseline"] + totals[ident]
-        remaining = position["workbook_remaining"]
+        remaining = None if position.get("journal_position") else position["workbook_remaining"]
         snapshot[ident] = {
             "planned": position["planned"],
             "rate": position["rate"],
@@ -115,7 +121,10 @@ def apply_read(db, extracted):
         row = (warning.get("sheet"), warning.get("row"))
         invalid_fields[row].add(warning.get("field"))
         if warning.get("date"):
-            invalid_days.add((*row, warning["date"]))
+            invalid_days.update(
+                (row[0], affected, warning["date"])
+                for affected in warning.get("affected_rows", [row[1]])
+            )
         duplicate_days.update((row[0], item["date"]) for item in warning.get("duplicates", []))
     issues = [warning_issue(warning) for warning in relevant_warnings]
     if layout_changed:
@@ -130,7 +139,10 @@ def apply_read(db, extracted):
     remote_by_id = dict(matched.values())
     previous = remote_positions(db)
     seen = json.loads(store.setting(db, "bitrix_read_days", "{}"))
-    saved_days = {row[0] for row in db.execute("SELECT date FROM reports")}
+    saved_days = {
+        row["date"]: row["sync_status"]
+        for row in db.execute("SELECT date,sync_status FROM reports")
+    }
     baseline = json.loads(store.setting(db, "remote_days", "{}"))
     current = entries_by_day(
         dict(row) for row in db.execute("SELECT item_id,date,quantity FROM entries")
@@ -153,9 +165,10 @@ def apply_read(db, extracted):
                     }
                 )
         if day in saved_days:
-            if not bitrix.equal_quantities(
-                fresh, baseline.get(day, {})
-            ) and not bitrix.equal_quantities(fresh, current.get(day, {})):
+            if not bitrix.equal_quantities(fresh, current.get(day, {})) and (
+                not bitrix.equal_quantities(fresh, baseline.get(day, {}))
+                or saved_days[day] in ("synced", "error")
+            ):
                 local_day = current.get(day, {})
                 for ident in sorted((fresh.keys() | local_day.keys()) & snapshot.keys()):
                     remote_position = remote_by_id[ident]
@@ -232,7 +245,7 @@ def apply_read(db, extracted):
 def extract_workbook(content, mappings):
     if not mappings:
         mappings, _ = tables.discover(content)
-    return tables.extract(content, mappings)
+    return bitrix.read_workbook(content, mappings)
 
 
 async def refresh_project(project, max_age=90):

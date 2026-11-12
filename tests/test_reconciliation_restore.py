@@ -102,11 +102,19 @@ def test_repeated_edits_removal_and_day_restore_recalculate_bitrix_columns(clien
         report = response.json()
         assert report["sync_status"] == "synced", report
         revision = report["revision"]
-        values = openpyxl.load_workbook(io.BytesIO(current), data_only=True)["Монтаж"]
-        assert values["E2"].value == quantity + 7
-        assert values["F2"].value == 93 - quantity
-        assert values["G2"].value == (quantity + 7) * 2
-        assert values["I2"].value == 7
+        book = openpyxl.load_workbook(io.BytesIO(current), data_only=True)
+        assert book["Монтаж"]["H2"].value is None and book["Монтаж"]["I2"].value == 7
+        values = book["Журнал работ"]
+        assert values["I5"].value == quantity + 7
+        assert values["G5"].value == 93 - quantity
+        assert values["H5"].value == (quantity + 7) * 2
+        column = next(cell.column for cell in values[3] if str(cell.value)[:10] == today())
+        assert values.cell(5, column).value == quantity
+        assert [values.cell(row, column).value for row in (7, 8, 12)] == [
+            quantity * 2,
+            5,
+            int(quantity > 0),
+        ]
     preview = client.get(f"/api/report/{today()}/restore-preview", headers=headers).json()
     assert preview["target"]["lines"] == []
     restored = client.post(
@@ -114,8 +122,8 @@ def test_repeated_edits_removal_and_day_restore_recalculate_bitrix_columns(clien
     )
     assert restored.status_code == 200, restored.text
     assert restored.json()["lines"] == [] and restored.json()["sync_status"] == "synced"
-    values = openpyxl.load_workbook(io.BytesIO(current), data_only=True)["Монтаж"]
-    assert values["E2"].value == 7 and values["F2"].value == 93 and values["G2"].value == 14
+    values = openpyxl.load_workbook(io.BytesIO(current), data_only=True)["Журнал работ"]
+    assert values["I5"].value == 7 and values["G5"].value == 93 and values["H5"].value == 14
     assert (
         client.get("/api/changes", headers=headers).json()[0]["payload"]["action"] == "restore_day"
     )

@@ -1,7 +1,6 @@
 import { Button, Drawer, Input, Upload } from 'antd';
 import { LoaderCircle, Mic, Sparkles, Square, X } from 'lucide-react';
 import type { WorkspaceView } from '../App';
-import { ReportDraftFields } from './ReportDraftFields';
 import './voice-report.css';
 
 const exampleReport =
@@ -97,11 +96,13 @@ export function VoiceReportDrawer({ workspace }: { workspace: WorkspaceView }) {
 				size="large"
 				disabled={!freeText.trim() || audioInput.recording || audioInput.pending}
 				loading={parsing}
-				onClick={matchReportText}
+				onClick={() => {
+					setTextOpen(false);
+					void matchReportText();
+				}}
 			>
 				Подобрать работы
 			</Button>
-			<ReportDraftFields workspace={workspace} />
 		</Drawer>
 	);
 }

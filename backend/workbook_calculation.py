@@ -254,6 +254,13 @@ class FormulaEvaluator:
                 return values[0] % values[1]
             if function == "COUNT":
                 return len(flattened)
+            if (
+                function == "COUNTIF"
+                and len(values) == 2
+                and values[1] == ">0"
+                and isinstance(values[0], list)
+            ):
+                return sum(isinstance(value, (int, float)) and value > 0 for value in values[0])
             if function == "AVERAGE" and flattened:
                 return sum(flattened) / len(flattened)
             if function == "MIN":
@@ -333,11 +340,13 @@ def cache_formulas(content, issues=None):
     return output.getvalue()
 
 
-def verify_calculations(expected, actual):
+def verify_calculations(expected, actual, sheet_name=None):
     formulas = openpyxl.load_workbook(io.BytesIO(expected), data_only=False)
     values = openpyxl.load_workbook(io.BytesIO(expected), data_only=True)
     remote = openpyxl.load_workbook(io.BytesIO(actual), data_only=True)
     for sheet in formulas:
+        if sheet_name and sheet.title != sheet_name:
+            continue
         for row in sheet:
             for cell in row:
                 if cell.data_type != "f":

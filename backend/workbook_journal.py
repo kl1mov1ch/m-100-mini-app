@@ -1,19 +1,53 @@
 import io
+import json
 from datetime import date
 
 import openpyxl
+from openpyxl.comments import Comment
 from openpyxl.formatting.rule import CellIsRule
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
+from openpyxl.workbook.views import BookView
 from openpyxl.workbook.properties import CalcProperties
 
 JOURNAL_MARKER = "M100 • Журнал работ"
+JOURNAL_SOURCE = "M100 • рабочий лист"
 AMOUNT_FORMAT = '#,##0.00 "BYN"'
 VOLUME_FORMAT = "#,##0.####;[Red]-#,##0.####;0"
 
 
 def is_journal(sheet):
     return sheet["A2"].value == JOURNAL_MARKER
+
+
+def journal_mapping(sheet):
+    if not is_journal(sheet) or sheet["B2"].value != JOURNAL_SOURCE:
+        return None
+    return {
+        "name": sheet.title,
+        "header_row": 1,
+        "date_row": 3,
+        "mapping": {"name": 2, "unit": 3, "planned": 4, "rate": 5, "completed": 9},
+        "rows": sum(1 for cell in sheet["A"] if isinstance(cell.value, int)),
+        "columns": [
+            {"index": cell.column, "label": str(cell.value)} for cell in sheet[1] if cell.value
+        ],
+    }
+
+
+def journal_row(cell):
+    if cell.comment and cell.comment.author == "M100":
+        try:
+            ident, section, baseline = json.loads(cell.comment.text)
+            if (
+                isinstance(ident, str)
+                and isinstance(section, str)
+                and isinstance(baseline, (float, int))
+            ):
+                return ident, section, baseline
+        except (ValueError, TypeError):
+            pass
+    return None
 
 
 def journal_sheet(book):
@@ -43,6 +77,8 @@ def format_journal(content, catalogue, entries, crew_by_day, issues):
         ]
     sheet = journal_sheet(book)
     book.active = sheet
+    if not book.views:
+        book.views = [BookView()]
     if book.calculation is None:
         book.calculation = CalcProperties()
     book.calculation.fullCalcOnLoad = True
@@ -67,6 +103,7 @@ def format_journal(content, catalogue, entries, crew_by_day, issues):
         ]
     )
     sheet["A2"] = JOURNAL_MARKER
+    sheet["B2"] = JOURNAL_SOURCE
     sheet.row_dimensions[2].hidden = True
     sheet.row_dimensions[1].height = 36
     sheet.row_dimensions[3].height = 25
@@ -81,7 +118,12 @@ def format_journal(content, catalogue, entries, crew_by_day, issues):
         sheet.cell(4, column, "Объём")
         sheet.column_dimensions[get_column_letter(column)].width = 17
     for row, position in enumerate(catalogue, 5):
-        sheet.cell(row, 1, row - 4)
+        baseline = float(position.get("baseline") or 0)
+        ordinal = sheet.cell(row, 1, row - 4)
+        ordinal.comment = Comment(
+            json.dumps([position["id"], position.get("section", ""), baseline], ensure_ascii=False),
+            "M100",
+        )
         name = sheet.cell(row, 2, str(position["name"]))
         name.data_type = "s"
         measure = sheet.cell(row, 3, str(position["unit"]))
@@ -91,12 +133,9 @@ def format_journal(content, catalogue, entries, crew_by_day, issues):
         sheet.cell(row, 6, f"=ROUND(D{row}*E{row},2)")
         sheet.cell(row, 7, f"=D{row}-I{row}")
         sheet.cell(row, 8, f"=ROUND(I{row}*E{row},2)")
-        baseline = float(position.get("baseline") or 0)
         sheet.cell(row, 9, f"={baseline}+SUM(J{row}:{last_column}{row})" if days else baseline)
         for column, day in enumerate(days, 10):
-            amount = quantities.get((position["id"], day))
-            if amount:
-                sheet.cell(row, column, amount)
+            sheet.cell(row, column, quantities.get((position["id"], day), 0))
         sheet.row_dimensions[row].height = max(20, min(70, 16 * (1 + len(position["name"]) // 55)))
 
     totals = last_row + 2
@@ -106,6 +145,7 @@ def format_journal(content, catalogue, entries, crew_by_day, issues):
         "На человека, BYN",
         "Чел. с +0,01 BYN",
         "С повышенной долей, BYN",
+        "Позиций выполнено",
     )
     for row, label in enumerate(labels, totals):
         sheet.cell(row, 2, label)
@@ -119,6 +159,9 @@ def format_journal(content, catalogue, entries, crew_by_day, issues):
         crew = f"{letter}{totals + 1}"
         share = f"{letter}{totals + 2}"
         extra = f"{letter}{totals + 3}"
+        sheet.cell(
+            totals + 5, column, f'=COUNTIF({letter}5:{letter}{last_row},">0")' if catalogue else 0
+        )
         sheet.cell(
             totals,
             column,
@@ -135,7 +178,7 @@ def format_journal(content, catalogue, entries, crew_by_day, issues):
             sheet.cell(row, column).number_format = AMOUNT_FORMAT
 
     line = Side(style="hair", color="D6E2F0")
-    for row in sheet.iter_rows(min_row=1, max_row=totals + 4, max_col=9 + len(days)):
+    for row in sheet.iter_rows(min_row=1, max_row=totals + 5, max_col=9 + len(days)):
         for cell in row:
             header = cell.row == 1
             date_heading = cell.row in (3, 4) and cell.column >= 10
