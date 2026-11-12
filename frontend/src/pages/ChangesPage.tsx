@@ -7,6 +7,7 @@ import { countLabel, nf, unit } from '../lib/format';
 import type { Change } from '../types';
 
 const actionLabels: Record<string, string> = {
+	project_name_normalized: 'Уточнено название объекта',
 	restore_day: 'Возврат к началу дня',
 	catalogue_reconciled: 'Обновление сметы',
 	catalogue_position_hide: 'Работа скрыта из подбора',

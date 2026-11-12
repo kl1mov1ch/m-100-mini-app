@@ -7,7 +7,7 @@ import pytest
 
 from backend.documents import extraction, worker
 from backend.documents.normalization import build_groups, financial_summary, normalise
-from backend.naming import unique_project_name
+from backend.naming import normalize_existing_project_names, unique_project_name
 
 
 def item(
@@ -83,6 +83,19 @@ def test_object_names_are_unique_ignoring_case_and_spaces():
         unique_project_name("  Детский   сад ", ["детский сад", "Детский сад (2)"])
         == "Детский сад (3)"
     )
+
+
+def test_existing_duplicate_names_keep_objects_and_reserved_suffixes():
+    from types import SimpleNamespace
+
+    projects = [
+        SimpleNamespace(id=str(index), owner_id="one", name=name)
+        for index, name in enumerate(["Объект", "объект", "Объект (2)"])
+    ]
+    changes = normalize_existing_project_names(projects)
+    assert [project.name for project in projects] == ["Объект", "объект (3)", "Объект (2)"]
+    assert [project.id for project in projects] == ["0", "1", "2"]
+    assert len(changes) == 1 and changes[0][1] == "объект"
 
 
 @pytest.mark.parametrize(
@@ -169,9 +182,27 @@ def test_table_quantity_requires_independent_check_and_stays_flagged(monkeypatch
 
 def test_structured_table_recovers_quote_and_column_without_ai_transcription(monkeypatch):
     text = "Таблица: ячейки по строкам и колонкам.\nСтрока 2: C3–C4=Поверхность, м² |\nСтрока 3: C3–C4=11 |\nСтрока 4: C3–C4=12,75 | C1–C2=Воздуховод 200х300 |"
-    replies = iter([{"works": [{"name": "Изоляция воздуховода 200х300", "category": "Вентиляция", "unit": "м²", "quantity": 12.75, "source_row": 4, "quantity_column": "C3–C4"}]}, {"accepted": [0]}])
+    replies = iter(
+        [
+            {
+                "works": [
+                    {
+                        "name": "Изоляция воздуховода 200х300",
+                        "category": "Вентиляция",
+                        "unit": "м²",
+                        "quantity": 12.75,
+                        "source_row": 4,
+                        "quantity_column": "C3–C4",
+                    }
+                ]
+            },
+            {"accepted": [0]},
+        ]
+    )
+
     async def complete(*args):
         return next(replies)
+
     monkeypatch.setattr(extraction.matcher, "complete", complete)
     works, _ = asyncio.run(extraction.propose(text, 1, {}, "Вентиляция"))
     assert len(works) == 1 and works[0]["quantity"] == 12.75
