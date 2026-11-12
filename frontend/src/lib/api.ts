@@ -4,6 +4,7 @@ export class RequestError extends Error {
 	constructor(
 		message: string,
 		readonly code?: string,
+		readonly status?: number,
 	) {
 		super(message);
 	}
@@ -45,6 +46,7 @@ export async function request<T>(
 				? 'Этот раздел недоступен. Обновите приложение.'
 				: detail || 'Проверьте введённые данные',
 			typeof d.detail?.code === 'string' ? d.detail.code : undefined,
+			r.status,
 		);
 	}
 	return r.json();

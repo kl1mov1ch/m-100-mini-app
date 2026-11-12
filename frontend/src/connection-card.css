@@ -130,7 +130,7 @@
 	border-color: var(--ios-warning-line);
 }
 .table-check-result.failed b {
-	color: var(--ios-warning-line);
+	color: var(--ios-warning-text);
 }
 .table-check-issues {
 	font-size: 12px;

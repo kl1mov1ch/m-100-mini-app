@@ -37,7 +37,7 @@ export function useWorkspace() {
 	const [releaseNavigation] = useState(takeReleaseNavigation);
 	const [session, setSession] = useState<Session | null>(null),
 		[data, setData] = useState<Data | null>(null),
-		[failure, setFailure] = useState('');
+		[failure, setFailure] = useState<Error | null>(null);
 	const [page, setPage] = useState(
 			releaseNavigation?.page ||
 				(new URLSearchParams(location.search).has('object') ? 'today' : 'objects'),
@@ -197,7 +197,7 @@ export function useWorkspace() {
 	};
 	useEffect(() => {
 		window.Telegram?.WebApp?.ready();
-		loadSession().catch((e) => setFailure(e.message));
+		loadSession().catch(setFailure);
 	}, []);
 	useEffect(() => {
 		setDiskWebhooks([]);
@@ -225,7 +225,7 @@ export function useWorkspace() {
 		setData(null);
 		setEstimateReport(null);
 		localStorage.setItem('selected-object' + (previewUser || ''), project);
-		loadData().catch((e) => setFailure(e.message));
+		loadData().catch(setFailure);
 	}, [project, session?.user.role]);
 	useEffect(() => {
 		if (!session) return;
@@ -1059,7 +1059,6 @@ export function useWorkspace() {
 		data,
 		setData,
 		failure,
-		setFailure,
 		page,
 		setPage,
 		project,

@@ -294,10 +294,6 @@
 .object-page .work-card-heading {
 	grid-template-columns: minmax(0, 1fr) auto;
 }
-.dashboard-role {
-	max-width: 360px;
-	margin-block: 0 14px;
-}
 .role-switch {
 	min-width: 0;
 	touch-action: pan-y;
@@ -346,43 +342,57 @@
 }
 .admin-metrics {
 	display: grid;
-	grid-template-columns: repeat(2, minmax(0, 1fr));
-	gap: 8px;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	margin: 0;
+	padding: 12px;
+	border-radius: var(--ios-group-radius);
+	background: var(--ios-surface);
+	box-shadow: var(--ios-group-shadow);
 }
+
 .admin-metrics > div {
 	display: grid;
-	gap: 5px;
+	align-content: start;
+	gap: 4px;
 	min-width: 0;
-	border: 1px solid var(--ios-separator);
-	border-radius: 12px;
-	background: white;
-	padding: 11px 12px;
+	padding-inline: 10px;
 }
-.admin-metrics > div > span {
+
+.admin-metrics > div:not(:first-child, :nth-child(2)) {
+	border-inline-start: 1px solid var(--ios-separator);
+}
+
+.admin-metrics dt {
 	color: var(--ios-secondary);
 	font-size: 12px;
+	overflow-wrap: anywhere;
 }
-.admin-metrics strong {
-	font-size: clamp(16px, 4.6vw, 22px);
+
+.admin-metrics dd {
+	margin: 0;
+	font-size: 18px;
+	font-weight: 650;
 	font-variant-numeric: tabular-nums;
+	overflow-wrap: anywhere;
 }
+
+.admin-metrics .admin-metric-money {
+	grid-column: 1 / -1;
+	margin-bottom: 10px;
+	padding-bottom: 10px;
+	border-bottom: 1px solid var(--ios-separator);
+}
+
+.admin-metrics .admin-metric-money dd {
+	font-size: clamp(22px, 6vw, 28px);
+}
+
 .admin-metrics .money {
 	white-space: normal;
 }
-.admin-metrics .admin-metric-money {
-	background: var(--ios-fill);
-	border-color: var(--ios-separator);
-	color: var(--ios-accent);
-}
-.admin-metrics .admin-metric-pending {
-	background: var(--ios-warning-fill);
-	border-color: var(--ios-warning-line);
+
+.admin-metric-pending dd {
 	color: var(--ios-warning-text);
-}
-.admin-metrics .admin-metric-done {
-	background: var(--ios-success-fill);
-	border-color: var(--ios-success-line);
-	color: var(--ios-success);
 }
 .admin-settings-details > summary {
 	display: flex;
@@ -413,7 +423,18 @@
 		grid-column: auto;
 	}
 	.admin-metrics {
-		grid-template-columns: repeat(4, minmax(0, 1fr));
+		grid-template-columns: minmax(0, 1.5fr) repeat(3, minmax(0, 1fr));
+	}
+
+	.admin-metrics > div:not(:first-child) {
+		border-inline-start: 1px solid var(--ios-separator);
+	}
+
+	.admin-metrics .admin-metric-money {
+		grid-column: auto;
+		margin: 0;
+		padding-bottom: 0;
+		border-bottom: 0;
 	}
 }
 @media (max-width: 420px) {

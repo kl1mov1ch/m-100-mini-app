@@ -13,9 +13,9 @@
 	--ios-success: #187943;
 	--ios-success-fill: #edf8f0;
 	--ios-success-line: #c5e8d1;
-	--ios-warning-text: #815100;
-	--ios-warning-fill: #fff7e4;
-	--ios-warning-line: #ebcf84;
+	--ios-warning-text: #5b3a7c;
+	--ios-warning-fill: #f5f0fa;
+	--ios-warning-line: #ded0eb;
 	--ios-danger: #bd252d;
 	--ios-danger-fill: #fff0ef;
 	--ios-danger-line: #f2c5c5;
@@ -84,7 +84,6 @@ h3 {
 	.team-card,
 	.account-card,
 	.report-filter-card,
-	.admin-metrics > div,
 	.empty-panel,
 	.quick-report-composer,
 	.overview-hero,
@@ -166,14 +165,14 @@ h3 {
 	color: var(--ios-accent);
 }
 
-.admin-metrics > div:nth-child(n) {
-	background: var(--ios-surface);
-	border-color: transparent;
+.report-metrics strong {
+	font-variant-numeric: tabular-nums;
 }
 
-.report-metrics strong,
-.admin-metrics > div strong {
-	font-variant-numeric: tabular-nums;
+.ant-tag.status-tag-attention {
+	color: var(--ios-warning-text);
+	background: var(--ios-warning-fill);
+	border-color: var(--ios-warning-line);
 }
 
 .report-metrics {

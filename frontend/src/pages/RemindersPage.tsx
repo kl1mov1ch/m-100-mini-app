@@ -147,7 +147,8 @@ export function RemindersPage({ workspace }: { workspace: WorkspaceView }) {
 			)}
 			<section className="settings-card">
 				<h2>
-					Без отчёта сегодня <Tag color="orange">{data?.recipients.length || 0}</Tag>
+					Без отчёта сегодня{' '}
+					<Tag className="status-tag-attention">{data?.recipients.length || 0}</Tag>
 				</h2>
 				<div className="reminder-recipients">
 					{data?.recipients.map((recipient) => (
@@ -176,7 +177,10 @@ export function RemindersPage({ workspace }: { workspace: WorkspaceView }) {
 						<div key={item.created_at + index}>
 							<b>
 								{item.name}{' '}
-								<Tag color={item.status === 'sent' ? 'green' : 'orange'}>
+								<Tag
+									color={item.status === 'sent' ? 'green' : undefined}
+									className={item.status === 'sent' ? undefined : 'status-tag-attention'}
+								>
 									{item.status === 'sent'
 										? 'Отправлено'
 										: item.status === 'sending'

@@ -49,7 +49,7 @@ export function CatalogueReconciliation(props: ReconciliationProps) {
 							<div className="reconciliation-heading">
 								<TriangleAlert size={16} />
 								<b>{old.name}</b>
-								{row.method === 'ai' && <Tag color="gold">Предложил ИИ</Tag>}
+								{row.method === 'ai' && <Tag className="status-tag-attention">Предложил ИИ</Tag>}
 							</div>
 							<small>
 								{old.source_sheet || 'Смета'} · строка {old.source_row} · {unit(old.unit)}

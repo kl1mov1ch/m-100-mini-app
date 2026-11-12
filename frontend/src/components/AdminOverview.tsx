@@ -74,35 +74,31 @@ export function AdminOverview({ workspace }: { workspace: WorkspaceView }) {
 					</label>
 				)}
 			</div>
-			<div
+			<dl
 				className="admin-metrics"
 				aria-label={'Сводка за ' + dayjs(session.selected_date).format('D MMMM')}
 			>
 				<div className="admin-metric-money">
-					<span>Выработка</span>
-					<strong>
+					<dt>Выработка за день</dt>
+					<dd>
 						<Money value={projects.reduce((sum, project) => sum + project.today_amount, 0)} />
-					</strong>
+					</dd>
 				</div>
-				<div
-					className={
-						expected && completed < expected ? 'admin-metric-pending' : 'admin-metric-done'
-					}
-				>
-					<span>Отчётов сдано</span>
-					<strong>
+				<div className={expected && completed < expected ? 'admin-metric-pending' : undefined}>
+					<dt>Отчёты</dt>
+					<dd>
 						{completed} из {expected}
-					</strong>
+					</dd>
 				</div>
 				<div>
-					<span>Выполнено работ</span>
-					<strong>{projects.reduce((sum, project) => sum + project.today_positions, 0)}</strong>
+					<dt>Работы</dt>
+					<dd>{projects.reduce((sum, project) => sum + project.today_positions, 0)}</dd>
 				</div>
 				<div>
-					<span>Работников</span>
-					<strong>{projects.reduce((sum, project) => sum + (project.today_crew || 0), 0)}</strong>
+					<dt>Работники</dt>
+					<dd>{projects.reduce((sum, project) => sum + (project.today_crew || 0), 0)}</dd>
 				</div>
-			</div>
+			</dl>
 		</section>
 	);
 }
