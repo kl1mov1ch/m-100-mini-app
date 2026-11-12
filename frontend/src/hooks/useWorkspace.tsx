@@ -321,6 +321,17 @@ export function useWorkspace() {
 		setPage(isAdmin ? 'today' : 'object');
 		if (id !== project) setDay(selectedDay);
 	};
+	const selectQuickReportProject = (id: string) => {
+		if (isAdmin || !session?.projects.some((item) => item.id === id)) return;
+		if (id !== project) {
+			matchRequest.current?.abort();
+			audioInput.cancel();
+			setFreeText('');
+			setParsed([]);
+			setDay(session.today);
+			setProject(id);
+		}
+	};
 	const openHistoryReport = (objectId: string, reportDay: string) => {
 		if (objectId === project) void changeDay(reportDay);
 		else {
@@ -544,7 +555,7 @@ export function useWorkspace() {
 		if (!report) return;
 		const editor = createRef<ReportReviewHandle>();
 		const reviewModal = modal.confirm({
-			title: 'Общий отчёт за день',
+			title: active ? 'Отчёт · ' + active.name : 'Общий отчёт за день',
 			icon: null,
 			width: 620,
 			className: 'report-confirmation-modal',
@@ -1132,6 +1143,7 @@ export function useWorkspace() {
 		refresh,
 		changeDay,
 		selectObject,
+		selectQuickReportProject,
 		addLine,
 		patchLine,
 		amount,

@@ -1,6 +1,6 @@
-import { Button, Input } from 'antd';
+import { Button, Input, Select } from 'antd';
 import { Mic, Square } from 'lucide-react';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import type { WorkspaceView } from '../App';
 import { ReportDraftFields } from './ReportDraftFields';
 
@@ -23,23 +23,50 @@ export function QuickReportComposer({
 		audioInput,
 		matchReportText,
 		parsing,
+		selectQuickReportProject,
+		busy,
 	} = workspace;
+	const [selectedProject, setSelectedProject] = useState<string>();
+	const explicitlySelected = selectedProject === project;
 	useEffect(() => {
-		if (!inline && day !== session.today) void changeDay(session.today);
-	}, [project, day, session.today, inline]);
-	const disabled = !active || !positions.length || (!inline && day !== session.today);
+		if (!inline && selectedProject && !explicitlySelected) setSelectedProject(undefined);
+		if (!inline && explicitlySelected && day !== session.today) void changeDay(session.today);
+	}, [project, selectedProject, explicitlySelected, day, session.today, inline]);
+	const disabled =
+		!active || !positions.length || (!inline && (!explicitlySelected || day !== session.today));
 	const todayReport = workspace.todayRow;
 	return (
 		<section className="quick-report-composer">
 			{!inline && (
 				<div className="quick-report-heading">
 					<h2>Что сделали сегодня?</h2>
-					<span>
-						{todayReport?.revision
-							? 'Отчёт за сегодня есть · можно добавить работы'
-							: 'Сегодня отчёт ещё не заполнен'}
-					</span>
+					{explicitlySelected && workspace.data?.project?.id === project && (
+						<span>
+							{!positions.length
+								? 'В смете объекта пока нет работ'
+								: todayReport?.revision
+									? 'Отчёт за сегодня есть · можно добавить работы'
+									: 'Сегодня отчёт ещё не заполнен'}
+						</span>
+					)}
 				</div>
+			)}
+			{!inline && (
+				<label className="quick-report-project">
+					<span>Объект</span>
+					<Select
+						aria-label="Объект для сегодняшнего отчёта"
+						aria-required="true"
+						placeholder="Выберите объект"
+						value={explicitlySelected ? selectedProject : undefined}
+						options={session.projects.map(({ id, name }) => ({ value: id, label: name }))}
+						disabled={busy || audioInput.recording || audioInput.pending}
+						onChange={(id) => {
+							setSelectedProject(id);
+							selectQuickReportProject(id);
+						}}
+					/>
+				</label>
 			)}
 			<Input.TextArea
 				aria-label="Сообщение о выполненных работах"
@@ -49,7 +76,11 @@ export function QuickReportComposer({
 				maxLength={8000}
 				disabled={disabled}
 				readOnly={audioInput.recording || audioInput.pending}
-				placeholder="Например: 5 человек, проложили 100 м медной трубы 6 мм"
+				placeholder={
+					!inline && !explicitlySelected
+						? 'Сначала выберите объект'
+						: 'Например: 5 человек, проложили 100 м медной трубы 6 мм'
+				}
 			/>
 			<div className="quick-report-actions">
 				{!inline && (

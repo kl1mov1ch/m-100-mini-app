@@ -358,10 +358,6 @@ h3 {
 	border-bottom-color: var(--ios-separator);
 }
 
-.voice-report-drawer .ant-drawer-body {
-	padding-bottom: calc(20px + var(--app-safe-bottom));
-}
-
 .voice-sheet-text.ant-input,
 .quick-report-composer textarea.ant-input {
 	background: var(--ios-fill);
