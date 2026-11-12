@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import type { WorkspaceView } from '../App';
 import { request } from '../lib/api';
 import dayjs from '../lib/date';
-import { Money } from '../lib/format';
+import { Money, unit } from '../lib/format';
 import { estimateStatus, formatVolume, positionOverrun } from '../lib/position-volume';
 import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
 import type { CatalogueAction, Position, PositionHistory } from '../types';
@@ -52,6 +52,12 @@ export function PositionDetails({
 	const [tab, setTab] = useState('history');
 	const overrun = positionOverrun(position);
 	const source = position.bitrix;
+	const sourceDiffers =
+		source &&
+		(['planned', 'completed', 'remaining', 'rate'] as const).some(
+			(field) => Math.abs(source[field] - position[field]) > 0.0001,
+		);
+	const remaining = position.planned - position.completed;
 	const quantity = (value: number) => formatVolume(value, position.unit);
 	const missingBitrix =
 		data?.config.source === 'bitrix' &&
@@ -98,29 +104,58 @@ export function PositionDetails({
 			value
 		);
 	return (
-		<Modal open title={position.name} onCancel={close} footer={null} width={650}>
+		<Modal
+			open
+			className="position-details-sheet"
+			title={position.name}
+			onCancel={close}
+			footer={null}
+			width={650}
+		>
 			<div className="position-details swipe-surface" {...tabSwipe}>
-				<div className="position-totals">
-					<span>
-						План <b>{quantity(position.planned)}</b>
-					</span>
-					<span>
-						Выполнено <b>{quantity(position.completed)}</b>
-					</span>
-					<span>
-						<b>{estimateStatus(position, position.unit)}</b>
-					</span>
-				</div>
-				{source && (
-					<p className="position-source">
-						{data?.config.bitrix_read?.status === 'unavailable'
-							? 'Последнее чтение Битрикс24'
-							: 'Битрикс24'}{' '}
-						· план {quantity(source.planned)} · выполнено {quantity(source.completed)} ·{' '}
-						<b>{estimateStatus(source, position.unit)}</b>
-					</p>
+				<p className="position-rate">
+					<Money value={position.rate} /> / {unit(position.unit)}
+				</p>
+				<dl className="position-totals">
+					<div>
+						<dt>По смете</dt>
+						<dd>{quantity(position.planned)}</dd>
+					</div>
+					<div>
+						<dt>Выполнено</dt>
+						<dd>{quantity(position.completed)}</dd>
+					</div>
+					<div className={remaining < 0 ? 'position-total-excess' : ''}>
+						<dt>{remaining < 0 ? 'Перерасход' : 'Осталось'}</dt>
+						<dd>{quantity(Math.abs(remaining))}</dd>
+					</div>
+				</dl>
+				{source && sourceDiffers && (
+					<details className="position-source-comparison">
+						<summary>Есть различия с Битрикс24</summary>
+						<dl>
+							<div>
+								<dt>По смете</dt>
+								<dd>{quantity(source.planned)}</dd>
+							</div>
+							<div>
+								<dt>Выполнено</dt>
+								<dd>{quantity(source.completed)}</dd>
+							</div>
+							<div>
+								<dt>Расценка</dt>
+								<dd>
+									<Money value={source.rate} /> / {unit(position.unit)}
+								</dd>
+							</div>
+							<div>
+								<dt>{source.remaining < 0 ? 'Перерасход' : 'Осталось'}</dt>
+								<dd>{quantity(Math.abs(source.remaining))}</dd>
+							</div>
+						</dl>
+					</details>
 				)}
-				{overrun && (
+				{overrun && (inconsistent || (overrun.fromBitrix && sourceDiffers)) && (
 					<Alert
 						type="warning"
 						showIcon
@@ -180,14 +215,18 @@ export function PositionDetails({
 										</section>
 									))}
 									{!!history?.days.length && (
-										<details>
+										<details open className="position-daily-history">
 											<summary>Объёмы по дням · {history.days.length}</summary>
 											{history.days.map((entry) => (
-												<p key={entry.date}>
-													{dayjs(entry.date).format('D MMM YYYY')} ·{' '}
-													<b>{quantity(entry.quantity)}</b>
-													{entry.sync_status === null ? ' · из таблицы' : ''}
-												</p>
+												<div className="position-day-row" key={entry.date}>
+													<span>
+														<time dateTime={entry.date}>
+															{dayjs(entry.date).format('D MMMM YYYY')}
+														</time>
+														<small>{entry.sync_status === null ? 'Из таблицы' : 'Отчёт'}</small>
+													</span>
+													<strong>{quantity(entry.quantity)}</strong>
+												</div>
 											))}
 										</details>
 									)}

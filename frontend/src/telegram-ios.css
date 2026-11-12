@@ -292,7 +292,6 @@ h3 {
 		.ant-btn-disabled
 	),
 .plain-icon:enabled,
-.ant-modal .ant-modal-close:enabled,
 .field-help-button:is(:hover, [aria-expanded='true']) {
 	box-shadow: var(--ios-button-shadow);
 }
@@ -348,10 +347,14 @@ h3 {
 	border-color: var(--ios-accent);
 }
 
-.ant-modal .ant-modal-close {
-	background: var(--ios-fill);
-	border-radius: 50%;
+.ant-modal .ant-modal-close,
+.ant-modal .ant-modal-close:is(:hover, :active, :focus-visible) {
+	background: transparent;
+	box-shadow: none;
+	border-radius: 8px;
 	color: var(--ios-secondary);
+	width: 44px;
+	height: 44px;
 }
 
 .ant-alert :is(.ant-alert-message, .ant-alert-description),

@@ -232,22 +232,103 @@
 	min-width: 0;
 	overflow-wrap: anywhere;
 }
+.position-details-sheet .ant-modal-header {
+	margin-bottom: 4px;
+}
+.position-details-sheet .ant-modal-title {
+	line-height: 1.4;
+	padding-right: 40px;
+}
+.position-rate {
+	margin: 0 0 4px;
+	font-size: 13px;
+	color: var(--ios-secondary);
+}
 .position-totals {
 	display: grid;
 	grid-template-columns: repeat(3, minmax(0, 1fr));
-	gap: 6px;
+	gap: 0;
+	margin: 0;
+	padding: 12px 0;
+	border-block: 1px solid var(--ios-separator);
 }
-.position-totals > span {
-	display: grid;
-	gap: 3px;
-	padding: 8px;
-	border-radius: 8px;
-	background: var(--ios-fill);
+.position-totals > div {
+	min-width: 0;
+	padding: 0 10px;
+	border-inline-start: 1px solid var(--ios-separator);
+}
+.position-totals > div:first-child {
+	padding-inline-start: 0;
+	border: 0;
+}
+.position-totals dt {
 	font-size: 12px;
 	color: var(--ios-secondary);
+	margin-bottom: 5px;
 }
-.position-totals b {
+.position-totals dd {
+	margin: 0;
+	font-size: 15px;
+	font-weight: 600;
 	color: var(--ios-label);
+	font-variant-numeric: tabular-nums;
+}
+.position-totals .position-total-excess dd {
+	color: var(--ios-danger);
+}
+.position-source-comparison {
+	font-size: 13px;
+	padding: 10px 12px;
+	border-radius: 10px;
+	background: var(--ios-warning-fill);
+}
+.position-source-comparison summary {
+	cursor: pointer;
+	color: var(--ios-warning-text);
+}
+.position-source-comparison dl {
+	margin: 12px 0 0;
+	display: grid;
+	gap: 8px;
+}
+.position-source-comparison dl > div,
+.position-day-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+}
+.position-source-comparison dd {
+	margin: 0;
+	text-align: right;
+}
+.position-details .position-daily-history {
+	background: transparent;
+	padding: 0;
+}
+.position-daily-history summary {
+	font-size: 13px;
+	font-weight: 500;
+	padding: 6px 0 10px;
+}
+.position-day-row {
+	padding: 12px 0;
+	border-top: 1px solid var(--ios-separator);
+	font-size: 14px;
+}
+.position-day-row > span {
+	display: grid;
+	gap: 3px;
+}
+.position-day-row small {
+	font-size: 12px;
+}
+.position-day-row strong {
+	text-align: right;
+	font-variant-numeric: tabular-nums;
+}
+.position-history section p {
+	margin: 4px 0 0;
 }
 .position-history section,
 .position-history details {

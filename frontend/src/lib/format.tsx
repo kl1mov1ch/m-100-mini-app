@@ -31,6 +31,8 @@ export function Money({ value }: { value: number }) {
 	);
 }
 export function unit(value: string) {
+	if (/^(?:м\.?\s*п\.?|пог\.?\s*м\.?|погонн(?:ый|ых|ые)\s*метр(?:а|ов|ы)?)$/iu.test(value.trim()))
+		return 'м';
 	return (
 		({ м: 'м', шт: 'шт.', кг: 'кг', сист: 'сист.', компл: 'компл.' } as Record<string, string>)[
 			value
