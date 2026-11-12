@@ -46,6 +46,20 @@ def add_disk_webhook(request: Request, body: DiskWebhook):
         raise HTTPException(422, str(error)) from error
 
 
+@router.post("/api/profile/disk-webhooks/{ident}/update")
+def update_disk_webhook(ident: str, request: Request, body: DiskWebhook):
+    user = master_profile(request)
+    try:
+        return profile_webhooks.update_webhook(user["telegram_id"], ident, body.name, body.url)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+
+
+@router.post("/api/profile/disk-webhooks/{ident}/delete")
+def delete_disk_webhook(ident: str, request: Request):
+    return profile_webhooks.delete_webhook(master_profile(request)["telegram_id"], ident)
+
+
 def avatar_response(content, mime):
     return Response(
         content,

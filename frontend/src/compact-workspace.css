@@ -247,3 +247,351 @@
 		transform: translateY(2px) scale(0.9);
 	}
 }
+.settings-section-heading {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+}
+.settings-section-heading h2 {
+	margin: 0;
+}
+.profile-webhooks li {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	padding-block: 10px;
+}
+.webhook-description {
+	display: grid;
+	gap: 3px;
+	flex: 1;
+	min-width: 0;
+}
+.webhook-description strong {
+	font-size: 14px;
+}
+.webhook-description small {
+	font-size: 12px;
+}
+.profile-webhooks li .ant-btn {
+	flex: none;
+	width: 44px;
+	height: 44px;
+	padding: 0;
+}
+.form-error {
+	margin: 0;
+	font-size: 13px;
+	color: var(--ios-danger);
+}
+.action-confirm-sheet .ant-modal-confirm-title {
+	font-size: 18px;
+	line-height: 1.4;
+}
+.action-confirm-sheet .ant-modal-confirm-content {
+	margin-top: 12px;
+}
+.action-confirm-content {
+	color: var(--ios-label);
+	font-size: 14px;
+	line-height: 1.5;
+}
+.action-confirm-item {
+	display: grid;
+	gap: 6px;
+	padding: 12px 0;
+	border-block: 1px solid var(--ios-separator);
+}
+.action-confirm-item > span {
+	color: var(--ios-secondary);
+}
+.action-confirm-content p {
+	margin: 12px 0 0;
+	color: var(--ios-secondary);
+}
+.ant-modal-confirm .ant-modal-confirm-btns {
+	margin-top: 10px;
+}
+.ant-modal-confirm .ant-modal-confirm-title {
+	line-height: 1.4;
+}
+.ant-modal-confirm .ant-modal-confirm-body > .anticon,
+.ant-modal-confirm .ant-modal-confirm-body > svg {
+	flex: none;
+	margin-top: 3px;
+	margin-inline-end: 10px;
+}
+.history-list {
+	gap: 10px;
+}
+.history-card {
+	padding: 14px;
+	border: 1px solid var(--ios-separator);
+	border-radius: 14px;
+}
+.history-open {
+	gap: 10px;
+	min-height: 44px;
+}
+.history-main {
+	min-width: 0;
+}
+.history-main b {
+	font-size: 15px;
+	line-height: 1.35;
+	color: var(--ios-label);
+	overflow-wrap: anywhere;
+}
+.history-main small {
+	font-size: 12px;
+	margin-top: 4px;
+	color: var(--ios-secondary);
+	line-height: 1.4;
+}
+.history-day {
+	width: 40px;
+	height: 46px;
+}
+.history-day > span {
+	color: var(--ios-accent);
+	font-size: 20px;
+}
+.history-day small {
+	color: var(--ios-secondary);
+	font-size: 11px;
+}
+.history-finance {
+	margin: 12px 0;
+	gap: 12px;
+}
+.history-finance > span {
+	display: grid;
+	gap: 4px;
+	color: var(--ios-secondary);
+	font-size: 12px;
+	min-width: 0;
+}
+.history-finance strong {
+	font-size: 20px;
+	color: var(--ios-label);
+	font-variant-numeric: tabular-nums;
+}
+.history-finance > span:last-child strong {
+	font-size: 17px;
+	color: var(--ios-label);
+}
+.history-finance strong > small {
+	font-size: 13px;
+	font-weight: 400;
+	color: var(--ios-secondary);
+}
+.history-bottom {
+	padding-top: 10px;
+	min-height: 0;
+	gap: 8px;
+	font-size: 12px;
+	flex-wrap: wrap;
+}
+.report-metrics {
+	margin-bottom: 14px;
+}
+.report-metrics > div {
+	padding: 12px;
+	gap: 5px;
+}
+.report-metrics strong {
+	font-size: clamp(19px, 5vw, 23px);
+}
+.report-metrics small {
+	font-size: 12px;
+}
+.page-context {
+	display: block;
+	color: var(--ios-secondary);
+	font-size: 13px;
+	margin-top: 5px;
+}
+.timeline {
+	gap: 10px;
+}
+.change-card {
+	padding: 14px;
+	border: 1px solid var(--ios-separator);
+	border-radius: 14px;
+}
+.change-heading {
+	display: flex;
+	justify-content: space-between;
+	align-items: baseline;
+	flex-wrap: wrap;
+	gap: 4px 12px;
+}
+.change-heading strong {
+	font-size: 15px;
+	color: var(--ios-label);
+}
+.change-heading time,
+.change-author {
+	color: var(--ios-secondary);
+	font-size: 12px;
+	line-height: 1.5;
+}
+.change-author {
+	margin-top: 5px;
+}
+.change-card .change-position,
+.change-card .change-summary,
+.change-card .change-note {
+	display: block;
+	margin: 10px 0 0;
+	font-size: 13px;
+	color: var(--ios-secondary);
+}
+.change-card .change-position {
+	color: var(--ios-label);
+}
+.change-sheet {
+	margin-top: 12px;
+	border-top: 1px solid var(--ios-separator);
+	padding-top: 10px;
+}
+.change-sheet summary {
+	cursor: pointer;
+	font-size: 14px;
+	color: var(--ios-accent);
+}
+.change-sheet summary small {
+	margin-left: 8px;
+	color: var(--ios-secondary);
+	font-size: 12px;
+}
+.change-rows {
+	display: grid;
+	margin-top: 8px;
+}
+.change-value-row {
+	display: grid;
+	grid-template-columns: 46px minmax(0, 1fr) 14px minmax(0, 1fr);
+	align-items: center;
+	gap: 8px;
+	padding: 10px 0;
+	border-top: 1px solid var(--ios-separator);
+	font-size: 13px;
+	overflow-wrap: anywhere;
+}
+.change-value-row code {
+	font-size: 12px;
+	color: var(--ios-accent);
+}
+.change-before {
+	color: var(--ios-secondary);
+}
+.change-value-row > strong {
+	font-weight: 500;
+}
+.change-value-row svg {
+	color: var(--ios-secondary);
+}
+.change-report-lines {
+	display: grid;
+	margin-top: 12px;
+}
+.change-report-lines > div {
+	display: grid;
+	gap: 6px;
+	padding: 10px 0;
+	border-top: 1px solid var(--ios-separator);
+	font-size: 14px;
+}
+.change-report-lines > div > span:last-child {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+.change-report-lines del {
+	color: var(--ios-secondary);
+}
+.change-crew {
+	display: flex;
+	justify-content: space-between;
+	gap: 12px;
+	border-top: 1px solid var(--ios-separator);
+	padding-top: 10px;
+	margin-top: 8px;
+	font-size: 13px;
+}
+.work-card {
+	padding: 14px;
+	border-radius: 14px;
+}
+.work-card-heading {
+	gap: 8px;
+}
+.work-card-heading .work-name b {
+	font-size: 15px;
+	line-height: 1.4;
+}
+.work-card-input {
+	margin-top: 12px;
+	gap: 12px;
+}
+.work-card-input label,
+.work-value > span {
+	font-size: 12px;
+}
+.work-value strong {
+	font-size: 22px;
+}
+.work-card-foot {
+	margin-top: 10px;
+	padding-top: 10px;
+}
+.work-card-foot > span {
+	font-size: 12px;
+}
+.work-estimate dl {
+	margin-top: 10px;
+	gap: 0;
+	border-top: 1px solid var(--ios-separator);
+	padding-top: 8px;
+}
+.work-estimate dl > div {
+	background: transparent;
+	border-radius: 0;
+	padding: 6px 0;
+}
+.work-estimate dl > div:nth-child(even) {
+	padding-left: 10px;
+}
+.work-estimate dt {
+	font-size: 11px;
+	line-height: 1.4;
+}
+.work-estimate dd {
+	font-size: 13px;
+	font-weight: 600;
+	margin-top: 3px;
+}
+@media (min-width: 601px) {
+	.work-estimate dl > div {
+		padding-inline: 8px;
+	}
+	.work-estimate dl > div:first-child {
+		padding-left: 0;
+	}
+}
+.history-card {
+	position: relative;
+}
+.history-open::after {
+	content: '';
+	position: absolute;
+	inset: 0;
+	border-radius: inherit;
+}
+.history-card:focus-within {
+	outline: 2px solid var(--ios-accent);
+	outline-offset: 2px;
+}

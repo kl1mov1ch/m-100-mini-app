@@ -15,7 +15,7 @@ export function WorkEstimate({ balance, unit }: { balance: WorkBalance; unit: st
 				]
 			: [
 					['По смете', balance.planned],
-					['До отчёта', balance.available],
+					['Было доступно', balance.available],
 					['За день', balance.today],
 					['Остаток после', balance.remaining],
 				];
