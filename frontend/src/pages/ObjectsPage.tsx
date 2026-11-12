@@ -1,38 +1,32 @@
-import { Button, Empty, Select } from 'antd';
+import { Button, Empty } from 'antd';
 import 'dayjs/locale/ru';
 import { Building2, ChevronRight, Plus, Users } from 'lucide-react';
-import { DatePicker } from '../components/ResponsiveDatePicker';
+import { AdminOverview } from '../components/AdminOverview';
 import dayjs from '../lib/date';
 
 import type { WorkspaceView } from '../App';
-import { Money } from '../lib/format';
+import { QuickReportComposer } from '../components/QuickReportComposer';
+import { countLabel, Money } from '../lib/format';
 export function ObjectsPage({ workspace }: { workspace: WorkspaceView }) {
 	const {
 		session,
 		project,
 		setObjectForm,
 		setProjectOwner,
-		ownerFilter,
-		setOwnerFilter,
-		positions,
 		isAdmin,
 		selectObject,
 		loadUsers,
 		projects,
 		summaryDate,
-		changeSummaryDate,
-		summaryProject,
-		setSummaryProject,
 	} = workspace;
 	return (
 		<>
 			<div className="page-title">
 				<div>
-					<span className="overline">{isAdmin ? 'КОНТРОЛЬ ОБЪЕКТОВ' : 'МОИ ОБЪЕКТЫ'}</span>
 					<h1>{isAdmin ? 'Все объекты' : 'Объекты'}</h1>
 				</div>
 				<Button
-					type="primary"
+					type={session.projects.length ? 'default' : 'primary'}
 					icon={<Plus size={17} />}
 					onClick={() => {
 						setProjectOwner(undefined);
@@ -40,63 +34,11 @@ export function ObjectsPage({ workspace }: { workspace: WorkspaceView }) {
 						if (isAdmin) void loadUsers();
 					}}
 				>
-					Добавить
+					Новый объект
 				</Button>
 			</div>
-			<div className="overview-hero">
-				<div>
-					<span>
-						{summaryDate === session.today ? 'Выполнено сегодня' : 'Выполнено за выбранный день'}
-					</span>
-					<strong>
-						<Money value={projects.reduce((s, p) => s + p.today_amount, 0)} />
-					</strong>
-					<small>
-						{dayjs(summaryDate).format('D MMMM')} ·{' '}
-						{projects.filter((p) => p.today_amount > 0).length} активных объектов
-					</small>
-				</div>
-				<span className="hero-glyph">
-					<Building2 size={57} strokeWidth={1} />
-				</span>
-			</div>
-			{isAdmin && (
-				<div className="admin-report-filters">
-					<DatePicker
-						aria-label="Дата проверки отчётов"
-						value={dayjs(summaryDate)}
-						format="DD.MM.YYYY"
-						allowClear={false}
-						workDates={[...new Set(projects.flatMap((project) => project.work_dates || []))]}
-						onChange={(date) => date && void changeSummaryDate(date.format('YYYY-MM-DD'))}
-					/>
-					<Select
-						aria-label="Объект для проверки"
-						value={summaryProject}
-						onChange={setSummaryProject}
-						options={[
-							{ value: 'all', label: 'Все объекты' },
-							...session.projects.map((project) => ({
-								value: project.id,
-								label: project.name,
-							})),
-						]}
-					/>
-				</div>
-			)}
-			{isAdmin && session.projects.length > 1 && (
-				<Select
-					className="owner-filter"
-					value={ownerFilter}
-					onChange={setOwnerFilter}
-					options={[
-						{ value: 'all', label: 'Все мастера' },
-						...[...new Map(session.projects.map((p) => [p.owner_id, p.owner_name])).entries()].map(
-							([value, label]) => ({ value, label }),
-						),
-					]}
-				/>
-			)}
+			{isAdmin && <AdminOverview workspace={workspace} />}
+			{!isAdmin && session.projects.length > 0 && <QuickReportComposer workspace={workspace} />}
 			<div className="object-grid">
 				{projects.map((p) => (
 					<button
@@ -108,19 +50,26 @@ export function ObjectsPage({ workspace }: { workspace: WorkspaceView }) {
 							<span className="object-tile">
 								<Building2 size={21} />
 							</span>
-							<span className={'connection-dot ' + (p.table?.read_connected ? 'connected' : '')}>
-								{p.table?.read_connected
-									? 'Таблица подключена'
-									: p.table?.pending_review
-										? 'Проверьте импорт'
-										: 'Добавьте таблицу'}
-							</span>
+							<div className="object-card-identity">
+								<h2>{p.name}</h2>
+								<p>
+									{isAdmin && p.owner_name + ' · '}
+									{countLabel(p.positions, 'работа', 'работы', 'работ')}
+								</p>
+							</div>
 							<ChevronRight size={17} />
 						</div>
-						<h2>{p.name}</h2>
-						<p>
-							{p.owner_name} · {p.positions} работ
-						</p>
+						<span className={'connection-dot ' + (p.table?.read_connected ? 'connected' : '')}>
+							{!isAdmin && p.table?.pending_review
+								? 'Проверьте импорт'
+								: p.table?.read_connected
+									? 'Таблица подключена'
+									: p.source === 'detached'
+										? 'Таблица отвязана'
+										: p.positions > 0
+											? 'Смета в приложении'
+											: 'Добавьте таблицу'}
+						</span>
 						<div className="object-totals">
 							<span>
 								{summaryDate === session.today ? 'Сегодня' : dayjs(summaryDate).format('D MMMM')}
@@ -144,12 +93,17 @@ export function ObjectsPage({ workspace }: { workspace: WorkspaceView }) {
 								<Users size={13} />
 								{p.today_crew ? `${p.today_crew} чел.` : 'Бригада не указана'}
 							</span>
+							<span>{countLabel(p.today_positions, 'работа', 'работы', 'работ')} за день</span>
+						</div>
+						<div className="object-card-status">
 							<span>
-								{p.pending
+								{p.pending && p.table?.write_connected
 									? `${p.pending} отч. не отправлено`
 									: p.last_change
 										? dayjs(p.last_change).format('D MMM, HH:mm')
-										: 'Нет новых отчётов'}
+										: p.today_confirmed
+											? 'Отчёт подтверждён'
+											: 'Отчёт ещё не сдан'}
 							</span>
 						</div>
 					</button>
@@ -157,10 +111,14 @@ export function ObjectsPage({ workspace }: { workspace: WorkspaceView }) {
 			</div>
 			{!projects.length && (
 				<div className="empty-panel">
-					<Empty description="Добавьте первый объект и загрузите смету" />
-					<Button type="primary" onClick={() => setObjectForm(true)}>
-						Добавить объект
-					</Button>
+					<Empty
+						image={Empty.PRESENTED_IMAGE_SIMPLE}
+						description={
+							session.projects.length
+								? 'По выбранным фильтрам объектов нет'
+								: 'Создайте первый объект и подключите его смету'
+						}
+					/>
 				</div>
 			)}
 		</>

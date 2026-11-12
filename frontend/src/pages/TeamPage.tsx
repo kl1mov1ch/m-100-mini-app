@@ -1,19 +1,34 @@
-import { Button, Tag } from 'antd';
+import { App, Button, Tag } from 'antd';
 import 'dayjs/locale/ru';
-import { ArrowLeft, Plus, Settings2 } from 'lucide-react';
+import { ArrowLeft, Plus, Settings2, Trash2, TriangleAlert } from 'lucide-react';
 
 import type { WorkspaceView } from '../App';
+import { TelegramAvatar } from '../components/TelegramAvatar';
+import { request } from '../lib/api';
+import type { User } from '../types';
 export function TeamPage({ workspace }: { workspace: WorkspaceView }) {
-	const {
-		setPage,
-		users,
-		setUserForm,
-		setUserId,
-		setUserName,
-		setUserRole,
-		setUserEnabled,
-		projects,
-	} = workspace;
+	const { modal, message } = App.useApp();
+	const { setPage, users, setUserForm, setUserId, setUserName, setUserRole, loadUsers, session } =
+		workspace;
+	const remove = (user: User) =>
+		modal.confirm({
+			title: 'Удалить пользователя?',
+			icon: <TriangleAlert color="#a66b00" size={21} />,
+			content: <p>{user.name} потеряет доступ к приложению. Объекты и отчёты сохранятся.</p>,
+			okText: 'Удалить пользователя',
+			cancelText: 'Отмена',
+			okButtonProps: { danger: true },
+			onOk: async () => {
+				try {
+					await request('/admin/users/' + encodeURIComponent(user.telegram_id) + '/delete', {});
+					await loadUsers();
+					message.success('Пользователь удалён из команды');
+				} catch (failure) {
+					message.error((failure as Error).message);
+					throw failure;
+				}
+			},
+		});
 	return (
 		<>
 			<div className="page-title">
@@ -31,7 +46,6 @@ export function TeamPage({ workspace }: { workspace: WorkspaceView }) {
 						setUserId('');
 						setUserName('');
 						setUserRole('master');
-						setUserEnabled(true);
 						setUserForm(true);
 					}}
 				>
@@ -41,7 +55,7 @@ export function TeamPage({ workspace }: { workspace: WorkspaceView }) {
 			<div className="team-list">
 				{users.map((u) => (
 					<section className="team-card" key={u.telegram_id}>
-						<span className="user-avatar">{u.name[0]}</span>
+						<TelegramAvatar userId={u.telegram_id} name={u.name} source={u.avatar_url} size={42} />
 						<div>
 							<b>{u.name}</b>
 							<small>
@@ -59,18 +73,28 @@ export function TeamPage({ workspace }: { workspace: WorkspaceView }) {
 							</div>
 						</div>
 						{u.telegram_id !== 'local-admin' && (
-							<Button
-								type="text"
-								aria-label={'Изменить доступ ' + u.name}
-								icon={<Settings2 size={18} />}
-								onClick={() => {
-									setUserId(u.telegram_id);
-									setUserName(u.name);
-									setUserRole(u.role);
-									setUserEnabled(!!u.enabled);
-									setUserForm(true);
-								}}
-							/>
+							<div className="team-actions">
+								<Button
+									type="text"
+									aria-label={'Изменить доступ ' + u.name}
+									icon={<Settings2 size={18} />}
+									onClick={() => {
+										setUserId(u.telegram_id);
+										setUserName(u.name);
+										setUserRole(u.role);
+										setUserForm(true);
+									}}
+								/>
+								{u.telegram_id !== session.user.telegram_id && (
+									<Button
+										type="text"
+										danger
+										aria-label={'Удалить пользователя ' + u.name}
+										icon={<Trash2 size={18} />}
+										onClick={() => remove(u)}
+									/>
+								)}
+							</div>
 						)}
 					</section>
 				))}

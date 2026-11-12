@@ -3,11 +3,36 @@
 	<head>
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-		<meta name="theme-color" content="#2563eb" />
+		<meta name="theme-color" content="#ffffff" />
 		<meta name="description" content="Объекты, ежедневные работы и расчёт бригады" />
+		<link rel="stylesheet" href="/brand/m100-launch.css?v=5" />
 		<title>Журнал работ</title>
 	</head>
 	<body>
+		<div
+			id="startup-screen"
+			class="startup-screen"
+			role="status"
+			aria-label="Открываем журнал работ"
+		>
+			<div class="startup-brand">
+				<svg viewBox="0 0 120 36" width="120" height="36" role="img" aria-label="М100">
+					<defs>
+						<path
+							id="startup-zero"
+							fill-rule="evenodd"
+							d="M52.5 0H72.5A8 8 0 0 1 80.5 8V28A8 8 0 0 1 72.5 36H52.5A8 8 0 0 1 44.5 28V8A8 8 0 0 1 52.5 0ZM54 8H71A1.5 1.5 0 0 1 72.5 9.5V26.5A1.5 1.5 0 0 1 71 28H54A1.5 1.5 0 0 1 52.5 26.5V9.5A1.5 1.5 0 0 1 54 8Z"
+						/>
+					</defs>
+					<g class="startup-letters">
+						<path d="M.5 0H8.5L26 20.75L20.75 27L8.5 12.5V36H.5Z" />
+						<path d="M33.5 0H41.5V36H33.5V12H23.5Z" />
+						<use href="#startup-zero" />
+						<use href="#startup-zero" x="39" />
+					</g>
+				</svg>
+			</div>
+		</div>
 		<div id="root"></div>
 		<script type="module" src="/src/main.tsx"></script>
 	</body>

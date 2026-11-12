@@ -10,6 +10,8 @@ from fastapi.responses import JSONResponse
 
 from . import store, workspaces
 
+REPORT_DOWNLOAD_PATH = "/api/report-downloads/"
+
 
 def telegram_identity(raw):
     token = os.getenv("TELEGRAM_BOT_TOKEN", "")
@@ -42,10 +44,20 @@ def validate_init_data(raw):
     return telegram_identity(raw) is not None
 
 
+def can_switch_role(user):
+    return user["role"] == "admin" and (
+        os.getenv("APP_ENV", "development") == "development"
+        or user["telegram_id"] == os.getenv("TELEGRAM_ROLE_SWITCH_ID", "").strip()
+    )
+
+
 async def access(request: Request, call_next):
     token = None
     try:
-        if request.url.path.startswith("/api"):
+        if request.url.path.startswith("/api") and not request.url.path.startswith(
+            REPORT_DOWNLOAD_PATH
+        ):
+            development = os.getenv("APP_ENV", "development") == "development"
             origin = request.headers.get("origin")
             allowed_origins = {request.url.scheme + "://" + request.headers.get("host", "")}
             allowed_origins.update(
@@ -53,7 +65,7 @@ async def access(request: Request, call_next):
                 for value in os.getenv("APP_ALLOWED_ORIGINS", "").split(",")
                 if value.strip()
             )
-            if os.getenv("APP_ENV", "development") == "development":
+            if development:
                 allowed_origins.update(
                     {
                         "http://127.0.0.1:5173",
@@ -64,20 +76,60 @@ async def access(request: Request, call_next):
                 )
             if origin and origin.rstrip("/") not in allowed_origins:
                 raise HTTPException(403, "Запрос с другого сайта запрещён")
-            if os.getenv("APP_ENV", "development") == "development":
+            if development:
                 ident = request.headers.get("X-Preview-User", "local-admin")
             else:
                 ident = telegram_identity(request.headers.get("X-Telegram-Init-Data", ""))
                 if not ident:
                     raise HTTPException(401, "Откройте приложение через Telegram")
             request.state.user = workspaces.user(ident)
-            unscoped = ("/api/session", "/api/projects", "/api/admin", "/api/ai")
+            request.state.can_switch_role = can_switch_role(request.state.user)
+            if request.state.can_switch_role and request.headers.get("X-View-Mode") == "master":
+                request.state.user = {**request.state.user, "role": "master"}
+            unscoped = (
+                "/api/session",
+                "/api/projects",
+                "/api/admin",
+                "/api/ai",
+                "/api/analytics",
+                "/api/profile",
+            )
             if not any(
                 request.url.path == p or request.url.path.startswith(p + "/") for p in unscoped
             ):
                 p = workspaces.project(request.state.user, request.headers.get("X-Project-Id"))
                 request.state.project = p
+                if (
+                    not development
+                    and request.state.user["role"] == "admin"
+                    and request.url.path.startswith(("/api/imports/", "/api/bitrix/"))
+                ):
+                    raise HTTPException(403, "Таблицу проверяет мастер объекта")
+                modifying_report = request.method == "POST" and (
+                    request.url.path == "/api/reports"
+                    or request.url.path.startswith(
+                        ("/api/imports/", "/api/bitrix/", "/api/object/")
+                    )
+                    or request.url.path.startswith("/api/report/")
+                )
+                if (
+                    modifying_report
+                    and request.state.user["role"] == "admin"
+                    and p["owner_id"] != ident
+                ):
+                    raise HTTPException(
+                        403, "Администратор просматривает отчёты мастеров без изменения"
+                    )
                 token = store.CURRENT_DATABASE.set(p["db_path"])
+                if (
+                    modifying_report
+                    and request.url.path != "/api/bitrix/refresh"
+                    and not request.url.path.endswith("/consult")
+                ):
+                    async with workspaces.mutation_lock(p["id"]):
+                        if not workspaces.exists(p["id"]):
+                            raise HTTPException(404, "Объект удалён")
+                        return await call_next(request)
         return await call_next(request)
     except HTTPException as e:
         return JSONResponse({"detail": e.detail}, status_code=e.status_code)

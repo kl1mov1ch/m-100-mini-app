@@ -1,4 +1,5 @@
 import argparse
+import json
 import asyncio
 import os
 import sys
@@ -30,13 +31,17 @@ async def configure_bot(url=None):
         parsed = urlparse(url)
         if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
             raise ValueError("Нужен публичный HTTPS-адрес Mini App")
-        health = await client.get(url.rstrip("/") + "/healthz")
+        async with httpx.AsyncClient(timeout=20) as health_client:
+            health = await health_client.get(url.rstrip("/") + "/healthz")
         if health.status_code != 200 or health.json().get("status") != "ok":
             raise ValueError("Сначала запустите приложение на указанном HTTPS-адресе")
         response = await client.post(
             f"https://api.telegram.org/bot{token}/setChatMenuButton",
-            json={
-                "menu_button": {"type": "web_app", "text": "Журнал работ", "web_app": {"url": url}}
+            data={
+                "menu_button": json.dumps(
+                    {"type": "web_app", "text": "Журнал работ", "web_app": {"url": url}},
+                    ensure_ascii=False,
+                )
             },
         )
         if not response.json().get("ok"):

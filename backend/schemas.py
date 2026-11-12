@@ -17,7 +17,7 @@ class SaveBody(BaseModel):
     date: date
     revision: int = Field(ge=0)
     text: str = Field(default="", max_length=8000)
-    lines: list[Line] = Field(min_length=1, max_length=10000)
+    lines: list[Line] = Field(max_length=10000)
     crew_count: int = Field(default=1, ge=1, le=1000, strict=True)
     allow_exceed: bool = False
 
@@ -25,6 +25,7 @@ class SaveBody(BaseModel):
 class Connection(BaseModel):
     public_url: str = ""
     webhook: str = ""
+    webhook_id: str | None = Field(default=None, pattern=r"^[a-f0-9]{32}$")
     file_id: int | None = Field(default=None, gt=0)
 
 

@@ -1,12 +1,20 @@
 import { Button, Tag } from 'antd';
-import { Building2, CheckCircle2, ExternalLink, FileSpreadsheet, RefreshCw } from 'lucide-react';
+import { ExternalLink, RefreshCw } from 'lucide-react';
 import type { WorkspaceView } from '../App';
 import dayjs from '../lib/date';
+import { countLabel } from '../lib/format';
 import { openExternalLink } from '../lib/telegram';
 
 export function ObjectTableCard({ workspace }: { workspace: WorkspaceView }) {
-	const { data, active, positions, checkingConnection, checkConnection, importRemote, busy } =
-		workspace;
+	const {
+		data,
+		active,
+		positions,
+		checkingConnection,
+		checkConnection,
+		reviewBitrixChanges,
+		busy,
+	} = workspace;
 	if (!data || !active || data.project?.id !== active.id || data.config.source !== 'bitrix')
 		return null;
 	const config = data.config;
@@ -15,31 +23,38 @@ export function ObjectTableCard({ workspace }: { workspace: WorkspaceView }) {
 	return (
 		<section className="object-table-card">
 			<div className="object-table-card-top">
-				<span className="object-table-file-icon">
-					<FileSpreadsheet size={24} />
-				</span>
 				<div>
 					<b>{config.source_name}</b>
-					<small>{positions.length} работ · Битрикс24.Диск</small>
+					<small>{countLabel(positions.length, 'позиция', 'позиции', 'позиций')} · Битрикс24</small>
 				</div>
-				<Tag color="blue">Связана</Tag>
+				<Tag
+					color={config.has_webhook ? 'green' : undefined}
+					className={config.has_webhook ? undefined : 'status-tag-attention'}
+				>
+					{config.has_webhook ? 'Подключена' : 'Только чтение'}
+				</Tag>
 			</div>
-			<div className="object-table-binding">
-				<Building2 size={16} />
-				<div>
-					<b>{active.name}</b>
-					<span>Мастер: {active.owner_name}</span>
-				</div>
-				<CheckCircle2 size={18} />
-			</div>
-			<div className="object-table-modes">
-				<span>
-					Чтение <b>подключено</b>
-				</span>
-				<span>
-					Отправка <b>{config.has_webhook ? 'настроена' : 'нужен доступ'}</b>
-				</span>
-			</div>
+			{(config.bitrix_read?.updated_at || config.last_import) && (
+				<p className="table-updated-at">
+					Обновлено{' '}
+					{dayjs(config.bitrix_read?.updated_at || config.last_import).format('D MMMM, HH:mm')}
+				</p>
+			)}
+			{config.bitrix_read?.status === 'unavailable' && (
+				<p className="table-connection-notice" role="status">
+					Битрикс24 недоступен. Показаны последние загруженные данные.
+				</p>
+			)}
+			{config.bitrix_read?.status === 'review' && !check?.issues.length && (
+				<Button
+					type="text"
+					className="table-review-link"
+					loading={busy}
+					onClick={reviewBitrixChanges}
+				>
+					Проверить различия с Битрикс24
+				</Button>
+			)}
 			{check && (
 				<div
 					className={
@@ -48,45 +63,53 @@ export function ObjectTableCard({ workspace }: { workspace: WorkspaceView }) {
 					}
 				>
 					<b>{check.message}</b>
-					<span>{dayjs(check.checked_at).format('D MMMM, HH:mm')} · Минск</span>
+					{!check.issues.length && (
+						<span>{dayjs(check.checked_at).format('D MMMM, HH:mm')} · Минск</span>
+					)}
 					{check.reachable && check.issues.length > 0 && (
-						<details className="table-check-issues">
-							<summary>Замечания к данным: {check.issues.length}</summary>
-							<ul>
-								{check.issues.map((issue) => (
-									<li key={issue.id}>
-										<strong>{[issue.sheet, issue.cell].filter(Boolean).join(' · ')}</strong>
-										<span>{issue.message}</span>
-										{issue.position_name && <span>{issue.position_name}</span>}
-										{issue.fix && <small>{issue.fix}</small>}
-									</li>
-								))}
-							</ul>
-							<Button size="small" onClick={importRemote} loading={busy}>
-								Проверить и исправить
+						<>
+							<span>
+								{[
+									check.issues[0].sheet,
+									check.issues[0].affected_rows?.length
+										? `столбец ${check.issues[0].column}`
+										: check.issues[0].cell,
+								]
+									.filter(Boolean)
+									.join(' · ')}
+								{check.issues.length > 1 && ` · ещё ${check.issues.length - 1}`}
+							</span>
+							<Button size="small" onClick={reviewBitrixChanges} loading={busy}>
+								Исправить
 							</Button>
-						</details>
+						</>
 					)}
 				</div>
 			)}
 			<div className="object-table-card-actions">
 				<Button
+					type="primary"
+					aria-label="Проверить таблицу"
 					loading={checkingConnection}
+					disabled={busy}
 					icon={<RefreshCw size={15} />}
 					onClick={checkConnection}
 				>
-					Проверить соединение
+					Проверить
 				</Button>
-				<Button
-					type="primary"
-					href={original}
-					onClick={(event) => openExternalLink(event, original)}
-					target="_blank"
-					rel="noreferrer"
-					icon={<ExternalLink size={15} />}
-				>
-					Открыть таблицу
-				</Button>
+				{original && (
+					<Button
+						type="text"
+						aria-label="Открыть таблицу Битрикс24"
+						href={original}
+						onClick={(event) => openExternalLink(event, original)}
+						target="_blank"
+						rel="noreferrer"
+						icon={<ExternalLink size={15} />}
+					>
+						Открыть
+					</Button>
+				)}
 			</div>
 		</section>
 	);

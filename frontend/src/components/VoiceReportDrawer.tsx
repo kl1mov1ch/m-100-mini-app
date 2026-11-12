@@ -1,7 +1,6 @@
 import { Button, Drawer, Input, Upload } from 'antd';
-import { LoaderCircle, Mic, Sparkles, Square, X } from 'lucide-react';
+import { Mic, Sparkles, Square, Upload as UploadIcon } from 'lucide-react';
 import type { WorkspaceView } from '../App';
-import { nf, shortName, unit } from '../lib/format';
 import './voice-report.css';
 
 const exampleReport =
@@ -15,142 +14,94 @@ export function VoiceReportDrawer({ workspace }: { workspace: WorkspaceView }) {
 		active,
 		freeText,
 		setFreeText,
-		parsed,
+		matchReportText,
 		parsing,
-		byId,
-		setLines,
-		setReportText,
 	} = workspace;
 	const close = () => {
 		setTextOpen(false);
-		audioInput.stop();
+		audioInput.cancel();
 	};
-	const addRecognizedWorks = () => {
-		setLines((currentLines) => {
-			const mergedLines = currentLines.map((line) => ({ ...line }));
-			for (const recognizedLine of parsed) {
-				const existingLine = recognizedLine.item_id
-					? mergedLines.find((line) => line.item_id === recognizedLine.item_id)
-					: undefined;
-				if (existingLine && recognizedLine.quantity !== null && existingLine.quantity !== null) {
-					existingLine.quantity += recognizedLine.quantity;
-					continue;
-				}
-				mergedLines.push({ ...recognizedLine });
-			}
-			return mergedLines;
-		});
-		setReportText(freeText);
-		setTextOpen(false);
-		setFreeText('');
-	};
+	const audioBusy = audioInput.recording || audioInput.pending;
+	const status = audioInput.pending
+		? 'Обрабатываем аудио…'
+		: audioInput.recording
+			? audioInput.live
+				? 'Запись идёт. Текст появляется в поле.'
+				: 'Запись идёт. Текст появится после остановки.'
+			: 'Запишите голосом или загрузите аудио';
+
 	return (
 		<Drawer
 			placement="bottom"
 			height="auto"
 			open={textOpen}
 			onClose={close}
-			closable={false}
 			className="voice-report-drawer"
+			title={
+				<div className="voice-sheet-heading">
+					<span>Голосовой ввод</span>
+					{active && <small>{active.name}</small>}
+				</div>
+			}
 			destroyOnHidden
+			footer={
+				<Button
+					block
+					type="primary"
+					disabled={!freeText.trim() || audioBusy}
+					loading={parsing}
+					onClick={() => {
+						setTextOpen(false);
+						void matchReportText();
+					}}
+				>
+					Подобрать работы
+				</Button>
+			}
 		>
-			<div className="voice-sheet-handle" />
-			<div className="voice-sheet-heading">
-				<span>{active?.name || 'Отчёт с объекта'}</span>
-				<button aria-label="Закрыть голосовой ввод" onClick={close}>
-					<X size={18} />
-				</button>
-			</div>
 			<Input.TextArea
 				className="voice-sheet-text"
 				aria-label="Текст отчёта"
 				value={freeText}
 				onChange={(event) => setFreeText(event.target.value)}
-				autoSize={{ minRows: 3, maxRows: 6 }}
+				rows={4}
 				maxLength={8000}
-				placeholder="Что сделали на объекте? Вставьте сообщение работника или надиктуйте отчёт."
+				readOnly={audioBusy}
+				placeholder="Что сделали на объекте? Напишите или надиктуйте."
 			/>
-			{!freeText && (
-				<button className="voice-example-link" onClick={() => setFreeText(exampleReport)}>
-					<Sparkles size={12} />
-					Пример сообщения
-				</button>
-			)}
-			<div className="voice-microphone-area">
-				<button
-					className={'voice-microphone ' + (audioInput.recording ? 'recording' : '')}
-					disabled={audioInput.transcribing}
-					aria-label={audioInput.recording ? 'Остановить запись' : 'Начать запись'}
+			<Button
+				type="text"
+				className="voice-example-link"
+				icon={<Sparkles size={15} />}
+				disabled={!!freeText.trim() || audioBusy}
+				onClick={() => setFreeText(exampleReport)}
+			>
+				Пример сообщения
+			</Button>
+			<div className="voice-sheet-actions">
+				<Button
+					danger={audioInput.recording}
+					aria-pressed={audioInput.recording}
+					disabled={audioInput.pending}
+					icon={audioInput.recording ? <Square size={17} /> : <Mic size={18} />}
 					onClick={audioInput.toggleRecording}
 				>
-					{audioInput.transcribing ? (
-						<LoaderCircle size={28} className="spinning" />
-					) : audioInput.recording ? (
-						<Square size={23} fill="currentColor" />
-					) : (
-						<Mic size={30} strokeWidth={1.8} />
-					)}
-				</button>
-				<span>
-					{audioInput.transcribing
-						? 'Распознаём речь…'
-						: audioInput.recording
-							? 'Говорите. Нажмите, чтобы закончить'
-							: 'Нажмите, чтобы говорить'}
-				</span>
+					{audioInput.recording ? 'Остановить' : 'Записать'}
+				</Button>
 				<Upload
 					accept=".ogg,.opus,.mp3,.m4a,.wav,.webm"
 					showUploadList={false}
 					beforeUpload={audioInput.uploadAudio}
+					disabled={audioBusy}
 				>
-					<Button type="text" disabled={audioInput.transcribing || audioInput.recording}>
-						Добавить голосовое сообщение
+					<Button icon={<UploadIcon size={17} />} disabled={audioBusy}>
+						Загрузить аудио
 					</Button>
 				</Upload>
 			</div>
-			{(parsing || parsed.length > 0) && (
-				<div className="voice-recognition-results">
-					<div className="voice-recognition-heading">
-						<b>{parsing ? 'Подбираем работы…' : `${parsed.length} работ из сметы объекта`}</b>
-						{parsing && <LoaderCircle size={14} className="spinning" />}
-					</div>
-					<div className="voice-recognized-list">
-						{parsed.map((line, index) => {
-							const position = line.item_id ? byId[line.item_id] : null;
-							return (
-								<div
-									className={
-										'voice-recognized-card ' + (!position || !line.quantity ? 'needs-review' : '')
-									}
-									key={index}
-								>
-									<span>
-										<b>{position ? shortName(position) : line.raw || 'Уточните работу'}</b>
-										{(!position || !line.quantity) && (
-											<small>Нужно уточнить {position ? 'объём' : 'позицию'}</small>
-										)}
-									</span>
-									<strong>
-										{line.quantity ? nf.format(line.quantity) : '—'}{' '}
-										{position ? unit(position.unit) : ''}
-									</strong>
-								</div>
-							);
-						})}
-					</div>
-					{parsed.length > 0 && (
-						<Button
-							block
-							type="primary"
-							size="large"
-							disabled={parsing}
-							onClick={addRecognizedWorks}
-						>
-							Проверить карточки работ
-						</Button>
-					)}
-				</div>
-			)}
+			<p className="voice-sheet-status" role="status">
+				{status}
+			</p>
 		</Drawer>
 	);
 }

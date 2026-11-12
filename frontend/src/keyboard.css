@@ -1,0 +1,40 @@
+input,
+textarea,
+[contenteditable='true'] {
+	scroll-margin-block: 24px;
+}
+@media (max-width: 900px) {
+	html[data-keyboard-open='true'] .bottom-nav,
+	html[data-keyboard-open='true'] .confirm-bar {
+		visibility: hidden;
+		pointer-events: none;
+	}
+	html[data-keyboard-open='true'] .content {
+		padding-bottom: max(110px, var(--keyboard-space, 0px));
+	}
+	html[data-keyboard-open='true'] .ant-modal-wrap {
+		top: var(--visible-top, 0px);
+		bottom: auto;
+		height: var(--visible-height, 100dvh);
+		padding-top: 0;
+	}
+	html[data-keyboard-open='true'] .ant-modal-content {
+		max-height: calc(var(--visible-height, 100dvh) - 8px);
+	}
+	html[data-keyboard-open='true'] .ant-modal-body {
+		max-height: calc(var(--visible-height, 100dvh) - 160px);
+	}
+	html[data-keyboard-open='true'] .ant-drawer-bottom {
+		top: var(--visible-top, 0px);
+		bottom: auto;
+		height: var(--visible-height, 100dvh);
+	}
+	html[data-keyboard-open='true'] .ant-drawer-content-wrapper,
+	html[data-keyboard-open='true'] .ant-drawer-content {
+		max-height: calc(var(--visible-height, 100dvh) - 8px);
+	}
+	html[data-keyboard-open='true'] .ant-drawer-body {
+		max-height: calc(var(--visible-height, 100dvh) - 32px);
+		padding-bottom: 20px;
+	}
+}

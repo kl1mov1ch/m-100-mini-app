@@ -1,0 +1,21 @@
+.telegram-avatar {
+	display: inline-grid;
+	place-items: center;
+	flex: none;
+	aspect-ratio: 1;
+	overflow: hidden;
+	border-radius: 50%;
+	background: var(--ios-fill);
+	color: var(--ios-accent);
+	font-weight: 700;
+	line-height: 1;
+	vertical-align: middle;
+}
+.telegram-avatar > img {
+	display: block;
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	object-position: center;
+	border-radius: 50%;
+}

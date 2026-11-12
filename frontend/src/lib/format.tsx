@@ -1,5 +1,12 @@
 import type { Position } from '../types';
 export const nf = new Intl.NumberFormat('ru-BY', { maximumFractionDigits: 2 });
+export function countLabel(count: number, one: string, few: string, many: string) {
+	const value = Math.abs(count) % 100;
+	const last = value % 10;
+	const label =
+		value >= 11 && value <= 14 ? many : last === 1 ? one : last >= 2 && last <= 4 ? few : many;
+	return `${nf.format(count)} ${label}`;
+}
 export const cash = new Intl.NumberFormat('ru-BY', {
 	minimumFractionDigits: 2,
 	maximumFractionDigits: 2,
@@ -24,6 +31,8 @@ export function Money({ value }: { value: number }) {
 	);
 }
 export function unit(value: string) {
+	if (/^(?:м\.?\s*п\.?|пог\.?\s*м\.?|погонн(?:ый|ых|ые)\s*метр(?:а|ов|ы)?)$/iu.test(value.trim()))
+		return 'м';
 	return (
 		({ м: 'м', шт: 'шт.', кг: 'кг', сист: 'сист.', компл: 'компл.' } as Record<string, string>)[
 			value

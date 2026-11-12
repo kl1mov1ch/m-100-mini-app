@@ -15,6 +15,7 @@ COPY backend/ backend/
 COPY docs/ai-system-prompt.md docs/ai-system-prompt.md
 COPY scripts/configure_telegram.py scripts/configure_telegram.py
 COPY scripts/data_archive.py scripts/data_archive.py
+COPY scripts/migrate_postgres.py scripts/migrate_postgres.py
 COPY --from=frontend /build/dist frontend/dist
 RUN useradd --create-home --uid 10001 app && mkdir -p /app/data && chown app:app /app/data
 USER app

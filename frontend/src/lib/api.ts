@@ -1,8 +1,18 @@
 import type {} from '../types';
 export const previewUser = new URLSearchParams(location.search).get('as');
+export class RequestError extends Error {
+	constructor(
+		message: string,
+		readonly code?: string,
+		readonly status?: number,
+	) {
+		super(message);
+	}
+}
 export function headers(project?: string) {
 	return {
 		'X-Telegram-Init-Data': window.Telegram?.WebApp?.initData || '',
+		'X-View-Mode': localStorage.getItem('view-mode') || 'admin',
 		...(project ? { 'X-Project-Id': project } : {}),
 		...(previewUser ? { 'X-Preview-User': previewUser } : {}),
 	};
@@ -30,8 +40,13 @@ export async function request<T>(
 		} catch {
 			throw new Error('Нет соединения с сервером');
 		}
-		throw new Error(
-			typeof d.detail === 'string' ? d.detail : d.detail?.message || 'Проверьте введённые данные',
+		const detail = typeof d.detail === 'string' ? d.detail : d.detail?.message;
+		throw new RequestError(
+			detail === 'Not Found'
+				? 'Этот раздел недоступен. Обновите приложение.'
+				: detail || 'Проверьте введённые данные',
+			typeof d.detail?.code === 'string' ? d.detail.code : undefined,
+			r.status,
 		);
 	}
 	return r.json();

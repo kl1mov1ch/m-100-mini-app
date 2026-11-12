@@ -1,0 +1,225 @@
+.report-filter-card,
+.report-metrics > div {
+	background: var(--ios-surface);
+	border: 1px solid var(--ios-fill);
+	border-radius: 16px;
+	padding: 16px;
+}
+.report-filter-card {
+	display: grid;
+	gap: 10px;
+	margin-bottom: 16px;
+}
+.report-filter-card .ant-select {
+	width: 100%;
+	min-width: 0;
+}
+.date-filter-row {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+	gap: 8px;
+}
+.date-filter-row .ant-picker {
+	min-width: 0;
+	width: 100%;
+	padding-inline: 10px;
+}
+.date-filter-row input {
+	font-size: 13px !important;
+}
+.report-filter-actions {
+	display: flex;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+.report-filter-actions .ant-btn {
+	flex: 1;
+	font-size: 12px;
+}
+.report-metrics {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 10px;
+	margin-bottom: 18px;
+}
+.report-metrics > div {
+	display: grid;
+	gap: 9px;
+	min-width: 0;
+}
+.report-metrics span {
+	color: var(--ios-secondary);
+	font-size: 12px;
+}
+.report-metrics strong {
+	font-size: 23px;
+	color: var(--ios-label);
+	overflow-wrap: anywhere;
+}
+.report-metrics small {
+	font-size: 11px;
+	color: var(--ios-secondary);
+	line-height: 1.5;
+}
+.report-metrics .metric-primary {
+	background: var(--ios-fill);
+	border-color: var(--ios-separator);
+}
+.reminder-settings .ant-select,
+.reminder-settings .ant-picker {
+	width: 100%;
+}
+.reminder-settings > .ant-btn {
+	margin-top: 16px;
+	margin-bottom: 14px;
+}
+.reminder-toggle {
+	display: flex;
+	justify-content: space-between;
+	gap: 12px;
+	align-items: center;
+}
+.reminder-toggle b,
+.reminder-toggle small {
+	display: block;
+}
+.reminder-toggle small {
+	color: var(--ios-secondary);
+	margin-top: 6px;
+}
+.reminder-recipients > div {
+	display: grid;
+	gap: 7px;
+	padding: 12px 0;
+	border-bottom: 1px solid var(--ios-fill);
+}
+.reminder-recipients {
+	margin-bottom: 16px;
+}
+.reminder-recipients span {
+	color: var(--ios-secondary);
+	line-height: 1.6;
+	font-size: 12px;
+	overflow-wrap: anywhere;
+}
+.overview-statistics {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 12px;
+	padding: 15px 0 0;
+	border-top: 1px solid #ffffff40;
+	margin-top: 15px;
+}
+.overview-statistics span {
+	font-size: 11px;
+	color: var(--ios-fill);
+}
+.overview-statistics b {
+	display: block;
+	font-size: 19px;
+	color: white;
+	margin-bottom: 5px;
+}
+.overview-hero {
+	flex-wrap: wrap;
+}
+.overview-statistics {
+	flex-basis: 100%;
+}
+@media (min-width: 1000px) {
+	.report-metrics {
+		grid-template-columns: repeat(4, minmax(0, 1fr));
+	}
+}
+.settings-card.profile-settings {
+	padding: 16px;
+	display: grid;
+	gap: 14px;
+}
+.profile-intro {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr) auto;
+	gap: 10px;
+	align-items: center;
+}
+.profile-intro b,
+.profile-intro small {
+	display: block;
+	overflow-wrap: anywhere;
+}
+.profile-intro small,
+.profile-test-role > span {
+	color: var(--ios-secondary);
+	line-height: 1.6;
+	font-size: 12px;
+}
+.profile-meta {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 4px 8px;
+	margin-top: 4px;
+}
+.profile-meta .ant-tag {
+	margin: 0;
+}
+.profile-name-form {
+	grid-column: 2 / -1;
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto auto;
+	align-items: center;
+	gap: 3px;
+	min-width: 0;
+}
+
+.profile-name-form .ant-input {
+	min-width: 0;
+	height: 44px;
+}
+
+.profile-intro .ant-btn {
+	width: 44px;
+	min-width: 44px;
+	height: 44px;
+	padding: 0;
+}
+
+.profile-intro .profile-name-edit,
+.profile-name-form .profile-name-save:enabled {
+	color: var(--ios-accent);
+}
+
+.profile-test-role {
+	display: grid;
+	gap: 6px;
+	min-width: 0;
+}
+.profile-test-role {
+	border-top: 1px solid var(--ios-fill);
+	padding-top: 10px;
+}
+.admin-work-list {
+	margin-top: 16px;
+	display: grid;
+	gap: 12px;
+}
+.admin-work-row {
+	padding: 17px;
+	background: white;
+	border: 1px solid var(--ios-fill);
+	border-radius: 14px;
+}
+.admin-work-row > b {
+	font-size: 14px;
+	line-height: 1.6;
+	overflow-wrap: anywhere;
+	display: block;
+}
+.admin-work-row > div:not(.work-estimate) {
+	display: flex;
+	gap: 12px;
+	align-items: center;
+	justify-content: space-between;
+	margin-top: 12px;
+	color: var(--ios-secondary);
+}

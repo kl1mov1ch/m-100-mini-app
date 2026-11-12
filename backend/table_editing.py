@@ -1,5 +1,4 @@
 import base64
-import hashlib
 import io
 import json
 from datetime import date, datetime
@@ -7,11 +6,13 @@ from decimal import Decimal
 
 import openpyxl
 from fastapi import APIRouter, HTTPException, Request
+from openpyxl.cell.cell import MergedCell
+from openpyxl.utils import column_index_from_string
 from pydantic import BaseModel, Field
 
-from . import bitrix, store, tables
+from . import bitrix, import_suggestions, store, tables
 from .clock import now, today
-from .imports import directory, read_pending
+from .imports import check_latest, directory, read_pending
 from .synchronization import table_lock
 
 router = APIRouter()
@@ -30,13 +31,21 @@ class DuplicateChange(BaseModel):
     new_date: date | None = None
 
 
+class DailyColumnChange(BaseModel):
+    sheet: str
+    column: str = Field(pattern=r"^[A-Z]{1,3}$")
+    date: date
+    strategy: str = Field(pattern=r"^(zero|remove|restore)$")
+
+
 class TableChanges(BaseModel):
     token: str = Field(pattern=r"^[a-f0-9]{32}$")
     edits: list[CellChange] = Field(default_factory=list, max_length=500)
     duplicates: list[DuplicateChange] = Field(default_factory=list, max_length=100)
+    daily_columns: list[DailyColumnChange] = Field(default_factory=list, max_length=20)
 
 
-def apply_changes(content, mappings, edits, duplicates):
+def apply_changes(content, mappings, edits, duplicates, daily_columns=(), restoration=None):
     workbook = openpyxl.load_workbook(io.BytesIO(content))
     catalogue = tables.extract(content, mappings)["positions"]
     changes = []
@@ -150,38 +159,121 @@ def apply_changes(content, mappings, edits, duplicates):
             cell = sheet.cell(date_row, column)
             cell.value = None
             changes.append({"sheet": sheet.title, "cell": cell.coordinate, "after": None})
+    if daily_columns:
+        changes.extend(
+            fix_daily_columns(
+                workbook, content, mappings, catalogue, daily_columns, restoration or {}
+            )
+        )
     buffer = io.BytesIO()
     workbook.save(buffer)
     return buffer.getvalue(), changes
 
 
+def fix_daily_columns(workbook, content, mappings, catalogue, corrections, restoration):
+    cached = tables.grid(content)
+    changes = []
+    for correction in corrections:
+        descriptor = next(
+            (mapping for mapping in mappings if mapping["name"] == correction.sheet), None
+        )
+        if descriptor is None or correction.sheet not in workbook:
+            raise ValueError("Лист изменился. Прочитайте таблицу заново.")
+        sheet = workbook[correction.sheet]
+        column = column_index_from_string(correction.column)
+        header = descriptor.get("date_row") or descriptor["header_row"]
+        day = correction.date.isoformat()
+        if column > sheet.max_column or tables.as_date(sheet.cell(header, column).value) != day:
+            raise ValueError("Дата в столбце изменилась. Прочитайте таблицу заново.")
+        if column in descriptor["mapping"].values():
+            raise ValueError("Столбец используется в смете. Проверьте сопоставление.")
+        if correction.strategy == "remove":
+            sheet.column_dimensions[correction.column].hidden = True
+            for row in range(header, sheet.max_row + 1):
+                cell = sheet.cell(row, column)
+                if not isinstance(cell, MergedCell) and cell.value is not None:
+                    changes.append({"sheet": sheet.title, "cell": cell.coordinate, "after": None})
+                    cell.value = None
+            continue
+        known = restoration.get(day, {})
+        restored = 0
+        for position in catalogue:
+            if position["source_sheet"] != sheet.title:
+                continue
+            row = position["source_row"]
+            cell = sheet.cell(row, column)
+            if (
+                tables.daily_quantity(cached[sheet.title].cell(row, column).value, position["unit"])
+                is not None
+            ):
+                continue
+            if correction.strategy == "restore" and position["id"] not in known:
+                continue
+            cell.value = known[position["id"]] if correction.strategy == "restore" else 0
+            restored += 1
+            changes.append({"sheet": sheet.title, "cell": cell.coordinate, "after": cell.value})
+        if correction.strategy == "restore" and not restored:
+            raise ValueError(
+                "Нет сохранённых объёмов для этого столбца. Выберите нули или уберите колонку."
+            )
+    return changes
+
+
+def prepare_corrections(original, metadata, body, restoration):
+    try:
+        updated, changes = apply_changes(
+            original,
+            metadata["sheets"],
+            body.edits,
+            body.duplicates,
+            body.daily_columns,
+            restoration,
+        )
+        from .workbook_calculation import recalculate
+
+        updated = recalculate(
+            updated, tables.extract(updated, metadata["sheets"])["positions"], metadata["sheets"]
+        )
+    except ValueError as error:
+        raise HTTPException(422, str(error))
+    return updated, changes
+
+
 @router.post("/api/imports/edit")
 async def edit_table(request: Request, body: TableChanges):
     metadata, original = read_pending(body.token, request.state.project["id"])
-    if not body.edits and not body.duplicates:
+    if not body.edits and not body.duplicates and not body.daily_columns:
         raise HTTPException(422, "Выберите исправления")
     with store.connect() as database:
         webhook = store.setting(database, "webhook")
         file_id = int(store.setting(database, "file_id", "0"))
-    remote = metadata["source"] == "bitrix"
-    if remote and not webhook:
+        pending = store.setting(database, "pending_import_token")
+        restoration = {}
+        if any(column.strategy == "restore" for column in body.daily_columns):
+            positions = tables.extract(original, metadata["sheets"])["positions"]
+            restoration = {
+                column.date.isoformat(): import_suggestions.restore_day_values(
+                    database, positions, column.date.isoformat()
+                )
+                for column in body.daily_columns
+                if column.strategy == "restore"
+            }
+    remote = metadata["source"] == "bitrix" and not metadata.get("original")
+    remote_id = (metadata.get("remote") or {}).get("file_id", file_id)
+    if remote and (body.token != pending or file_id != int(remote_id or 0)):
         raise HTTPException(
-            400,
-            "Чтение таблицы подключено. Для изменения оригинала добавьте вебхук с правом «Диск» в настройках объекта.",
+            409, {"code": "workbook_changed", "message": "Открыта текущая проверка таблицы."}
         )
-    try:
-        updated, changes = apply_changes(original, metadata["sheets"], body.edits, body.duplicates)
-    except ValueError as error:
-        raise HTTPException(422, str(error))
+    if remote and not webhook:
+        raise HTTPException(400, "Для записи добавьте вебхук с правом «Диск».")
     async with table_lock(request.state.project):
         if remote:
             try:
                 latest, file_info = await bitrix.download_rest(webhook, file_id)
-                if hashlib.sha256(latest).digest() != hashlib.sha256(original).digest():
-                    raise HTTPException(
-                        409,
-                        "Оригинал изменился после чтения. Загрузите актуальную таблицу перед исправлением.",
-                    )
+                check_latest(original, latest, metadata)
+                updated, changes = prepare_corrections(latest, metadata, body, restoration)
+                before_write, _ = await bitrix.download_rest(webhook, file_id)
+                check_latest(latest, before_write, metadata)
                 await bitrix.rest(
                     webhook,
                     "disk.file.uploadVersion",
@@ -205,8 +297,10 @@ async def edit_table(request: Request, body: TableChanges):
             except Exception:
                 raise HTTPException(
                     502,
-                    "Не удалось подтвердить изменения в Битрикс24. Откройте оригинал и повторите чтение.",
+                    "Не удалось подтвердить изменения. Повторите чтение таблицы в приложении и проверьте выделенные ячейки.",
                 )
+        else:
+            updated, changes = prepare_corrections(original, metadata, body, restoration)
         analysis = tables.extract(updated, metadata["sheets"])
         structural_warnings = [
             warning
@@ -216,11 +310,15 @@ async def edit_table(request: Request, body: TableChanges):
             )
         ]
         metadata["warnings"] = structural_warnings + analysis["warnings"]
+        if not metadata.get("original"):
+            metadata.pop("source_change", None)
         (directory() / f"{body.token}.xlsx").write_bytes(updated)
         (directory() / f"{body.token}.json").write_text(
             json.dumps(metadata, ensure_ascii=False), encoding="utf-8"
         )
         with store.connect() as database:
+            store.set_setting(database, "connection_check", "null")
+            store.set_setting(database, "bitrix_read_status", "null")
             database.execute(
                 "INSERT INTO audit(date,payload,created_at) VALUES(?,?,?)",
                 (
@@ -236,11 +334,15 @@ async def edit_table(request: Request, body: TableChanges):
                     now(),
                 ),
             )
+    from .imports import current_reconciliation
+
     return {
         "token": body.token,
         "name": metadata["name"],
         "source": metadata["source"],
+        "source_change": metadata.get("source_change"),
         "saved_to_source": remote,
         **analysis,
         "warnings": metadata["warnings"],
+        "reconciliation": current_reconciliation(analysis),
     }

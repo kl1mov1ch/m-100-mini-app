@@ -4,12 +4,12 @@
 	margin-bottom: 5px;
 }
 .object-table-card {
-	background: #fff;
-	border: 1px solid #cbdcf9;
+	background: var(--ios-surface);
+	border: 1px solid var(--ios-separator);
 	border-radius: 16px;
 	padding: 22px;
 	margin: 0 0 19px;
-	box-shadow: 0 3px 16px #315c9205;
+	box-shadow: 0 3px 16px rgba(0, 0, 0, 0.02);
 }
 .object-table-card-top {
 	display: flex;
@@ -22,8 +22,8 @@
 	display: grid;
 	place-items: center;
 	border-radius: 12px;
-	background: #edf4ff;
-	color: #5c8ed8;
+	background: var(--ios-fill);
+	color: var(--ios-accent);
 	flex-shrink: 0;
 }
 .object-table-card-top > div {
@@ -33,7 +33,7 @@
 .object-table-card-top b {
 	font-size: 14px;
 	line-height: 1.7;
-	color: #375f95;
+	color: var(--ios-secondary);
 	font-weight: 600;
 	display: block;
 	overflow-wrap: anywhere;
@@ -41,7 +41,7 @@
 .object-table-card-top small {
 	display: block;
 	font-size: 10px;
-	color: #8aa0c0;
+	color: var(--ios-tertiary);
 	margin-top: 4px;
 }
 .object-table-card-top .ant-tag {
@@ -53,10 +53,10 @@
 	align-items: center;
 	gap: 11px;
 	padding: 15px;
-	background: #f4f8ff;
+	background: var(--ios-surface);
 	border-radius: 10px;
 	margin-top: 18px;
-	color: #7da0cf;
+	color: var(--ios-tertiary);
 }
 .object-table-binding > div {
 	flex: 1;
@@ -66,14 +66,14 @@
 	display: block;
 	font-size: 12px;
 	font-weight: 600;
-	color: #5d7fab;
+	color: var(--ios-secondary);
 	overflow-wrap: anywhere;
 	line-height: 1.6;
 }
 .object-table-binding span {
 	display: block;
 	font-size: 10px;
-	color: #98adca;
+	color: var(--ios-tertiary);
 	margin-top: 4px;
 }
 .object-table-modes {
@@ -82,19 +82,21 @@
 	gap: 12px;
 	margin: 17px 0;
 	font-size: 10px;
-	color: #94a8c4;
+	color: var(--ios-tertiary);
 }
 .object-table-modes b {
 	font-size: 10px;
 	font-weight: 500;
-	color: #6f91c0;
+	color: var(--ios-tertiary);
 }
 .object-table-card-actions {
-	display: flex;
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
 	gap: 10px;
 }
 .object-table-card-actions .ant-btn {
-	flex: 1;
+	width: 100%;
+	min-height: 42px;
 	font-size: 11px;
 	gap: 6px;
 }
@@ -102,8 +104,8 @@
 	display: flex;
 	flex-direction: column;
 	gap: 6px;
-	border: 1px solid #dce8fb;
-	background: #f5f9ff;
+	border: 1px solid var(--ios-fill);
+	background: var(--ios-surface);
 	border-radius: 10px;
 	padding: 13px;
 	margin: 14px 0;
@@ -111,28 +113,28 @@
 .table-check-result b {
 	font-size: 11px;
 	font-weight: 600;
-	color: #6c8ab3;
+	color: var(--ios-secondary);
 	line-height: 1.7;
 }
 .table-check-result span {
 	font-size: 9px;
-	color: #a0b3cd;
+	color: var(--ios-tertiary);
 }
 .table-check-result small {
 	font-size: 10px;
 	line-height: 1.8;
-	color: #a08a50;
+	color: var(--ios-warning-text);
 }
 .table-check-result.failed {
-	background: #fff6f3;
-	border-color: #ecd3c9;
+	background: var(--ios-warning-fill);
+	border-color: var(--ios-warning-line);
 }
 .table-check-result.failed b {
-	color: #b58874;
+	color: var(--ios-warning-text);
 }
 .table-check-issues {
 	font-size: 12px;
-	color: #775819;
+	color: var(--ios-warning-text);
 }
 .table-check-issues summary {
 	cursor: pointer;
@@ -149,15 +151,15 @@
 	gap: 5px;
 	padding: 12px;
 	margin-bottom: 8px;
-	border: 1px solid #f0d891;
+	border: 1px solid var(--ios-warning-line);
 	border-radius: 10px;
-	background: #fff9e9;
+	background: var(--ios-warning-fill);
 	overflow-wrap: anywhere;
 }
 .table-check-issues li span,
 .table-check-issues li small {
 	font-size: 12px;
-	color: #725b2b;
+	color: var(--ios-warning-text);
 	line-height: 1.5;
 }
 .table-check-issues .ant-btn {
@@ -169,26 +171,26 @@
 	justify-content: center;
 	gap: 7px;
 	font-size: 10px;
-	color: #7a95bc;
+	color: var(--ios-tertiary);
 	line-height: 30px;
 }
 .calendar-work-legend > i {
 	height: 13px;
 	width: 13px;
-	border: 1px solid #6f9fe7;
+	border: 1px solid var(--ios-accent);
 	border-radius: 4px;
 }
 .ant-picker-dropdown .has-work-on-date {
-	box-shadow: inset 0 0 0 1.5px #75a4ed;
+	box-shadow: inset 0 0 0 1.5px var(--ios-accent);
 	border-radius: 7px !important;
 	font-weight: 600;
 }
 .ant-picker-dropdown .ant-picker-cell-selected .has-work-on-date {
-	box-shadow: inset 0 0 0 2px #bcd5ff;
+	box-shadow: inset 0 0 0 2px var(--ios-separator);
 }
 .ant-picker-dropdown .ant-picker-cell:not(.ant-picker-cell-in-view) .has-work-on-date {
-	box-shadow: inset 0 0 0 1px #c8d8f0;
-	color: #a3b8d7;
+	box-shadow: inset 0 0 0 1px var(--ios-separator);
+	color: var(--ios-tertiary);
 }
 @media (min-width: 900px) {
 	.object-table-card {
@@ -234,12 +236,11 @@
 		font-size: 9px;
 	}
 	.object-table-card-actions {
-		flex-direction: column;
+		grid-template-columns: minmax(0, 1fr);
 		gap: 8px;
 	}
 	.object-table-card-actions .ant-btn {
 		font-size: 11px;
-		flex: auto;
 	}
 	.calendar-work-legend {
 		font-size: 9px;
@@ -248,13 +249,13 @@
 }
 .object-table-card-top b {
 	font-size: 14px;
-	color: #254b80;
+	color: var(--ios-secondary);
 }
 .object-table-card-top small,
 .object-table-binding span,
 .table-check-result span {
 	font-size: 12px;
-	color: #62758f;
+	color: var(--ios-secondary);
 }
 .object-table-card-top .ant-tag {
 	font-size: 11px;
@@ -263,20 +264,20 @@
 }
 .object-table-binding b {
 	font-size: 14px;
-	color: #254b80;
+	color: var(--ios-secondary);
 }
 .object-table-modes {
 	flex-wrap: wrap;
 	font-size: 12px;
-	color: #62758f;
+	color: var(--ios-secondary);
 }
 .object-table-modes b {
 	font-size: 12px;
-	color: #315988;
+	color: var(--ios-secondary);
 }
 .table-check-result b {
 	font-size: 13px;
-	color: #315988;
+	color: var(--ios-secondary);
 }
 .object-table-card-actions .ant-btn {
 	font-size: 14px;

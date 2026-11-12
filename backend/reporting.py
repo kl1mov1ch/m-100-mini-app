@@ -2,7 +2,7 @@ import json
 import os
 from decimal import ROUND_HALF_UP, Decimal
 
-from . import bitrix, matcher, store, workspaces
+from . import matcher, postgres, store, workspaces
 from .clock import today
 
 
@@ -61,8 +61,14 @@ def get_report(db, day):
 
 
 def history(db):
+    if postgres.enabled():
+        from .orm_repository import report_history
+
+        return report_history(db)
     result = []
-    for row in db.execute("SELECT DISTINCT date FROM entries ORDER BY date DESC").fetchall():
+    for row in db.execute(
+        "SELECT date FROM entries UNION SELECT date FROM reports ORDER BY date DESC"
+    ).fetchall():
         r = get_report(db, row[0])
         result.append(
             {
@@ -79,7 +85,7 @@ def history(db):
     return result
 
 
-def safe_config(db):
+def safe_config(db, include_table_review=True):
     return {
         "today": today(),
         "mode": os.getenv("APP_ENV", "development"),
@@ -87,17 +93,27 @@ def safe_config(db):
         "llm": bool(matcher.provider(ai_settings(db))["key"]),
         "source": store.setting(db, "source", "excel"),
         "source_name": store.setting(db, "source_name", "Смета работ"),
-        "public_url": store.setting(db, "public_url", bitrix.PUBLIC_URL),
+        "public_url": store.setting(db, "public_url"),
         "file_id": int(store.setting(db, "file_id", "0")),
         "has_webhook": bool(store.setting(db, "webhook")),
+        "webhook_profile_id": store.setting(db, "webhook_profile_id")
+        if include_table_review
+        else "",
         "last_import": store.setting(db, "last_import"),
-        "pending_import": bool(store.setting(db, "pending_import_token")),
-        "connection_check": json.loads(store.setting(db, "connection_check", "null")),
+        "pending_import": include_table_review and bool(store.setting(db, "pending_import_token")),
+        "connection_check": json.loads(store.setting(db, "connection_check", "null"))
+        if include_table_review
+        else None,
         "detail_url": store.setting(db, "table_detail_url"),
+        "bitrix_read": json.loads(store.setting(db, "bitrix_read_status", "null"))
+        if include_table_review
+        else None,
+        "journal_status": store.setting(db, "journal_status"),
+        "journal_note": store.setting(db, "journal_note") if include_table_review else "",
     }
 
 
-def project_summary(p, selected_date=None):
+def project_summary(p, selected_date=None, include_table_review=True):
     with store.connect(p["db_path"]) as db:
         rows = history(db)
         current = next((r for r in rows if r["date"] == (selected_date or today())), None)
@@ -107,6 +123,10 @@ def project_summary(p, selected_date=None):
             "today_amount": current["amount"] if current else 0,
             "today_crew": current["crew_count"] if current else None,
             "today_per_person": current["per_person"] if current else 0,
+            "today_positions": current["positions"] if current else 0,
+            "today_confirmed": bool(
+                current and current["revision"] > 0 and current["positions"] > 0
+            ),
             "total_amount": round(sum(r["amount"] for r in rows), 2),
             "work_dates": [row["date"] for row in rows if row["positions"] > 0],
             "pending": db.execute(
@@ -120,7 +140,8 @@ def project_summary(p, selected_date=None):
                 "read_connected": store.setting(db, "source") == "bitrix",
                 "write_connected": bool(store.setting(db, "webhook"))
                 and store.setting(db, "source") == "bitrix",
-                "pending_review": bool(store.setting(db, "pending_import_token")),
+                "pending_review": include_table_review
+                and bool(store.setting(db, "pending_import_token")),
                 "last_import": store.setting(db, "last_import"),
             },
         }

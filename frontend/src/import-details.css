@@ -13,9 +13,9 @@
 .linked-table-card {
 	display: flex;
 	gap: 12px;
-	border: 1px solid #dce7f5;
+	border: 1px solid var(--ios-fill);
 	border-radius: 13px;
-	background: #fff;
+	background: var(--ios-surface);
 	padding: 17px;
 	margin-bottom: 17px;
 	align-items: flex-start;
@@ -25,8 +25,8 @@
 	height: 36px;
 	display: grid;
 	place-items: center;
-	background: #edf4ff;
-	color: #7ba0d1;
+	background: var(--ios-fill);
+	color: var(--ios-tertiary);
 	border-radius: 10px;
 	flex-shrink: 0;
 }
@@ -36,7 +36,7 @@
 }
 .linked-table-info > b {
 	font-size: 12px;
-	color: #5a7ea9;
+	color: var(--ios-secondary);
 	font-weight: 600;
 	display: block;
 	overflow-wrap: anywhere;
@@ -46,12 +46,12 @@
 	display: block;
 	font-size: 10px;
 	line-height: 1.8;
-	color: #99aec9;
+	color: var(--ios-tertiary);
 	margin-top: 4px;
 }
 .linked-table-info > small {
 	display: block;
-	color: #aebbd0;
+	color: var(--ios-tertiary);
 	font-size: 9px;
 	line-height: 1.8;
 	margin-top: 4px;
@@ -60,7 +60,7 @@
 	display: flex;
 	gap: 5px;
 	align-items: flex-start;
-	color: #85a2c5;
+	color: var(--ios-tertiary);
 	font-size: 9px;
 	line-height: 1.7;
 	margin-top: 9px;
@@ -77,7 +77,7 @@
 }
 .linked-table-actions .ant-btn {
 	font-size: 9px;
-	color: #8da8ca;
+	color: var(--ios-tertiary);
 }
 .linked-table-actions .ant-btn-text {
 	height: 29px;
@@ -86,7 +86,7 @@
 }
 .issue-address {
 	font-size: 10px;
-	color: #a38b45;
+	color: var(--ios-warning-text);
 	margin-top: 9px;
 	line-height: 1.8;
 }
@@ -95,55 +95,55 @@
 	font-size: 11px;
 	line-height: 1.8;
 	font-weight: 600;
-	color: #9f843f;
+	color: var(--ios-warning-text);
 	margin-top: 9px;
 }
 .issue-value {
 	display: flex;
 	gap: 8px;
 	align-items: flex-start;
-	background: #fffdf5;
-	border: 1px solid #f1e4b8;
+	background: var(--ios-warning-fill);
+	border: 1px solid var(--ios-warning-line);
 	border-radius: 7px;
 	padding: 9px;
 	margin: 8px 0;
 }
 .issue-value > span {
 	font-size: 9px;
-	color: #b7a365;
+	color: var(--ios-warning-text);
 	flex-shrink: 0;
 }
 .issue-value > b {
 	font-size: 10px;
 	font-weight: 500;
-	color: #ab8d3b;
+	color: var(--ios-warning-text);
 	overflow-wrap: anywhere;
 	line-height: 1.8;
 }
 .issue-fix {
 	font-size: 10px !important;
-	color: #a18d53 !important;
+	color: var(--ios-warning-text) !important;
 	line-height: 1.9 !important;
 }
 .ambiguity-block.import-info {
-	background: #f4f7fc;
-	border-color: #e3eaf5;
+	background: var(--ios-fill);
+	border-color: var(--ios-fill);
 }
 .import-info .yellow-marker {
-	background: #b8cae5;
+	background: var(--ios-separator);
 }
 .import-info b,
 .import-info p,
 .import-info .issue-address,
 .import-info .issue-value > b {
-	color: #9aadca;
+	color: var(--ios-tertiary);
 }
 .import-info .issue-value {
-	border-color: #e1e9f7;
-	background: #f9fbfe;
+	border-color: var(--ios-fill);
+	background: var(--ios-surface);
 }
 .import-info .issue-value > span {
-	color: #b2c0d4;
+	color: var(--ios-tertiary);
 }
 @media (max-width: 600px) {
 	.admin-report-filters {

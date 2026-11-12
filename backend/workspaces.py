@@ -1,19 +1,64 @@
 """Access registry. Each object has a separate database, guarded before selection."""
 
+import asyncio
 import os
 import sqlite3
 import uuid
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
+from weakref import WeakValueDictionary
 
 from fastapi import HTTPException
 
-from . import store
+from . import postgres, store
+
+PROJECT_LOCKS = WeakValueDictionary()
+
+
+def mutation_lock(ident):
+    return PROJECT_LOCKS.setdefault(ident, asyncio.Lock())
+
+
+def exists(ident):
+    with registry() as db:
+        return db.execute("SELECT 1 FROM projects WHERE id=?", (ident,)).fetchone() is not None
+
+
+def delete_project(project):
+    ident = project["id"]
+    relations = ("entries", "positions", "reports", "audit", "settings", "day_snapshots")
+    if postgres.enabled():
+        with store.connect(project["db_path"]) as db:
+            db.execute("BEGIN IMMEDIATE")
+            for relation in relations:
+                db.execute(f"DELETE FROM {relation}")
+            db.execute("DELETE FROM registry.projects WHERE id=?", (ident,))
+            if ident == "default":
+                db.execute(
+                    "INSERT INTO registry.shared_settings(key,value) VALUES('default_object_removed','1') "
+                    "ON CONFLICT DO NOTHING"
+                )
+        return
+    with registry() as db:
+        db.execute("ATTACH DATABASE ? AS object_data", (project["db_path"],))
+        db.execute("BEGIN IMMEDIATE")
+        for relation in relations:
+            db.execute(f"DELETE FROM object_data.{relation}")
+        db.execute("DELETE FROM projects WHERE id=?", (ident,))
+        if ident == "default":
+            db.execute(
+                "INSERT INTO shared_settings(key,value) VALUES('default_object_removed','1') "
+                "ON CONFLICT(key) DO NOTHING"
+            )
 
 
 @contextmanager
 def registry():
+    if postgres.enabled():
+        with postgres.connect() as database:
+            yield database
+        return
     path = Path(os.getenv("APP_REGISTRY", str(store.base_path().with_suffix(".registry.sqlite3"))))
     path.parent.mkdir(parents=True, exist_ok=True)
     db = sqlite3.connect(path, timeout=15)
@@ -34,21 +79,35 @@ def admins():
 
 def init():
     with registry() as db:
-        db.executescript("""
-        CREATE TABLE IF NOT EXISTS users(telegram_id TEXT PRIMARY KEY,name TEXT NOT NULL,role TEXT NOT NULL,enabled INTEGER NOT NULL DEFAULT 1);
-        CREATE TABLE IF NOT EXISTS projects(id TEXT PRIMARY KEY,owner_id TEXT NOT NULL,name TEXT NOT NULL,db_path TEXT NOT NULL UNIQUE,created_at TEXT NOT NULL);
-        CREATE TABLE IF NOT EXISTS shared_settings(key TEXT PRIMARY KEY,value TEXT NOT NULL);
-        """)
+        if not postgres.enabled():
+            db.executescript("""
+            CREATE TABLE IF NOT EXISTS users(telegram_id TEXT PRIMARY KEY,name TEXT NOT NULL,role TEXT NOT NULL,enabled INTEGER NOT NULL DEFAULT 1);
+            CREATE TABLE IF NOT EXISTS projects(id TEXT PRIMARY KEY,owner_id TEXT NOT NULL,name TEXT NOT NULL,db_path TEXT NOT NULL UNIQUE,created_at TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS shared_settings(key TEXT PRIMARY KEY,value TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS reminder_deliveries(telegram_id TEXT, day TEXT, run_key TEXT, status TEXT, error TEXT, created_at TEXT, PRIMARY KEY(telegram_id,day,run_key));
+            CREATE TABLE IF NOT EXISTS profile_avatars(telegram_id TEXT PRIMARY KEY,content BLOB NOT NULL,mime TEXT NOT NULL,checked_at INTEGER NOT NULL);
+            """)
+            columns = {row["name"] for row in db.execute("PRAGMA table_info(users)")}
+            for column, definition in (
+                ("avatar_url", "TEXT NOT NULL DEFAULT ''"),
+                ("username", "TEXT NOT NULL DEFAULT ''"),
+                ("custom_name", "INTEGER NOT NULL DEFAULT 0"),
+            ):
+                if column not in columns:
+                    db.execute(f"ALTER TABLE users ADD COLUMN {column} {definition}")
         identities = admins()
         if os.getenv("APP_ENV", "development") == "development":
             identities = ["local-admin", *identities]
         for ident in identities:
             db.execute(
-                "INSERT INTO users VALUES(?,?,'admin',1) ON CONFLICT(telegram_id) DO UPDATE SET role='admin',enabled=1",
+                "INSERT INTO users(telegram_id,name,role,enabled) VALUES(?,?,'admin',1) ON CONFLICT(telegram_id) DO UPDATE SET role='admin',enabled=1",
                 (ident, "Администратор"),
             )
         if (
             not db.execute("SELECT 1 FROM projects LIMIT 1").fetchone()
+            and not db.execute(
+                "SELECT 1 FROM shared_settings WHERE key='default_object_removed'"
+            ).fetchone()
             and identities
             and os.getenv("APP_ENV", "development") == "development"
         ):
@@ -58,11 +117,18 @@ def init():
                     "default",
                     identities[0],
                     "Детский сад",
-                    str(store.base_path()),
-                    datetime.now(timezone.utc).isoformat(),
+                    "project:default" if postgres.enabled() else str(store.base_path()),
+                    datetime.now(UTC).isoformat(),
                 ),
             )
-        database_paths = [row["db_path"] for row in db.execute("SELECT db_path FROM projects")]
+            if postgres.enabled():
+                db.select_project("default")
+                store.seed_database(db)
+        database_paths = (
+            []
+            if postgres.enabled()
+            else [row["db_path"] for row in db.execute("SELECT db_path FROM projects")]
+        )
     for database_path in database_paths:
         store.init(database_path, seed=False)
 
@@ -112,19 +178,29 @@ def add_project(current_user, name, owner_id=None, sample=False):
         raise HTTPException(403, "Можно создавать объекты только в своём кабинете")
     user(owner_id)
     ident = uuid.uuid4().hex
-    path = store.base_path().parent / "objects" / f"{ident}.sqlite3"
-    store.init(path, seed=sample)
+    path = f"project:{ident}"
+    if not postgres.enabled():
+        path = str(store.base_path().parent / "objects" / f"{ident}.sqlite3")
+        store.init(path, seed=sample)
     with registry() as db:
         db.execute(
             "INSERT INTO projects VALUES(?,?,?,?,?)",
-            (ident, owner_id, name, str(path), datetime.now(timezone.utc).isoformat()),
+            (ident, owner_id, name, str(path), datetime.now(UTC).isoformat()),
         )
+        if postgres.enabled() and sample:
+            db.select_project(ident)
+            store.seed_database(db)
     return project(current_user, ident)
 
 
 def shared():
     with registry() as db:
-        return {r["key"]: r["value"] for r in db.execute("SELECT * FROM shared_settings")}
+        return {
+            r["key"]: r["value"]
+            for r in db.execute(
+                "SELECT * FROM shared_settings WHERE key NOT LIKE 'profile_disk_webhook:%'"
+            )
+        }
 
 
 def set_shared(values):

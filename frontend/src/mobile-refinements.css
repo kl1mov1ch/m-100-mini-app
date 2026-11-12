@@ -1,0 +1,206 @@
+.ant-message {
+	top: auto !important;
+	bottom: calc(90px + var(--app-safe-bottom, 0px)) !important;
+	padding: 0 12px !important;
+	max-width: 100%;
+}
+.ant-message .ant-message-notice-content {
+	max-width: min(440px, calc(100vw - 32px));
+	text-align: left;
+	font-size: 14px;
+	line-height: 1.5;
+	border: 1px solid var(--ios-separator);
+	box-shadow: 0 6px 24px rgba(0, 0, 0, 0.188);
+	border-radius: 14px;
+}
+.ant-message-warning .anticon,
+.ant-alert-warning .ant-alert-icon {
+	color: var(--ios-warning-text) !important;
+}
+.ant-alert-warning {
+	background: var(--ios-warning-fill);
+	border-color: var(--ios-warning-line);
+	color: var(--ios-warning-text);
+}
+.ant-alert-warning .ant-alert-message,
+.ant-alert-warning .ant-alert-description {
+	color: var(--ios-warning-text);
+}
+.ant-message-success .anticon {
+	color: var(--ios-success) !important;
+}
+.ant-message-error .anticon {
+	color: var(--ios-danger) !important;
+}
+.ant-btn {
+	font-weight: 600;
+}
+.ant-btn-default {
+	border-color: var(--ios-separator);
+	color: var(--ios-label);
+}
+.ant-input,
+.ant-input-number-input,
+.ant-select-selection-item {
+	color: var(--ios-label) !important;
+}
+.ant-input::placeholder,
+.ant-input-number-input::placeholder {
+	color: var(--ios-secondary);
+}
+.settings-card label,
+.settings-current,
+.account-card small,
+.linked-table-info > span,
+.linked-table-info small,
+.work-card-foot,
+.history-main small,
+.history-bottom,
+.role-label {
+	color: var(--ios-secondary);
+}
+.settings-card label {
+	font-size: 13px;
+}
+.settings-current {
+	font-size: 13px;
+	line-height: 1.6;
+}
+.overline {
+	color: var(--ios-secondary);
+	font-weight: 700;
+}
+.history-main b,
+.work-name b {
+	color: var(--ios-label);
+}
+.work-name small {
+	color: var(--ios-secondary);
+	font-size: 12px;
+}
+.report-metrics > div:nth-child(1) {
+	background: var(--ios-success-fill);
+	border-color: var(--ios-success-line);
+}
+.report-metrics > div:nth-child(1) strong {
+	color: var(--ios-success);
+}
+.report-metrics > div:nth-child(2) {
+	background: var(--ios-fill);
+	border-color: var(--ios-separator);
+}
+.report-metrics > div:nth-child(3) {
+	background: var(--ios-accent-fill);
+	border-color: var(--ios-accent-fill);
+}
+.report-metrics > div:nth-child(3) strong {
+	color: var(--ios-accent);
+}
+.report-metrics > div:nth-child(4) {
+	background: var(--ios-warning-fill);
+	border-color: var(--ios-warning-line);
+}
+.report-metrics > div:nth-child(4) strong {
+	color: var(--ios-warning-text);
+}
+.report-metrics span,
+.report-metrics small {
+	color: var(--ios-secondary);
+}
+.overview-hero small {
+	color: var(--ios-fill);
+	font-size: 13px;
+}
+.overview-statistics span {
+	color: var(--ios-fill);
+	font-size: 12px;
+}
+.overview-statistics b {
+	font-size: 22px;
+}
+.overview-hero > .overview-statistics {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 12px;
+}
+.overview-hero > .overview-statistics > span {
+	color: var(--ios-fill);
+	font-size: 12px;
+}
+.table-check-result.has-issues {
+	background: var(--ios-warning-fill);
+	border-color: var(--ios-warning-line);
+}
+.table-check-result.has-issues > b {
+	color: var(--ios-warning-text);
+}
+.table-check-result.success {
+	background: var(--ios-success-fill);
+	border-color: var(--ios-success-line);
+}
+.table-check-result.success > b {
+	color: var(--ios-success);
+}
+.table-check-result.failed {
+	background: var(--ios-danger-fill);
+	border-color: var(--ios-danger-line);
+}
+.table-check-result.failed > b {
+	color: var(--ios-danger);
+}
+.needs-review,
+.table-issue {
+	border-color: var(--ios-warning-line);
+}
+.plain-icon[aria-label^='Удалить'] {
+	color: var(--ios-danger);
+	background: var(--ios-danger-fill);
+}
+.bottom-nav > button {
+	color: var(--ios-secondary);
+}
+.bottom-nav > button.active {
+	color: var(--ios-accent);
+	font-weight: 700;
+}
+.admin-work-row > div span {
+	font-size: 14px;
+	color: var(--ios-secondary);
+}
+.history-main,
+.history-finance > span {
+	min-width: 0;
+}
+.history-main b,
+.history-main small {
+	overflow-wrap: anywhere;
+}
+@media (max-width: 600px) {
+	.bottom-nav > button {
+		font-size: 11px;
+	}
+	.history-bottom {
+		font-size: 12px;
+	}
+	.history-finance strong {
+		font-size: 22px;
+	}
+	.ant-btn {
+		min-height: 42px;
+	}
+	.ant-btn-sm {
+		min-height: 34px;
+	}
+	.context-bar {
+		gap: 8px;
+	}
+	.role-label {
+		font-size: 11px;
+	}
+	.page-title h1 {
+		font-size: 28px;
+	}
+	.page-title .ant-picker {
+		max-width: 150px;
+	}
+}

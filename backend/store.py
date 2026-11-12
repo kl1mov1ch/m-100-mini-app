@@ -1,9 +1,12 @@
 import json
 import os
 import sqlite3
+from collections import Counter
 from contextlib import contextmanager
 from contextvars import ContextVar
 from pathlib import Path
+
+from . import postgres
 
 ROOT = Path(__file__).resolve().parents[1]
 CURRENT_DATABASE = ContextVar("current_database", default=None)
@@ -15,6 +18,11 @@ def base_path():
 
 @contextmanager
 def connect(path=None):
+    if postgres.enabled():
+        reference = path or CURRENT_DATABASE.get() or "project:default"
+        with postgres.connect(postgres.project_id(reference)) as database:
+            yield database
+        return
     path = Path(path or CURRENT_DATABASE.get() or base_path())
     path.parent.mkdir(parents=True, exist_ok=True)
     db = sqlite3.connect(path, timeout=15)
@@ -31,6 +39,13 @@ def connect(path=None):
 
 
 def init(path=None, seed=True):
+    if postgres.enabled():
+        if path is None:
+            postgres.check_schema()
+        elif seed:
+            with connect(path) as database:
+                seed_database(database)
+        return
     with connect(path) as db:
         db.executescript("""
         CREATE TABLE IF NOT EXISTS positions(id TEXT PRIMARY KEY,name TEXT,section TEXT,unit TEXT,planned REAL,rate REAL,source_row INTEGER);
@@ -38,6 +53,7 @@ def init(path=None, seed=True):
         CREATE TABLE IF NOT EXISTS reports(date TEXT PRIMARY KEY,revision INTEGER DEFAULT 0,text TEXT,updated_at TEXT,sync_status TEXT DEFAULT 'local');
         CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY,date TEXT,payload TEXT,created_at TEXT);
         CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT);
+        CREATE TABLE IF NOT EXISTS day_snapshots(date TEXT PRIMARY KEY,payload TEXT NOT NULL,created_at TEXT NOT NULL);
         """)
         columns = {r["name"] for r in db.execute("PRAGMA table_info(reports)")}
         for column, definition in [
@@ -49,6 +65,11 @@ def init(path=None, seed=True):
         ]:
             if column not in columns:
                 db.execute(f"ALTER TABLE reports ADD COLUMN {column} {definition}")
+        db.executescript("""
+        CREATE INDEX IF NOT EXISTS entries_by_date ON entries(date,item_id);
+        CREATE INDEX IF NOT EXISTS audit_by_date ON audit(date,id);
+        CREATE INDEX IF NOT EXISTS reports_for_retry ON reports(sync_status,retry_at,date);
+        """)
         position_columns = {r["name"] for r in db.execute("PRAGMA table_info(positions)")}
         for column, definition in [
             ("source_sheet", "TEXT NOT NULL DEFAULT ''"),
@@ -56,30 +77,78 @@ def init(path=None, seed=True):
         ]:
             if column not in position_columns:
                 db.execute(f"ALTER TABLE positions ADD COLUMN {column} {definition}")
-        if seed and not db.execute("SELECT 1 FROM positions LIMIT 1").fetchone():
-            seed_path = Path(os.getenv("APP_SEED_FILE", str(ROOT / "data/seed.json")))
-            if not seed_path.exists():
-                return
-            seed = json.loads(seed_path.read_text(encoding="utf-8"))
-            for p in seed["positions"]:
-                insert_position(db, p)
-            for e in seed["entries"]:
-                db.execute(
-                    "INSERT INTO entries VALUES(:item_id,:date,:quantity) ON CONFLICT(item_id,date) DO UPDATE SET quantity=quantity+excluded.quantity",
-                    e,
-                )
+        if seed:
+            seed_database(db)
+
+
+def seed_database(database):
+    if setting(database, "seed_initialized"):
+        return
+    set_setting(database, "seed_initialized", "1")
+    if database.execute("SELECT 1 FROM positions LIMIT 1").fetchone():
+        return
+    seed_path = Path(os.getenv("APP_SEED_FILE", str(ROOT / "data/seed.json")))
+    if not seed_path.exists():
+        return
+    seed = json.loads(seed_path.read_text(encoding="utf-8"))
+    for position in seed["positions"]:
+        insert_position(database, position)
+    for entry in seed["entries"]:
+        database.execute(
+            "INSERT INTO entries(item_id,date,quantity) VALUES(:item_id,:date,:quantity) ON CONFLICT(item_id,date) DO UPDATE SET quantity=entries.quantity+excluded.quantity",
+            entry,
+        )
 
 
 def positions(db):
+    if postgres.enabled():
+        from .orm_repository import positions as orm_positions
+
+        return orm_positions(db)
+    project_join = " AND e.project_id=p.project_id" if postgres.enabled() else ""
+    project_group = ",p.project_id" if postgres.enabled() else ""
     return [
         dict(r)
-        for r in db.execute("""SELECT p.*,round(p.baseline+COALESCE(sum(e.quantity),0),4) completed,
+        for r in db.execute(f"""SELECT p.*,round(p.baseline+COALESCE(sum(e.quantity),0),4) completed,
         round(p.planned-p.baseline-COALESCE(sum(e.quantity),0),4) remaining FROM positions p
-        LEFT JOIN entries e ON p.id=e.item_id GROUP BY p.id ORDER BY p.source_row""")
+        LEFT JOIN entries e ON p.id=e.item_id{project_join} GROUP BY p.id{project_group} ORDER BY p.source_row""")
     ]
 
 
+def hidden_positions(db):
+    return json.loads(setting(db, "hidden_positions", "{}"))
+
+
+def position_identity(position):
+    return [str(position[key] or "").strip().casefold() for key in ("name", "unit", "section")]
+
+
+def restore_hidden_positions(db, incoming):
+    hidden = hidden_positions(db)
+    if not hidden:
+        return
+    restored = {}
+    identities = {position["id"]: position_identity(position) for position in incoming}
+    counts = Counter(tuple(identity) for identity in identities.values())
+    previously_hidden = {tuple(identity) for identity in hidden.values()}
+    for ident, identity in identities.items():
+        if hidden.get(ident) == identity or (
+            tuple(identity) in previously_hidden and counts[tuple(identity)] == 1
+        ):
+            restored[ident] = identity
+    set_setting(db, "hidden_positions", json.dumps(restored, ensure_ascii=False))
+
+
+def selectable_positions(db):
+    hidden = hidden_positions(db)
+    return [position for position in positions(db) if position["id"] not in hidden]
+
+
 def insert_position(db, p):
+    if postgres.enabled():
+        from .orm_repository import insert_position as orm_insert
+
+        return orm_insert(db, p)
     db.execute(
         "INSERT INTO positions(id,name,section,unit,planned,rate,source_row,source_sheet,baseline) VALUES(:id,:name,:section,:unit,:planned,:rate,:source_row,:source_sheet,:baseline)",
         {
@@ -91,12 +160,20 @@ def insert_position(db, p):
 
 
 def setting(db, key, default=""):
+    if postgres.enabled():
+        from .orm_repository import setting as orm_setting
+
+        return orm_setting(db, key, default)
     r = db.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
     return r["value"] if r else default
 
 
 def set_setting(db, key, value):
+    if postgres.enabled():
+        from .orm_repository import set_setting as orm_set_setting
+
+        return orm_set_setting(db, key, value)
     db.execute(
-        "INSERT INTO settings VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        "INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
         (key, value),
     )

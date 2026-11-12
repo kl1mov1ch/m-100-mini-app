@@ -1,16 +1,4 @@
-import {
-	Alert,
-	App as AntApp,
-	Button,
-	ConfigProvider,
-	Drawer,
-	Input,
-	InputNumber,
-	Modal,
-	Select,
-	Spin,
-	Switch,
-} from 'antd';
+import { App as AntApp, Button, ConfigProvider, Drawer, Input, Modal, Select } from 'antd';
 import ruRU from 'antd/locale/ru_RU';
 import 'dayjs/locale/ru';
 import {
@@ -19,14 +7,13 @@ import {
 	ChevronDown,
 	ChevronRight,
 	History,
-	MoreHorizontal,
 	Plus,
-	ShieldCheck,
+	Settings2,
 } from 'lucide-react';
 import { createRoot } from 'react-dom/client';
-import { ProjectLogo } from './components/ProjectLogo';
 import { TableImportModal } from './components/TableImportModal';
 import { VoiceReportDrawer } from './components/VoiceReportDrawer';
+import { LaunchScreen } from './components/LaunchScreen';
 
 import { LiveSearch } from './components/LiveSearch';
 import './final-polish.css';
@@ -37,11 +24,25 @@ import './mobile.css';
 import { ChangesPage } from './pages/ChangesPage';
 import { DailyReportPage } from './pages/DailyReportPage';
 import { ObjectsPage } from './pages/ObjectsPage';
+import { ObjectPage } from './pages/ObjectPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { TeamPage } from './pages/TeamPage';
+import { RemindersPage } from './pages/RemindersPage';
+import './reports.css';
 import './search-controls.css';
 import './telegram.css';
+import './mobile-refinements.css';
+import './bottom-sheets.css';
+import './avatar.css';
+import './keyboard.css';
+import './select-controls.css';
+import './telegram-ios.css';
+import './compact-workspace.css';
+import { telegramLightTheme } from './lib/telegram-theme';
+import { useInputVisibility } from './hooks/useInputVisibility';
+import { useStartupScreen } from './hooks/useStartupScreen';
+import { useAppRelease } from './hooks/useAppRelease';
 import type { HistoryRow, Project, Session } from './types';
 export type WorkspaceView = ReturnType<typeof useWorkspace> & {
 	session: Session;
@@ -49,6 +50,7 @@ export type WorkspaceView = ReturnType<typeof useWorkspace> & {
 	todayRow: HistoryRow | undefined;
 };
 export function WorkspaceApp() {
+	useInputVisibility();
 	const controller = useWorkspace();
 	const {
 		session,
@@ -71,12 +73,6 @@ export function WorkspaceApp() {
 		setProjectName,
 		projectOwner,
 		setProjectOwner,
-		projectUrl,
-		setProjectUrl,
-		projectFile,
-		setProjectFile,
-		sample,
-		setSample,
 		users,
 		userForm,
 		setUserForm,
@@ -86,8 +82,6 @@ export function WorkspaceApp() {
 		setUserName,
 		userRole,
 		setUserRole,
-		userEnabled,
-		setUserEnabled,
 		ownerFilter,
 		active,
 		positions,
@@ -99,22 +93,28 @@ export function WorkspaceApp() {
 		createObject,
 		grant,
 	} = controller;
-	if (failure && !session)
-		return (
-			<div className="launch-state">
-				<ShieldCheck size={38} />
-				<h1>Журнал работ</h1>
-				<Alert type="warning" message={failure} />
-				<Button onClick={() => location.reload()}>Обновить</Button>
-			</div>
-		);
-	if (!session)
-		return (
-			<div className="launch-state">
-				<Spin />
-				<span>Открываем объекты…</span>
-			</div>
-		);
+	useStartupScreen(Boolean(failure || (session && (!session.projects.length || data))));
+	useAppRelease(
+		!session ||
+			busy ||
+			controller.switchingRole ||
+			controller.page === 'more' ||
+			Boolean(
+				(controller.report && controller.dirty) ||
+				controller.freeText.trim() ||
+				controller.preview ||
+				controller.textOpen ||
+				workPicker ||
+				objectForm ||
+				projectOpen ||
+				userForm ||
+				controller.parsing ||
+				controller.audioInput.recording ||
+				controller.audioInput.pending,
+			),
+		{ page, project, day: controller.day, objectSection: controller.objectSection },
+	);
+	if (!session) return <LaunchScreen failure={failure} />;
 	const projects = session.projects.filter(
 		(p) =>
 			(ownerFilter === 'all' || p.owner_id === ownerFilter) &&
@@ -124,50 +124,50 @@ export function WorkspaceApp() {
 	const workspace = { ...controller, session, projects, todayRow };
 	return (
 		<div className="application">
-			<header className="app-header">
-				<button className="app-wordmark" onClick={() => setPage('objects')}>
-					<span>
-						<ProjectLogo />
-					</span>
-					<b>Журнал работ</b>
-				</button>
-				<div className="header-user">
-					<span>{session.user.name}</span>
-					<button className="profile-button" onClick={openSettings} aria-label="Профиль">
-						{session.user.name[0]}
-					</button>
-				</div>
-			</header>
 			<div className="workspace">
-				<div className="context-bar">
-					<button className="object-switch" onClick={() => setProjectOpen(true)}>
-						<Building2 size={17} />
-						<span>{active?.name || 'Выберите объект'}</span>
-						<ChevronDown size={15} />
-					</button>
-					<span className="role-label">{isAdmin ? 'Администратор' : 'Мастер'}</span>
-				</div>
+				{isAdmin && page === 'today' && (
+					<div className="context-bar">
+						<button className="object-switch" onClick={() => setProjectOpen(true)}>
+							<Building2 size={17} />
+							<span>{active?.name || 'Выберите объект'}</span>
+							<ChevronDown size={15} />
+						</button>
+						<span className="role-label">{isAdmin ? 'Администратор' : 'Мастер'}</span>
+					</div>
+				)}
 				<main className="content">
 					{page === 'objects' && <ObjectsPage workspace={workspace} />}
-					{page === 'today' && <DailyReportPage workspace={workspace} />}
+					{(page === 'today' || page === 'object') &&
+						(isAdmin ? (
+							<DailyReportPage workspace={workspace} />
+						) : (
+							<ObjectPage key={project} workspace={workspace} />
+						))}
 					{page === 'history' && <ReportsPage workspace={workspace} />}
 					{page === 'changes' && <ChangesPage workspace={workspace} />}
 					{page === 'more' && <SettingsPage workspace={workspace} />}
 					{page === 'team' && <TeamPage workspace={workspace} />}
+					{page === 'reminders' && <RemindersPage workspace={workspace} />}
 				</main>
 			</div>
 			<nav className="bottom-nav">
 				{[
 					{ id: 'objects', label: 'Объекты', icon: Building2 },
-					{ id: 'today', label: 'Отчёт', icon: Plus },
+					...(!isAdmin ? [{ id: 'today', label: 'Отчёт', icon: Plus }] : []),
 					{ id: 'history', label: 'История', icon: History },
-					{ id: 'more', label: 'Ещё', icon: MoreHorizontal },
+					{ id: 'more', label: 'Настройки', icon: Settings2 },
 				].map((n) => (
 					<button
 						key={n.id}
-						onClick={() => (n.id === 'more' ? openSettings() : setPage(n.id))}
+						onClick={() => {
+							if (n.id === 'more') openSettings();
+							else if (n.id === 'today' && !isAdmin && active)
+								controller.openObjectSection('reports');
+							else setPage(n.id);
+						}}
 						className={
 							page === n.id ||
+							(n.id === 'today' && page === 'object') ||
 							(n.id === 'more' && page === 'team') ||
 							(n.id === 'history' && page === 'changes')
 								? 'active'
@@ -244,8 +244,9 @@ export function WorkspaceApp() {
 				okButtonProps={{ disabled: !projectName.trim() }}
 			>
 				<div className="form-fields">
-					<label>Название объекта</label>
+					<label htmlFor="project-name">Название объекта</label>
 					<Input
+						id="project-name"
 						value={projectName}
 						onChange={(e) => setProjectName(e.target.value)}
 						placeholder="Например: Детский сад, корпус 2"
@@ -261,20 +262,6 @@ export function WorkspaceApp() {
 									.map((u) => ({ value: u.telegram_id, label: u.name }))}
 							/>
 						</>
-					)}
-					<label>Ссылка на таблицу Битрикс24</label>
-					<Input
-						value={projectUrl}
-						onChange={(e) => setProjectUrl(e.target.value)}
-						placeholder="Можно подключить позже"
-					/>
-					<label>ID файла, если известен</label>
-					<InputNumber value={projectFile} onChange={setProjectFile} min={1} />
-					{session.mode === 'development' && (
-						<div className="switch-row">
-							<span>Начать с шаблона сметы</span>
-							<Switch checked={sample} onChange={setSample} />
-						</div>
 					)}
 				</div>
 			</Modal>
@@ -307,38 +294,16 @@ export function WorkspaceApp() {
 							{ value: 'admin', label: 'Администратор — все объекты' },
 						]}
 					/>
-					<div className="switch-row">
-						<span>Доступ разрешён</span>
-						<Switch checked={userEnabled} onChange={setUserEnabled} />
-					</div>
 				</div>
 			</Modal>
-			<TableImportModal workspace={workspace} />
+			{!isAdmin && <TableImportModal workspace={workspace} />}
 		</div>
 	);
 }
 export function renderApp() {
 	createRoot(document.getElementById('root')!).render(
-		<ConfigProvider
-			locale={ruRU}
-			theme={{
-				token: {
-					colorPrimary: '#2563eb',
-					colorInfo: '#2563eb',
-					colorText: '#172b4d',
-					colorTextSecondary: '#7a879d',
-					colorBorder: '#dfe6f1',
-					borderRadius: 12,
-					fontFamily: 'Inter, "Segoe UI", Arial, sans-serif',
-					controlHeight: 46,
-				},
-				components: {
-					Button: { primaryShadow: 'none' },
-					InputNumber: { controlWidth: 100 },
-				},
-			}}
-		>
-			<AntApp>
+		<ConfigProvider locale={ruRU} theme={telegramLightTheme}>
+			<AntApp message={{ maxCount: 2 }}>
 				<WorkspaceApp />
 			</AntApp>
 		</ConfigProvider>,

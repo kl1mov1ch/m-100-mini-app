@@ -1,0 +1,7 @@
+[Unit]
+Description=Work Journal private database backup
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/bash /var/miniApp/m-100/deploy/backup_native.sh
+UMask=0077

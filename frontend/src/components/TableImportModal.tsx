@@ -1,12 +1,24 @@
-import { Alert, Button, Input, InputNumber, Modal, Select, Tabs, Tag } from 'antd';
-import { Check, FileSpreadsheet, Search, Settings2, TriangleAlert } from 'lucide-react';
+import { Alert, App, Button, Input, InputNumber, Modal, Select, Tabs, Tag } from 'antd';
+import { Check, FileSpreadsheet, Search, Settings2, Sparkles, TriangleAlert } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { WorkspaceView } from '../App';
 import dayjs from '../lib/date';
 import { Money, nf, unit } from '../lib/format';
-import type { ImportWarning, Position, TableFixPayload } from '../types';
+import type {
+	CatalogueReconciliation as Reconciliation,
+	ImportWarning,
+	Position,
+	TableFixPayload,
+} from '../types';
+import { request } from '../lib/api';
+import { CatalogueReconciliation } from './CatalogueReconciliation';
 import { DatePicker } from './ResponsiveDatePicker';
 import './table-import.css';
+
+type CellSuggestions = Record<
+	string,
+	{ options: { value: string | number; reason: string }[]; message: string; restore_count?: number }
+>;
 
 export function TableImportModal({ workspace }: { workspace: WorkspaceView }) {
 	const {
@@ -21,23 +33,87 @@ export function TableImportModal({ workspace }: { workspace: WorkspaceView }) {
 		commitImport,
 		applyImportChanges,
 		data,
-		openSettings,
+		openObjectSection,
 	} = workspace;
+	const { message, modal } = App.useApp();
+	const [positionMatches, setPositionMatches] = useState<Record<string, string | null>>({});
+	const [reconciliationAccepted, setReconciliationAccepted] = useState(false);
+	const [resolving, setResolving] = useState(false);
+	const [dayResolutions, setDayResolutions] = useState<Record<string, string>>({});
 	const [tab, setTab] = useState('issues');
 	const [query, setQuery] = useState('');
 	const [values, setValues] = useState<Record<string, string | number | null>>({});
 	const [strategies, setStrategies] = useState<Record<string, string>>({});
 	const [replacementDates, setReplacementDates] = useState<Record<string, string>>({});
 	const [editing, setEditing] = useState<string | null>(null);
+	const [suggestions, setSuggestions] = useState<CellSuggestions>({});
+	const [suggestionError, setSuggestionError] = useState('');
+	const [suggestionAttempt, setSuggestionAttempt] = useState(0);
+	const hasImportWarnings = Boolean(
+		preview?.warnings.some((warning) => warning.severity !== 'info'),
+	);
+	useEffect(() => {
+		setSuggestions({});
+		setSuggestionError('');
+		if (!preview?.warnings.some((warning) => warning.cell && warning.field)) return;
+		const controller = new AbortController();
+		request<CellSuggestions>(
+			'/imports/consult',
+			{ token: preview.token, sheets: preview.sheets },
+			workspace.project,
+			controller.signal,
+		)
+			.then((result) => {
+				if (!controller.signal.aborted) setSuggestions(result);
+			})
+			.catch((error: Error) => {
+				if (!controller.signal.aborted) setSuggestionError(error.message);
+			});
+		return () => controller.abort();
+	}, [preview, workspace.project, suggestionAttempt]);
 	useEffect(() => {
 		setTab(
-			preview?.warnings.some((warning) => warning.severity !== 'info') ? 'issues' : 'positions',
+			hasImportWarnings
+				? 'issues'
+				: preview?.reconciliation?.needs_confirmation
+					? 'reconciliation'
+					: 'positions',
 		);
 		setQuery('');
 		setValues({});
 		setEditing(null);
-	}, [preview?.token]);
+	}, [preview?.token, hasImportWarnings]);
+	useEffect(() => {
+		setPositionMatches(
+			Object.fromEntries(
+				(preview?.reconciliation?.rows || []).map((row) => [row.previous.id, row.selected_id]),
+			),
+		);
+		setReconciliationAccepted(false);
+		setDayResolutions({});
+	}, [preview]);
 	if (!preview) return null;
+	const reconciliation = preview.reconciliation;
+	const reconciliationPending =
+		!!reconciliation?.needs_confirmation &&
+		(!reconciliationAccepted ||
+			reconciliation.rows.some((row) => row.required && !positionMatches[row.previous.id]) ||
+			reconciliation.report_conflicts.some((report) => !dayResolutions[report.date]));
+	const resolveReconciliation = async () => {
+		setResolving(true);
+		try {
+			const plan = await request<Reconciliation>(
+				'/imports/resolve',
+				{ token: preview.token, sheets: mapping },
+				workspace.project,
+			);
+			setPreview({ ...preview, reconciliation: plan });
+		} catch (error) {
+			message.error((error as Error).message);
+		} finally {
+			setResolving(false);
+		}
+	};
 	const problems = preview.warnings.filter((warning) => warning.severity !== 'info');
 	const positions = preview.positions.filter((position) =>
 		`${position.name} ${position.source_row}`.toLowerCase().includes(query.toLowerCase()),
@@ -47,6 +123,22 @@ export function TableImportModal({ workspace }: { workspace: WorkspaceView }) {
 	const fixCell = (warning: ImportWarning, value: string | number | null) => {
 		if (warning.sheet && warning.cell)
 			void applyImportChanges({ edits: [{ sheet: warning.sheet, cell: warning.cell, value }] });
+	};
+	const fixDailyColumn = (warning: ImportWarning, strategy: 'zero' | 'remove' | 'restore') => {
+		const { sheet, column, date } = warning;
+		if (!sheet || !column || !date) return;
+		const action = {
+			zero: ['Заполнить нулями?', 'Пустые и нечисловые объёмы станут нулями.'],
+			remove: ['Убрать колонку?', 'Дата и её объёмы исчезнут с листа.'],
+			restore: ['Восстановить объёмы?', 'Заполним ячейки по сохранённым данным за эту дату.'],
+		}[strategy];
+		modal.confirm({
+			title: action[0],
+			content: `${sheet} · ${column} · ${dayjs(date).format('DD.MM.YYYY')}. ${action[1]}`,
+			okText: 'Применить',
+			cancelText: 'Отмена',
+			onOk: () => applyImportChanges({ daily_columns: [{ sheet, column, date, strategy }] }),
+		});
 	};
 	const savePosition = (position: Position) => {
 		const sheet = mapping.find((sheet) => sheet.name === position.source_sheet);
@@ -79,6 +171,54 @@ export function TableImportModal({ workspace }: { workspace: WorkspaceView }) {
 				/>
 			)}
 			{problems.map((warning) => {
+				const suggestion = suggestions[warning.id];
+				if (warning.affected_rows?.length)
+					return (
+						<section className="table-issue" key={warning.id}>
+							<div className="table-issue-title">
+								<TriangleAlert size={16} />
+								<b>{warning.message}</b>
+							</div>
+							<small>
+								{warning.sheet} · {warning.cell}
+								{warning.date && ` · ${dayjs(warning.date).format('DD.MM')}`}
+							</small>
+							{suggestion?.restore_count === 0 ? (
+								<p className="table-issue-help">Нет сохранённых объёмов за эту дату.</p>
+							) : suggestion?.restore_count &&
+							  suggestion.restore_count < warning.affected_rows.length ? (
+								<p className="table-issue-help">
+									Можно восстановить {suggestion.restore_count} из {warning.affected_rows.length}{' '}
+									ячеек.
+								</p>
+							) : (
+								warning.ai_tip && <p className="table-issue-help">{warning.ai_tip}</p>
+							)}
+							<div className="table-column-actions">
+								<Button
+									size="small"
+									disabled={suggestion?.restore_count === 0}
+									loading={busy}
+									type="primary"
+									icon={<Sparkles size={14} />}
+									onClick={() => fixDailyColumn(warning, 'restore')}
+								>
+									Восстановить по отчёту
+								</Button>
+								<Button size="small" loading={busy} onClick={() => fixDailyColumn(warning, 'zero')}>
+									Заполнить нулями
+								</Button>
+								<Button
+									size="small"
+									loading={busy}
+									danger
+									onClick={() => fixDailyColumn(warning, 'remove')}
+								>
+									Убрать колонку
+								</Button>
+							</div>
+						</section>
+					);
 				const singularCell = warning.cell && /^[A-Z]+\d+$/.test(warning.cell);
 				return (
 					<section
@@ -98,14 +238,32 @@ export function TableImportModal({ workspace }: { workspace: WorkspaceView }) {
 						{warning.position_name && (
 							<strong className="table-issue-position">{warning.position_name}</strong>
 						)}
-						<p>{warning.message}</p>
+						{!warning.field && <p>{warning.message}</p>}
 						{warning.value && (
 							<div className="table-issue-value">
 								<span>В ячейке</span>
 								<b>{warning.value}</b>
 							</div>
 						)}
-						{warning.fix && <p className="table-issue-help">{warning.fix}</p>}
+						{warning.fix && !warning.field && <p className="table-issue-help">{warning.fix}</p>}
+						{warning.ai_tip && !suggestion && (
+							<p className="table-issue-help">
+								<b>Совет ИИ</b> · {warning.ai_tip}
+							</p>
+						)}
+						{suggestion?.message && <p className="table-issue-help">{suggestion.message}</p>}
+						{suggestion?.options.map(({ value, reason }) => (
+							<div className="table-suggested-value" key={String(value)}>
+								<span>{reason}</span>
+								<Button
+									size="small"
+									icon={<Sparkles size={14} />}
+									onClick={() => setValue(warning.id, value)}
+								>
+									Подставить {typeof value === 'number' ? nf.format(value) : unit(value)}
+								</Button>
+							</div>
+						))}
 						{singularCell && warning.sheet && (
 							<div className="table-cell-fix">
 								<div>
@@ -115,7 +273,20 @@ export function TableImportModal({ workspace }: { workspace: WorkspaceView }) {
 											placeholder="Ед. изм."
 											value={values[warning.id] || undefined}
 											onChange={(value) => setValue(warning.id, value)}
-											options={['м', 'шт', 'кг', 'компл', 'сист'].map((value) => ({
+											options={[
+												...new Set([
+													'м',
+													'шт',
+													'м²',
+													'м³',
+													'кг',
+													'компл',
+													'сист',
+													'л',
+													'т',
+													...(suggestion?.options.map(({ value }) => String(value)) || []),
+												]),
+											].map((value) => ({
 												value,
 												label: unit(value),
 											}))}
@@ -141,16 +312,6 @@ export function TableImportModal({ workspace }: { workspace: WorkspaceView }) {
 										Исправить
 									</Button>
 								</div>
-								{warning.field !== 'Единица измерения' && (
-									<Button
-										type="text"
-										size="small"
-										loading={busy}
-										onClick={() => fixCell(warning, 0)}
-									>
-										Поставить 0 в ячейке
-									</Button>
-								)}
 							</div>
 						)}
 						{warning.duplicates?.map((group) => {
@@ -223,6 +384,18 @@ export function TableImportModal({ workspace }: { workspace: WorkspaceView }) {
 					</section>
 				);
 			})}
+			{suggestionError && (
+				<Alert
+					type="warning"
+					showIcon
+					message={suggestionError}
+					action={
+						<Button size="small" onClick={() => setSuggestionAttempt(suggestionAttempt + 1)}>
+							Повторить подбор
+						</Button>
+					}
+				/>
+			)}
 			{preview.warnings
 				.filter((warning) => warning.severity === 'info')
 				.map((warning) => (
@@ -315,8 +488,8 @@ export function TableImportModal({ workspace }: { workspace: WorkspaceView }) {
 	const columns = (
 		<div className="import-mapping-list">
 			{mapping.map((sheet, index) => (
-				<section className="import-mapping-card" key={sheet.name}>
-					<h3>{sheet.name}</h3>
+				<section className="import-mapping-card" key={sheet.group || sheet.name}>
+					<h3>{sheet.group || sheet.name}</h3>
 					<label>
 						Строка заголовков
 						<InputNumber
@@ -325,7 +498,9 @@ export function TableImportModal({ workspace }: { workspace: WorkspaceView }) {
 							onChange={(value) =>
 								setMapping((current) =>
 									current.map((item, otherIndex) =>
-										otherIndex === index ? { ...item, header_row: value || 1 } : item,
+										otherIndex === index
+											? { ...item, header_row: value || 1, detail_row: undefined }
+											: item,
 									),
 								)
 							}
@@ -397,10 +572,21 @@ export function TableImportModal({ workspace }: { workspace: WorkspaceView }) {
 					<Button
 						type="primary"
 						loading={busy}
-						disabled={problems.some((warning) => !ack.includes(warning.id))}
-						onClick={commitImport}
+						disabled={
+							resolving ||
+							reconciliationPending ||
+							problems.some((warning) => !ack.includes(warning.id))
+						}
+						onClick={() =>
+							void commitImport({
+								position_matches: positionMatches,
+								reconciliation_acknowledged: reconciliationAccepted,
+								reconciliation_version: reconciliation?.version || '',
+								day_resolutions: dayResolutions,
+							})
+						}
 					>
-						Подтвердить таблицу
+						{reconciliation?.needs_confirmation ? 'Применить изменения' : 'Подтвердить таблицу'}
 					</Button>
 				</div>
 			}
@@ -418,20 +604,73 @@ export function TableImportModal({ workspace }: { workspace: WorkspaceView }) {
 						size="small"
 						onClick={() => {
 							setPreview(null);
-							openSettings();
+							openObjectSection('table');
 						}}
 					>
 						Включить запись
 					</Button>
 				)}
 			</div>
+			{preview.source_change && (
+				<Alert
+					type="warning"
+					showIcon
+					message={
+						preview.source_change.kind === 'appearance'
+							? 'Оформление обновилось'
+							: 'Данные изменились в Битрикс24'
+					}
+					description={
+						preview.source_change.locations.join(', ') || 'Открыта текущая версия таблицы.'
+					}
+				/>
+			)}
 			<Tabs
 				activeKey={tab}
 				onChange={setTab}
 				items={[
+					...(reconciliation?.needs_confirmation
+						? [
+								{
+									key: 'reconciliation',
+									label: 'Изменения сметы',
+									children: (
+										<CatalogueReconciliation
+											plan={reconciliation}
+											dayResolutions={dayResolutions}
+											onResolveDays={(value) => {
+												setDayResolutions(
+													Object.fromEntries(
+														reconciliation.report_conflicts.map((report) => [report.date, value]),
+													),
+												);
+												setReconciliationAccepted(false);
+											}}
+											positions={preview.positions}
+											selected={positionMatches}
+											onSelect={(id, value) => {
+												setPositionMatches((current) => ({ ...current, [id]: value }));
+												setReconciliationAccepted(false);
+											}}
+											accepted={reconciliationAccepted}
+											onAccept={setReconciliationAccepted}
+											busy={resolving}
+											onResolve={() => void resolveReconciliation()}
+										/>
+									),
+								},
+							]
+						: []),
 					{
 						key: 'issues',
-						label: <>Проверка {problems.length > 0 && <Tag color="gold">{problems.length}</Tag>}</>,
+						label: (
+							<>
+								Проверка{' '}
+								{problems.length > 0 && (
+									<Tag className="status-tag-attention">{problems.length}</Tag>
+								)}
+							</>
+						),
 						children: issueCards,
 					},
 					{

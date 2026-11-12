@@ -1,0 +1,75 @@
+.work-card.work-overrun,
+.review-editor-work.work-overrun,
+.draft-work.work-overrun,
+.admin-work-row.work-overrun,
+.work-overruns {
+	border: 1px solid var(--ios-separator);
+	background: var(--ios-surface);
+}
+.work-estimate {
+	min-width: 0;
+}
+.work-estimate dl {
+	display: grid;
+	grid-template-columns: repeat(4, minmax(0, 1fr));
+	gap: 5px;
+	margin: 8px 0 0;
+}
+.work-estimate dl > div {
+	min-width: 0;
+	padding: 6px;
+	border-radius: 8px;
+	background: var(--ios-fill);
+}
+.work-estimate dt {
+	font-size: 11px;
+	color: var(--ios-secondary);
+}
+.work-estimate dd {
+	margin: 3px 0 0;
+	color: var(--ios-label);
+	font-size: 13px;
+	font-weight: 700;
+	overflow-wrap: anywhere;
+}
+.work-overruns > strong {
+	display: flex;
+	align-items: flex-start;
+	gap: 6px;
+	color: var(--ios-label);
+}
+.work-overruns svg {
+	flex: none;
+	color: var(--ios-warning-text);
+}
+.work-estimate .work-estimate-excess-value dd,
+.work-overruns li b {
+	color: var(--ios-danger);
+}
+.work-overruns {
+	margin: 10px 0;
+	padding: 12px;
+	border-radius: 12px;
+}
+.work-overruns ul {
+	display: grid;
+	gap: 8px;
+	margin: 8px 0 0;
+	padding: 0;
+	list-style: none;
+}
+.work-overruns li {
+	display: grid;
+	overflow-wrap: anywhere;
+}
+.work-overruns li small {
+	color: var(--ios-secondary);
+}
+@media (max-width: 420px) {
+	.work-estimate dl {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+}
+.work-estimate dl.work-estimate-excess {
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+}

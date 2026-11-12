@@ -1,14 +1,29 @@
 import { Alert, Button, Empty, InputNumber, Spin, Tag } from 'antd';
 import 'dayjs/locale/ru';
-import { Check, FileSpreadsheet, Mic, Plus, Trash2, Users } from 'lucide-react';
+import { Check, Mic, Plus, RotateCcw, TextCursorInput, Trash2, Users } from 'lucide-react';
+import { useState } from 'react';
 import { DatePicker } from '../components/ResponsiveDatePicker';
 import dayjs from '../lib/date';
 
 import type { WorkspaceView } from '../App';
-import { LinkedTable } from '../components/LinkedTable';
+import { useConfirmWorkRemoval } from '../hooks/useConfirmWorkRemoval';
+import { useReportDateSwipe } from '../hooks/useReportDateSwipe';
 import { Status } from '../components/SyncStatus';
-import { Money, nf, shortName, unit } from '../lib/format';
+import { Money, countLabel, nf, shortName, unit } from '../lib/format';
+import { AdminDailyReport } from '../components/AdminDailyReport';
+import { QuickReportComposer } from '../components/QuickReportComposer';
+import { ReportDraftFields } from '../components/ReportDraftFields';
+import { WorkEstimate, WorkOverruns } from '../components/WorkEstimate';
+import { estimateBalance } from '../lib/position-volume';
 export function DailyReportPage({ workspace }: { workspace: WorkspaceView }) {
+	if (workspace.isAdmin) return <AdminDailyReport workspace={workspace} />;
+	return <MasterDailyReport workspace={workspace} />;
+}
+
+function MasterDailyReport({ workspace }: { workspace: WorkspaceView }) {
+	const [textVisible, setTextVisible] = useState(false);
+	const confirmRemoval = useConfirmWorkRemoval();
+	const dateSwipe = useReportDateSwipe(workspace);
 	const {
 		session,
 		data,
@@ -31,24 +46,34 @@ export function DailyReportPage({ workspace }: { workspace: WorkspaceView }) {
 		each,
 		extra,
 		oldLines,
+		estimateLines,
 		nextLines,
 		deltaIds,
 		dirty,
 		valid,
 		confirm,
 		retry,
-		openSettings,
+		openObjectSection,
+		restoreDay,
 	} = workspace;
+	const workBalances = Object.entries(nextLines).flatMap(([id, quantity]) => {
+		const position = byId[id];
+		return position
+			? [{ position, balance: estimateBalance(position, estimateLines[id], quantity) }]
+			: [];
+	});
+	const balances = Object.fromEntries(
+		workBalances.map(({ position, balance }) => [position.id, balance]),
+	);
 	return !data ? (
 		<div className="empty-panel">
 			{active ? <Spin /> : <Empty description="Сначала добавьте объект" />}
 		</div>
 	) : (
 		<>
-			<div className="page-title">
+			<div className="page-title swipe-surface" {...dateSwipe}>
 				<div>
-					<span className="overline">{active?.name}</span>
-					<h1>Дневной отчёт</h1>
+					<h2>Дневной отчёт</h2>
 				</div>
 				<DatePicker
 					aria-label="Дата отчёта"
@@ -60,35 +85,36 @@ export function DailyReportPage({ workspace }: { workspace: WorkspaceView }) {
 					onChange={(d) => d && void changeDay(d.format('YYYY-MM-DD'))}
 				/>
 			</div>
-			{positions.length > 0 && (
-				<LinkedTable config={data.config} positions={positions.length} onSettings={openSettings} />
-			)}
 			<section className="daily-earnings">
 				<div className="earnings-total">
 					<span>Выработка за день</span>
 					<strong>
 						<Money value={amount} />
 					</strong>
-					<small>{lines.length} работ по расценкам вашей сметы</small>
+					<small>
+						{countLabel(Object.keys(nextLines).length, 'работа', 'работы', 'работ')} за день
+					</small>
 				</div>
-				<div className="crew-control">
-					<span>
-						<Users size={16} /> Работников на объекте
-					</span>
-					<InputNumber
-						aria-label="Количество работников"
-						min={1}
-						max={1000}
-						precision={0}
-						value={crew}
-						onChange={(v) => setCrew(v || 1)}
-					/>
-				</div>
-				<div className="earnings-person">
-					<span>На одного человека</span>
-					<strong>
-						<Money value={each} />
-					</strong>
+				<div className="daily-team-summary">
+					<div className="earnings-person">
+						<span>На человека</span>
+						<strong>
+							<Money value={each} />
+						</strong>
+					</div>
+					<div className="crew-control">
+						<span>
+							<Users size={16} /> Бригада
+						</span>
+						<InputNumber
+							aria-label="Количество работников"
+							min={1}
+							max={1000}
+							precision={0}
+							value={crew}
+							onChange={(v) => setCrew(v || 1)}
+						/>
+					</div>
 				</div>
 				{extra > 0 && (
 					<div className="rounding-note">
@@ -98,7 +124,16 @@ export function DailyReportPage({ workspace }: { workspace: WorkspaceView }) {
 			</section>
 			<div className="report-toolbar">
 				<Button
-					type="primary"
+					size="small"
+					icon={<TextCursorInput size={17} />}
+					aria-expanded={textVisible}
+					onClick={() => setTextVisible((visible) => !visible)}
+					disabled={!positions.length}
+				>
+					Текст
+				</Button>
+				<Button
+					size="small"
 					icon={<Plus size={18} />}
 					onClick={() => {
 						setReplaceIndex(null);
@@ -109,31 +144,30 @@ export function DailyReportPage({ workspace }: { workspace: WorkspaceView }) {
 					Добавить работу
 				</Button>
 				<Button
+					size="small"
 					icon={<Mic size={17} />}
 					onClick={() => setTextOpen(true)}
 					disabled={!positions.length}
 				>
-					Текстом или голосом
+					Голос
 				</Button>
 			</div>
-			{!positions.length && (
-				<div className="empty-panel">
-					<FileSpreadsheet size={34} />
-					<h2>Добавьте таблицу объекта</h2>
-					<p>Загрузите файл или подключите таблицу Битрикс24</p>
-					<Button type="primary" onClick={openSettings}>
-						Добавить таблицу
-					</Button>
-				</div>
-			)}
+			{textVisible && <QuickReportComposer workspace={workspace} inline />}
+			<ReportDraftFields workspace={workspace} />
+			<WorkOverruns items={workBalances} confirmed={!!report?.revision && !dirty} />
 			<div className="work-list">
 				{lines.map((l, i) => {
 					const p = l.item_id ? byId[l.item_id] : null;
 					const changed = p && oldLines[p.id] !== l.quantity;
+					const balance = p ? balances[p.id] : null;
 					return (
-						<section className={'work-card ' + (!p ? 'needs-review' : '')} key={i}>
+						<section
+							className={
+								'work-card ' + (!p ? 'needs-review' : balance?.excess ? 'work-overrun' : '')
+							}
+							key={i}
+						>
 							<div className="work-card-heading">
-								<span className="work-index">{String(i + 1).padStart(2, '0')}</span>
 								<button
 									className="work-name"
 									onClick={() => {
@@ -147,7 +181,17 @@ export function DailyReportPage({ workspace }: { workspace: WorkspaceView }) {
 								<button
 									className="plain-icon"
 									aria-label={'Удалить работу ' + (i + 1)}
-									onClick={() => setLines((ls) => ls.filter((_, j) => j !== i))}
+									onClick={() =>
+										confirmRemoval(
+											{
+												name: p?.name || l.raw || 'Работа',
+												quantity: l.quantity,
+												unit: p?.unit,
+												saved: !!(l.item_id && oldLines[l.item_id]),
+											},
+											() => setLines((ls) => ls.filter((line) => line !== l)),
+										)
+									}
 								>
 									<Trash2 size={16} />
 								</button>
@@ -177,12 +221,12 @@ export function DailyReportPage({ workspace }: { workspace: WorkspaceView }) {
 									</strong>
 								</div>
 							</div>
+							{p && balance && <WorkEstimate balance={balance} unit={p.unit} />}
 							<div className="work-card-foot">
 								<span>
 									{p ? (
 										<>
-											<Money value={p.rate} /> / {unit(p.unit)} <i />
-											Остаток {nf.format(p.remaining)} {unit(p.unit)}
+											<Money value={p.rate} /> / {unit(p.unit)}
 										</>
 									) : (
 										'Уточните позицию'
@@ -196,7 +240,6 @@ export function DailyReportPage({ workspace }: { workspace: WorkspaceView }) {
 			</div>
 			{!lines.length && positions.length > 0 && (
 				<div className="no-work">
-					<FileSpreadsheet size={29} />
 					<p>Добавьте работы, выполненные за день</p>
 				</div>
 			)}
@@ -219,13 +262,45 @@ export function DailyReportPage({ workspace }: { workspace: WorkspaceView }) {
 			)}
 			{report && report.revision > 0 && (
 				<div className="current-status">
-					<Status status={report.sync_status} />
-					{report.sync_status !== 'synced' && (
-						<Button size="small" loading={busy} onClick={() => void retry(day)}>
-							Повторить отправку
-						</Button>
+					<Button
+						type="text"
+						size="small"
+						icon={<RotateCcw size={14} />}
+						disabled={busy}
+						onClick={() => void restoreDay()}
+					>
+						Вернуть к началу дня
+					</Button>
+					<Status
+						status={
+							report.sync_status === 'pending' && !data.config.has_webhook
+								? 'local'
+								: report.sync_status
+						}
+					/>
+					{report.sync_status !== 'synced' &&
+						data.config.source === 'bitrix' &&
+						data.config.has_webhook && (
+							<Button size="small" loading={busy} onClick={() => void retry(day)}>
+								Повторить отправку
+							</Button>
+						)}
+					{report.sync_status === 'error' && report.sync_error && (
+						<Alert
+							type="warning"
+							showIcon
+							message="Нужно проверить изменения таблицы"
+							description={report.sync_error}
+							action={
+								<Button size="small" onClick={() => openObjectSection('table')}>
+									Проверить таблицу
+								</Button>
+							}
+						/>
 					)}
-					{report.sync_status === 'error' && report.sync_error && <p>{report.sync_error}</p>}
+					{report.sync_status === 'synced' && report.sync_error && (
+						<Alert type="warning" showIcon message={report.sync_error} />
+					)}
 				</div>
 			)}
 			<div className="confirm-bar">
