@@ -29,13 +29,22 @@
 	flex-shrink: 0;
 }
 .ant-modal .ant-modal-body {
+	flex: 1 1 auto;
 	min-height: 0;
 	max-height: calc(
 		var(--app-height, 100dvh) - var(--app-safe-top, 0px) - var(--app-safe-bottom, 0px) - 180px
 	);
 	overflow-y: auto;
 	overscroll-behavior: contain;
-	padding-right: 2px;
+	padding-right: 0;
+}
+.ant-drawer .ant-drawer-body {
+	min-height: 0;
+	overscroll-behavior: contain;
+}
+.ant-drawer .ant-drawer-header,
+.ant-drawer .ant-drawer-footer {
+	flex-shrink: 0;
 }
 .ant-modal .ant-modal-title {
 	padding-right: 30px;

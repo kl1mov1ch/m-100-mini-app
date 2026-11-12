@@ -5,13 +5,19 @@
 	font-synthesis: none;
 	-webkit-font-smoothing: antialiased;
 	overflow-x: clip;
-	scrollbar-width: none;
-}
-:root::-webkit-scrollbar {
-	display: none;
 }
 * {
 	box-sizing: border-box;
+	scrollbar-width: none;
+	-ms-overflow-style: none;
+}
+*::-webkit-scrollbar {
+	width: 0;
+	height: 0;
+	display: none;
+}
+.rc-virtual-list-scrollbar {
+	display: none !important;
 }
 body {
 	margin: 0;
