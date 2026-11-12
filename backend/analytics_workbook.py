@@ -171,7 +171,7 @@ def add_dashboard(workbook, user, data):
             chart = chart_class()
             chart.title = title
             chart.style = 13
-            chart.width = 13.2
+            chart.width = 11.3
             chart.height = 8.3
             chart.legend = None
             chart.add_data(
