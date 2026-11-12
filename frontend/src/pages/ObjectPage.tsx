@@ -217,6 +217,7 @@ export function ObjectPage({ workspace }: { workspace: WorkspaceView }) {
 			)}
 			{objectSection === 'catalogue' && (
 				<ObjectCatalogue
+					key={project}
 					workspace={workspace}
 					onView={(position) => setViewPosition(position.id)}
 				/>
