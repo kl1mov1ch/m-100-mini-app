@@ -1,4 +1,4 @@
-import { App, Button, Checkbox, Input, InputNumber, Modal, Pagination, Select, Tag } from 'antd';
+import { App, Button, Checkbox, Input, InputNumber, Modal, Pagination, Select } from 'antd';
 import { ArrowLeft, ChevronRight, Download, FileSearch } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Money } from '../lib/format';
@@ -188,7 +188,7 @@ export function DocumentResultsPage({
 		}
 	};
 	return (
-		<>
+		<div className="document-page document-results-page">
 			<button className="back-link" onClick={back}>
 				<ArrowLeft size={16} />
 				Документы
@@ -196,7 +196,7 @@ export function DocumentResultsPage({
 			<div className="page-title document-results-title">
 				<div>
 					<h1>Выборка работ</h1>
-					<small className="page-context">{job.name}</small>
+					<small className="page-context document-filename">{job.name}</small>
 				</div>
 			</div>
 			<section className="document-result-summary">
@@ -217,34 +217,31 @@ export function DocumentResultsPage({
 				</div>
 				<small>В сумме — только проверенные строки с расценками.</small>
 			</section>
-			<div className="document-notice">
-				<strong>
-					{job.processed} / {job.pages} страниц прочитано · {job.payload.analysis_done || 0} /{' '}
-					{job.payload.analysis_total || 0} фрагментов разобрано
-				</strong>
+			<details className="document-checks">
+				<summary>
+					Проверка источников{' '}
+					<span>
+						· {job.processed}/{job.pages} стр.
+						{job.payload.questions?.length ? ` · ${job.payload.questions.length} вопросов` : ''}
+					</span>
+				</summary>
 				{!job.payload.coverage?.complete && (
 					<p>Обработка неполная — итоговый отчёт пока недоступен.</p>
 				)}
 				{needsScope && (
-					<details>
-						<summary>Проверить распознавание и полноту</summary>
-						<p>
-							Есть вопросы к полноте или качеству распознавания. Геометрические длины и площади по
-							изображениям не измерялись. Проверьте источники отмеченных строк.
-						</p>
-					</details>
+					<p>
+						Есть вопросы к полноте или качеству распознавания. Геометрические длины и площади по
+						изображениям не измерялись. Проверьте источники отмеченных строк.
+					</p>
 				)}
-			</div>
-			{!!job.payload.questions?.length && (
-				<details className="document-questions">
-					<summary>Вопросы по полноте · {job.payload.questions.length}</summary>
+				{!!job.payload.questions?.length && (
 					<ul>
 						{job.payload.questions.map((question, index) => (
 							<li key={index}>{question}</li>
 						))}
 					</ul>
-				</details>
-			)}
+				)}
+			</details>
 			<div className="document-results-filters">
 				<Input.Search
 					placeholder="Найти работу"
@@ -287,9 +284,9 @@ export function DocumentResultsPage({
 					>
 						<div>
 							<strong>{row.name}</strong>
-							<Tag color={row.confirmed ? 'green' : undefined}>
+							<span className={'document-row-status' + (row.confirmed ? ' checked' : '')}>
 								{row.confirmed ? 'Проверено' : row.issues.length ? 'Уточнить' : 'Черновик'}
-							</Tag>
+							</span>
 						</div>
 						<small>
 							{row.category} · {row.sources.length} источн.
@@ -322,14 +319,19 @@ export function DocumentResultsPage({
 								)}
 							</label>
 						</div>
-						{row.notes && <p>{row.notes}</p>}
+						{row.notes && (
+							<details className="document-row-notes">
+								<summary>Примечание</summary>
+								<p>{row.notes}</p>
+							</details>
+						)}
 						{row.issues.length > 0 && <p className="document-question">{row.issues[0]}</p>}
 						<div className="document-review-actions">
 							<Button type="text" icon={<FileSearch size={16} />} onClick={() => setSources(row)}>
 								Источники
 							</Button>
-							<Button type={row.confirmed ? 'default' : 'primary'} onClick={() => choose(row)}>
-								{row.confirmed ? 'Изменить' : 'Расценка и проверка'}
+							<Button type="text" onClick={() => choose(row)}>
+								{row.confirmed ? 'Изменить' : 'Проверить'}
 								<ChevronRight size={15} />
 							</Button>
 						</div>
@@ -385,7 +387,7 @@ export function DocumentResultsPage({
 				open={!!editing}
 				onCancel={() => !saving && setEditing(null)}
 				confirmLoading={saving}
-				okText="Подтвердить позицию"
+				okText="Подтвердить"
 				cancelText="Отмена"
 				onOk={() => void confirm()}
 				okButtonProps={{
@@ -396,27 +398,34 @@ export function DocumentResultsPage({
 				}}
 			>
 				<div className="document-review-form">
-					<label>
-						Название работы
-						<Input value={name} maxLength={300} onChange={(event) => setName(event.target.value)} />
-					</label>
-					<label>
-						Категория
-						<Select
-							value={editCategory}
-							onChange={setEditCategory}
-							options={[
-								'Вентиляция',
-								'Отопление',
-								'Водоснабжение',
-								'Канализация',
-								'Кондиционирование',
-								'Электроснабжение',
-								'Автоматика',
-								'Прочее',
-							].map((value) => ({ value, label: value }))}
-						/>
-					</label>
+					<details className="document-details document-edit-details">
+						<summary>Название и категория</summary>
+						<label>
+							Название работы
+							<Input
+								value={name}
+								maxLength={300}
+								onChange={(event) => setName(event.target.value)}
+							/>
+						</label>
+						<label>
+							Категория
+							<Select
+								value={editCategory}
+								onChange={setEditCategory}
+								options={[
+									'Вентиляция',
+									'Отопление',
+									'Водоснабжение',
+									'Канализация',
+									'Кондиционирование',
+									'Электроснабжение',
+									'Автоматика',
+									'Прочее',
+								].map((value) => ({ value, label: value }))}
+							/>
+						</label>
+					</details>
 					{editing?.issues.map((issue) => (
 						<p className="document-question" key={issue}>
 							{issue}
@@ -427,28 +436,32 @@ export function DocumentResultsPage({
 							Проверить источники
 						</Button>
 					)}
-					<label>
-						Единица измерения
-						<Select
-							value={unit}
-							onChange={setUnit}
-							options={['м', 'м²', 'м³', 'шт.', 'кг', 'компл.', 'чел·ч', 'чел·дн'].map((value) => ({
-								value,
-								label: value,
-							}))}
-						/>
-					</label>
-					<label>
-						Объём
-						<InputNumber
-							stringMode
-							min="0"
-							max="1000000000"
-							value={quantity}
-							onChange={setQuantity}
-							controls={false}
-						/>
-					</label>
+					<div className="document-input-pair">
+						<label>
+							Единица измерения
+							<Select
+								value={unit}
+								onChange={setUnit}
+								options={['м', 'м²', 'м³', 'шт.', 'кг', 'компл.', 'чел·ч', 'чел·дн'].map(
+									(value) => ({
+										value,
+										label: value,
+									}),
+								)}
+							/>
+						</label>
+						<label>
+							Объём
+							<InputNumber
+								stringMode
+								min="0"
+								max="1000000000"
+								value={quantity}
+								onChange={setQuantity}
+								controls={false}
+							/>
+						</label>
+					</div>
 					<label>
 						Расценка за {unit}, BYN
 						<InputNumber
@@ -460,15 +473,18 @@ export function DocumentResultsPage({
 							controls={false}
 						/>
 					</label>
-					<label>
-						Примечания
-						<Input.TextArea
-							value={notes}
-							maxLength={2000}
-							autoSize={{ minRows: 2, maxRows: 5 }}
-							onChange={(event) => setNotes(event.target.value)}
-						/>
-					</label>
+					<details className="document-details document-edit-details">
+						<summary>Примечание</summary>
+						<label>
+							Примечания
+							<Input.TextArea
+								value={notes}
+								maxLength={2000}
+								autoSize={{ minRows: 2, maxRows: 5 }}
+								onChange={(event) => setNotes(event.target.value)}
+							/>
+						</label>
+					</details>
 					{!!editing?.issues.length && (
 						<label>
 							Как проверен спорный объём
@@ -508,8 +524,7 @@ export function DocumentResultsPage({
 								checked={acknowledge}
 								onChange={(event) => setAcknowledge(event.target.checked)}
 							>
-								Подтверждаю полноту выборки с учётом вопросов и качества распознавания. Объёмы по
-								геометрии чертежей не измерялись.
+								Источники и полнота проверены. Геометрия чертежей не измерялась.
 							</Checkbox>
 						)}
 				</div>
@@ -539,6 +554,6 @@ export function DocumentResultsPage({
 					))}
 				</div>
 			</Modal>
-		</>
+		</div>
 	);
 }
