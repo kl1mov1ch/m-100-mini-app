@@ -8,14 +8,67 @@ from zipfile import ZipFile
 import httpx
 import openpyxl
 from openpyxl.styles import PatternFill
+from test_reconciliation_restore import approval, upload, workbook
+from test_workspaces import client, create, grant
 
-from backend import bitrix, matcher, store, workspaces
+from backend import bitrix, matcher, store, workbook_revision, workspaces
 from backend.clock import today
 from backend.table_editing import DailyColumnChange, apply_changes
 from backend.workbook_journal import is_journal
-from backend import workbook_revision
-from test_reconciliation_restore import approval, upload, workbook
-from test_workspaces import client, create, grant
+
+
+def test_original_sheet_review_rebuilds_working_sheets_after_confirmation(client, monkeypatch):
+    grant(client, "9001")
+    ident = create(client, "9001", sample=False)
+    headers = {"X-Project-Id": ident, "X-Preview-User": "9001"}
+    project = workspaces.project(workspaces.user("9001"), ident)
+    with store.connect(project["db_path"]) as db:
+        store.set_setting(db, "webhook", "test-webhook")
+        store.set_setting(db, "file_id", "123")
+
+    current = workbook()
+    writes = []
+
+    async def download(*args):
+        return current, {"NAME": "Смета.xlsx"}
+
+    async def write(*args):
+        nonlocal current
+        current = base64.b64decode(args[2]["fileContent"][1])
+        writes.append(current)
+        return True
+
+    monkeypatch.setattr(bitrix, "download_rest", download)
+    monkeypatch.setattr(bitrix, "rest", write)
+    initial = client.post("/api/imports/bitrix", headers=headers).json()
+    confirmed = client.post("/api/imports/confirm", headers=headers, json=approval(initial))
+    assert confirmed.is_success, confirmed.text
+    assert len(writes) == 1
+    assert client.post("/api/imports/bitrix?original=true", headers=headers).json() is None
+
+    book = openpyxl.load_workbook(io.BytesIO(current))
+    book["Монтаж"]["D2"] = "уточнить"
+    second = book.create_sheet("Электрика")
+    second.append(["Наименование", "Ед. изм.", "План", "Расценка"])
+    second.append(["Розетка", "шт", 10, 9])
+    stream = io.BytesIO()
+    book.save(stream)
+    current = stream.getvalue()
+    review = client.post("/api/imports/bitrix?original=true", headers=headers).json()
+    assert review["source_change"]["kind"] == "data"
+    assert "Монтаж · D2" in review["source_change"]["locations"]
+    changes = {"token": review["token"], "edits": [{"sheet": "Монтаж", "cell": "D2", "value": 5}]}
+    edited = client.post("/api/imports/edit", headers=headers, json=changes)
+    assert edited.is_success, edited.text
+    assert len(writes) == 1
+    confirmed = client.post("/api/imports/confirm", headers=headers, json=approval(edited.json()))
+    assert confirmed.is_success, confirmed.text
+    assert len(writes) == 2
+    saved = openpyxl.load_workbook(io.BytesIO(current), data_only=True)
+    assert saved["Монтаж"]["D2"].value == "уточнить"
+    assert sum(is_journal(sheet) for sheet in saved) == 2
+    assert sorted(item["rate"] for item in bitrix.read_workbook(current)["positions"]) == [5, 9]
+    assert client.post("/api/imports/bitrix?original=true", headers=headers).json() is None
 
 
 def test_live_overrun_preserves_confirmed_report_and_position_history(client, monkeypatch):

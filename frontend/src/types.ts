@@ -236,6 +236,9 @@ export type ImportSheet = {
 	columns: { index: number; label: string }[];
 	mapping: Record<string, number | null>;
 	header_row: number;
+	detail_row?: number;
+	end_row?: number;
+	group?: string;
 	date_row: number;
 	rows: number;
 };

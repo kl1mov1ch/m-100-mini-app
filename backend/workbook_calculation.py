@@ -278,8 +278,13 @@ class FormulaEvaluator:
         raise ValueError("Неподдерживаемая формула")
 
 
-def cache_formulas(content, issues=None):
+def cache_formulas(content, issues=None, *, original=None):
+    from openpyxl.utils.datetime import to_excel
+
+    from .workbook_journal import is_journal
+
     book = openpyxl.load_workbook(io.BytesIO(content), data_only=False)
+    originals = openpyxl.load_workbook(io.BytesIO(original), data_only=True) if original else None
     evaluator = FormulaEvaluator(book)
     cached = {}
     for index, sheet in enumerate(book, 1):
@@ -287,6 +292,16 @@ def cache_formulas(content, issues=None):
         for row in sheet:
             for cell in row:
                 if cell.data_type == "f":
+                    if originals is not None and not is_journal(sheet):
+                        previous = originals[sheet.title][cell.coordinate]
+                        value = previous.value
+                        if value is not None:
+                            values[cell.coordinate] = (
+                                to_excel(value, originals.epoch)
+                                if previous.is_date and not isinstance(value, (int, float))
+                                else value
+                            )
+                            continue
                     try:
                         values[cell.coordinate] = evaluator.cell(sheet.title, cell.coordinate)
                     except (

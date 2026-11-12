@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 from datetime import datetime, timedelta
+from pathlib import Path
 from urllib.parse import urlparse
 
 import httpx
@@ -29,6 +30,7 @@ def table_lock(project):
 
 async def write_journal(project):
     async with table_lock(project):
+        rebuild = None
         with store.connect(project["db_path"]) as db:
             if store.setting(db, "source") != "bitrix":
                 return {"status": "local", "message": "Таблица сохранена в приложении."}
@@ -46,9 +48,29 @@ async def write_journal(project):
                     "SELECT date,crew_count FROM reports WHERE sync_status='synced'"
                 )
             }
+            if store.setting(db, "journal_rebuild"):
+                original = Path(store.setting(db, "import_file_path"))
+                if not original.is_file():
+                    return {"status": "pending", "message": "Повторно проверьте исходный файл."}
+                rebuild = {
+                    "original": original.read_bytes(),
+                    "positions": store.positions(db),
+                    "entries": [
+                        dict(row) for row in db.execute("SELECT item_id,date,quantity FROM entries")
+                    ],
+                }
+                crew.update(
+                    {
+                        row["date"]: row["crew_count"]
+                        for row in db.execute("SELECT date,crew_count FROM reports")
+                    }
+                )
         status, note = "ready", ""
         try:
-            await bitrix.upload_journal(webhook, file_id, mappings, crew)
+            if rebuild:
+                await bitrix.upload_journal(webhook, file_id, mappings, crew, rebuild=rebuild)
+            else:
+                await bitrix.upload_journal(webhook, file_id, mappings, crew)
         except Exception as error:
             logging.getLogger(__name__).warning(
                 "Bitrix journal write failed: %s", type(error).__name__
@@ -61,9 +83,20 @@ async def write_journal(project):
                 note += " Проверьте права вебхука на изменение файла."
             elif isinstance(error, httpx.TransportError):
                 note += " Битрикс24 не ответил. Повторите запись."
+            elif isinstance(error, ValueError):
+                note = str(error)
         with store.connect(project["db_path"]) as db:
             store.set_setting(db, "journal_status", status)
             store.set_setting(db, "journal_note", note)
+            store.set_setting(
+                db,
+                "journal_retry_at",
+                (datetime.fromisoformat(now()) + timedelta(minutes=2)).isoformat()
+                if status == "pending"
+                else "",
+            )
+            if status == "ready":
+                store.set_setting(db, "journal_rebuild", "")
         return {"status": status, "message": note or "Лист «Журнал работ» проверен в Битрикс24."}
 
 
@@ -86,6 +119,12 @@ async def send_day(project, day):
                 return {"ok": False, "status": "pending", "message": msg}
             if r["sync_status"] == "synced":
                 return {"ok": True, "status": "synced"}
+            if store.setting(db, "journal_rebuild"):
+                return {
+                    "ok": False,
+                    "status": "pending",
+                    "message": "Рабочие листы обновляются. Отчёт сохранён.",
+                }
             baseline = json.loads(store.setting(db, "remote_days", "{}")).get(day, {})
             mappings = json.loads(store.setting(db, "sheet_mappings", "null"))
             crew = {
@@ -175,6 +214,15 @@ async def retry_pending_reports():
                         (now(),),
                     )
                 ]
+                pending_journal = (
+                    store.setting(database, "journal_status") == "pending"
+                    and store.setting(database, "journal_retry_at") <= now()
+                )
+            if pending_journal:
+                try:
+                    await write_journal(project)
+                except Exception:
+                    continue
             for report_date in dates:
                 try:
                     await send_day(project, report_date)
