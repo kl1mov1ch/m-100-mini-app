@@ -66,7 +66,8 @@ export type BitrixRead = {
 	updated_at: string | null;
 };
 export type BitrixReviewIssue = {
-	kind: 'cell' | 'layout' | 'planned' | 'rate' | 'remaining' | 'report';
+	kind: 'cell' | 'layout' | 'planned' | 'rate' | 'remaining' | 'report' | 'appearance';
+	version?: string;
 	title: string;
 	advice: string;
 	sheet?: string | null;
@@ -239,6 +240,7 @@ export type ImportSheet = {
 	rows: number;
 };
 export type ImportPreview = {
+	source_change?: { kind: 'data' | 'appearance'; locations: string[] } | null;
 	token: string;
 	name: string;
 	sheets: ImportSheet[];

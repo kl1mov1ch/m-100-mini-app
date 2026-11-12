@@ -90,11 +90,13 @@
 	color: #6f91c0;
 }
 .object-table-card-actions {
-	display: flex;
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
 	gap: 10px;
 }
 .object-table-card-actions .ant-btn {
-	flex: 1;
+	width: 100%;
+	min-height: 42px;
 	font-size: 11px;
 	gap: 6px;
 }
@@ -234,12 +236,11 @@
 		font-size: 9px;
 	}
 	.object-table-card-actions {
-		flex-direction: column;
+		grid-template-columns: minmax(0, 1fr);
 		gap: 8px;
 	}
 	.object-table-card-actions .ant-btn {
 		font-size: 11px;
-		flex: auto;
 	}
 	.calendar-work-legend {
 		font-size: 9px;

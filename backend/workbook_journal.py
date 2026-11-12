@@ -1,5 +1,6 @@
 import io
 import json
+from copy import copy
 from datetime import date
 
 import openpyxl
@@ -14,10 +15,35 @@ JOURNAL_MARKER = "M100 • Журнал работ"
 JOURNAL_SOURCE = "M100 • рабочий лист"
 AMOUNT_FORMAT = '#,##0.00 "BYN"'
 VOLUME_FORMAT = "#,##0.####;[Red]-#,##0.####;0"
+DEFAULT_FILLS = {"21344A", "E8F2FB", "F5F8FC", "FFFFFF"}
 
 
 def is_journal(sheet):
     return sheet["A2"].value == JOURNAL_MARKER
+
+
+def manual_fill(cell):
+    fill = cell.fill
+    return bool(getattr(fill, "fill_type", None)) and not (
+        fill.fill_type == "solid"
+        and fill.fgColor.type == "rgb"
+        and fill.fgColor.rgb[-6:] in DEFAULT_FILLS
+    )
+
+
+def saved_fills(sheet):
+    result = {}
+    for row in sheet.iter_rows(min_row=5):
+        metadata = journal_row(row[0])
+        ident = metadata[0] if metadata else row[0].row
+        if not isinstance(row[0].value, int):
+            continue
+        for cell in row:
+            if manual_fill(cell):
+                day = sheet.cell(3, cell.column).value if cell.column >= 10 else None
+                key = day.isoformat()[:10] if isinstance(day, date) else cell.column
+                result[ident, key] = copy(cell.fill)
+    return result
 
 
 def journal_mapping(sheet):
@@ -68,6 +94,7 @@ def format_journal(content, catalogue, entries, crew_by_day, issues):
 
     book = openpyxl.load_workbook(io.BytesIO(content))
     previous = next((sheet for sheet in book if is_journal(sheet)), None)
+    fills = saved_fills(previous) if previous else {}
     previous_days = []
     if previous:
         previous_days = [
@@ -206,6 +233,11 @@ def format_journal(content, catalogue, entries, crew_by_day, issues):
                 wrap_text=True,
             )
             if 5 <= cell.row <= last_row:
+                position = catalogue[cell.row - 5]
+                key = days[cell.column - 10] if cell.column >= 10 else cell.column
+                fill = fills.get((position["id"], key)) or fills.get((cell.row, key))
+                if fill:
+                    cell.fill = fill
                 if cell.column in (5, 6, 8):
                     cell.number_format = AMOUNT_FORMAT
                 elif cell.column in (4, 7) or cell.column >= 9:

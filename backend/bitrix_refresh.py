@@ -8,7 +8,7 @@ from zipfile import BadZipFile
 import httpx
 from openpyxl.utils.exceptions import InvalidFileException
 
-from . import bitrix, store, tables, workspaces
+from . import bitrix, store, tables, workbook_revision, workspaces
 from .bitrix_review import compare_values, layout_issue, report_issue, warning_issue
 from .clock import now
 from .synchronization import table_lock
@@ -127,6 +127,29 @@ def apply_read(db, extracted):
             )
         duplicate_days.update((row[0], item["date"]) for item in warning.get("duplicates", []))
     issues = [warning_issue(warning) for warning in relevant_warnings]
+    appearance = extracted.get("appearance")
+    if appearance is not None:
+        previous_colors = json.loads(store.setting(db, "bitrix_appearance", "null"))
+        store.set_setting(
+            db, "bitrix_appearance_observed", json.dumps(appearance, ensure_ascii=False)
+        )
+        if previous_colors is None:
+            store.set_setting(db, "bitrix_appearance", json.dumps(appearance, ensure_ascii=False))
+        elif previous_colors != appearance:
+            locations = sorted(
+                key
+                for key in previous_colors.keys() | appearance.keys()
+                if previous_colors.get(key) != appearance.get(key)
+            )
+            issues.append(
+                {
+                    "kind": "appearance",
+                    "title": "Изменена заливка ячеек",
+                    "sheet": locations[0],
+                    "advice": "Подтвердите оформление, если оно внесено намеренно.",
+                    "version": workbook_revision.appearance_version(appearance),
+                }
+            )
     if layout_changed:
         issues.extend(
             layout_issue(position, True)
@@ -245,7 +268,10 @@ def apply_read(db, extracted):
 def extract_workbook(content, mappings):
     if not mappings:
         mappings, _ = tables.discover(content)
-    return bitrix.read_workbook(content, mappings)
+    return {
+        **bitrix.read_workbook(content, mappings),
+        "appearance": workbook_revision.colors(content),
+    }
 
 
 async def refresh_project(project, max_age=90):

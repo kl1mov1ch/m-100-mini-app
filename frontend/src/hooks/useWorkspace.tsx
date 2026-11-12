@@ -3,7 +3,7 @@ import 'dayjs/locale/ru';
 import { createRef, useEffect, useRef, useState } from 'react';
 import dayjs from '../lib/date';
 
-import { previewUser, request } from '../lib/api';
+import { previewUser, request, RequestError } from '../lib/api';
 import { calculateAmount, mergeWorkQuantities } from '../lib/calculation';
 import { ReportReviewEditor, type ReportReviewHandle } from '../components/ReportReviewEditor';
 import { Money } from '../lib/format';
@@ -831,7 +831,8 @@ export function useWorkspace() {
 				message.warning(result.journal.message);
 			else message.success('Таблица готова к работе');
 		} catch (e) {
-			message.error((e as Error).message);
+			if (e instanceof RequestError && e.code === 'workbook_changed') await resumeImport();
+			else message.error((e as Error).message);
 		} finally {
 			setBusy(false);
 		}
@@ -872,7 +873,8 @@ export function useWorkspace() {
 					: 'Исправления внесены в загруженный файл',
 			);
 		} catch (error) {
-			message.error((error as Error).message);
+			if (error instanceof RequestError && error.code === 'workbook_changed') await resumeImport();
+			else message.error((error as Error).message);
 		} finally {
 			setBusy(false);
 		}
