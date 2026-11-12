@@ -74,6 +74,7 @@ async def detach(request: Request):
                 "public_url": "",
                 "file_id": "0",
                 "webhook": "",
+                "webhook_profile_id": "",
                 "connection_check": "null",
                 "table_detail_url": "",
                 "pending_import_token": "",

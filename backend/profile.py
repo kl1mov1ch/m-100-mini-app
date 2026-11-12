@@ -6,11 +6,44 @@ from urllib.parse import urlparse
 import httpx
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
+from pydantic import BaseModel, Field
 
-from . import workspaces
+from . import profile_webhooks, store, workspaces
 
 router = APIRouter()
 AVATAR_LIMIT = asyncio.Semaphore(4)
+
+
+class DiskWebhook(BaseModel):
+    name: str = Field(default="", max_length=80)
+    url: str = Field(default="", max_length=500)
+    project_id: str | None = Field(default=None, max_length=64)
+
+
+def master_profile(request):
+    user = request.state.user
+    if user["role"] != "master":
+        raise HTTPException(403, "Вебхуки доступны в профиле мастера")
+    return user
+
+
+@router.get("/api/profile/disk-webhooks")
+def disk_webhooks(request: Request):
+    return profile_webhooks.list_webhooks(master_profile(request)["telegram_id"])
+
+
+@router.post("/api/profile/disk-webhooks")
+def add_disk_webhook(request: Request, body: DiskWebhook):
+    user = master_profile(request)
+    url = body.url
+    if body.project_id:
+        project = workspaces.project(user, body.project_id)
+        with store.connect(project["db_path"]) as db:
+            url = store.setting(db, "webhook")
+    try:
+        return profile_webhooks.save_webhook(user["telegram_id"], body.name, url)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
 
 
 def avatar_response(content, mime):

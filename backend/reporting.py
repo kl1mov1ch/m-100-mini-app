@@ -92,6 +92,9 @@ def safe_config(db, include_table_review=True):
         "public_url": store.setting(db, "public_url"),
         "file_id": int(store.setting(db, "file_id", "0")),
         "has_webhook": bool(store.setting(db, "webhook")),
+        "webhook_profile_id": store.setting(db, "webhook_profile_id")
+        if include_table_review
+        else "",
         "last_import": store.setting(db, "last_import"),
         "pending_import": include_table_review and bool(store.setting(db, "pending_import_token")),
         "connection_check": json.loads(store.setting(db, "connection_check", "null"))

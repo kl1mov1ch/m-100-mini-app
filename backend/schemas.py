@@ -25,6 +25,7 @@ class SaveBody(BaseModel):
 class Connection(BaseModel):
     public_url: str = ""
     webhook: str = ""
+    webhook_id: str | None = Field(default=None, pattern=r"^[a-f0-9]{32}$")
     file_id: int | None = Field(default=None, gt=0)
 
 

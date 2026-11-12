@@ -1,4 +1,4 @@
-import { Alert, App, Button, Input, Upload } from 'antd';
+import { Alert, App, Button, Input, Select, Upload } from 'antd';
 import { Download, Trash2, Unlink } from 'lucide-react';
 import { useState } from 'react';
 import type { WorkspaceView } from '../App';
@@ -25,8 +25,10 @@ export function ObjectTablePanel({
 		positions,
 		url,
 		setUrl,
-		webhook,
-		setWebhook,
+		webhookId,
+		setWebhookId,
+		diskWebhooks,
+		saveDiskWebhook,
 		busy,
 		upload,
 		importRemote,
@@ -39,6 +41,16 @@ export function ObjectTablePanel({
 	const connected = config.source === 'bitrix';
 	const detached = config.source === 'detached';
 	const ready = positions.length > 0 && !config.pending_import;
+	const currentWebhookId = webhookId || config.webhook_profile_id || undefined;
+	const saveCurrentWebhook = async () => {
+		try {
+			const saved = await saveDiskWebhook({ project_id: workspace.project });
+			setWebhookId(saved.id);
+			message.success('Вебхук сохранён в профиле');
+		} catch (error) {
+			message.error((error as Error).message);
+		}
+	};
 	return (
 		<section className="object-panel">
 			<div className="object-panel-heading">
@@ -125,24 +137,35 @@ export function ObjectTablePanel({
 							placeholder="https://bitrix24public.com/…"
 						/>
 					</label>
-					<details>
-						<summary>Доступ для автоматической отправки</summary>
-						<label>
-							Вебхук с правом «Диск» <FieldHelp topic="bitrix" />
-							<Input.Password
-								value={webhook}
-								onChange={(event) => setWebhook(event.target.value)}
-								placeholder={
-									config.has_webhook ? 'Вебхук сохранён' : 'https://ваш-портал.bitrix24.by/rest/…'
-								}
-								autoComplete="off"
-							/>
-						</label>
-					</details>
+					<label>
+						Вебхук для записи <FieldHelp topic="bitrix" />
+						<Select
+							aria-label="Вебхук для записи"
+							value={
+								diskWebhooks.some(({ id }) => id === currentWebhookId)
+									? currentWebhookId
+									: undefined
+							}
+							onChange={setWebhookId}
+							placeholder={config.has_webhook ? 'Текущий вебхук объекта' : 'Выберите из профиля'}
+							options={diskWebhooks.map(({ id, name, portal }) => ({
+								value: id,
+								label: name === portal ? portal : name + ' · ' + portal,
+							}))}
+						/>
+					</label>
+					<div className="object-panel-actions">
+						{config.has_webhook && !currentWebhookId && (
+							<Button onClick={() => void saveCurrentWebhook()}>Сохранить текущий в профиль</Button>
+						)}
+						<Button type="text" onClick={() => workspace.setPage('more')}>
+							Вебхуки в профиле
+						</Button>
+					</div>
 					<Button
 						type="primary"
 						loading={busy}
-						disabled={!url.trim() && !(config.file_id && (webhook.trim() || config.has_webhook))}
+						disabled={!url.trim() && !(config.file_id && (currentWebhookId || config.has_webhook))}
 						onClick={importRemote}
 					>
 						Прочитать таблицу
