@@ -1,14 +1,4 @@
-import {
-	Alert,
-	App as AntApp,
-	Button,
-	ConfigProvider,
-	Drawer,
-	Input,
-	Modal,
-	Select,
-	Spin,
-} from 'antd';
+import { App as AntApp, Button, ConfigProvider, Drawer, Input, Modal, Select } from 'antd';
 import ruRU from 'antd/locale/ru_RU';
 import 'dayjs/locale/ru';
 import {
@@ -19,11 +9,11 @@ import {
 	History,
 	Plus,
 	Settings2,
-	ShieldCheck,
 } from 'lucide-react';
 import { createRoot } from 'react-dom/client';
 import { TableImportModal } from './components/TableImportModal';
 import { VoiceReportDrawer } from './components/VoiceReportDrawer';
+import { LaunchScreen } from './components/LaunchScreen';
 
 import { LiveSearch } from './components/LiveSearch';
 import './final-polish.css';
@@ -123,22 +113,7 @@ export function WorkspaceApp() {
 			),
 		{ page, project, day: controller.day, objectSection: controller.objectSection },
 	);
-	if (failure && !session)
-		return (
-			<div className="launch-state">
-				<ShieldCheck size={38} />
-				<h1>Журнал работ</h1>
-				<Alert type="warning" message={failure} />
-				<Button onClick={() => location.reload()}>Обновить</Button>
-			</div>
-		);
-	if (!session)
-		return (
-			<div className="launch-state">
-				<Spin />
-				<span>Открываем объекты…</span>
-			</div>
-		);
+	if (!session) return <LaunchScreen failure={failure} />;
 	const projects = session.projects.filter(
 		(p) =>
 			(ownerFilter === 'all' || p.owner_id === ownerFilter) &&

@@ -27,7 +27,10 @@ export function ObjectTableCard({ workspace }: { workspace: WorkspaceView }) {
 					<b>{config.source_name}</b>
 					<small>{positions.length} работ · Битрикс24.Диск</small>
 				</div>
-				<Tag color={config.has_webhook ? 'green' : 'gold'}>
+				<Tag
+					color={config.has_webhook ? 'green' : undefined}
+					className={config.has_webhook ? undefined : 'status-tag-attention'}
+				>
 					{config.has_webhook ? 'Подключена' : 'Только чтение'}
 				</Tag>
 			</div>

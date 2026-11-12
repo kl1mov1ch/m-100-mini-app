@@ -663,7 +663,14 @@ export function TableImportModal({ workspace }: { workspace: WorkspaceView }) {
 						: []),
 					{
 						key: 'issues',
-						label: <>Проверка {problems.length > 0 && <Tag color="gold">{problems.length}</Tag>}</>,
+						label: (
+							<>
+								Проверка{' '}
+								{problems.length > 0 && (
+									<Tag className="status-tag-attention">{problems.length}</Tag>
+								)}
+							</>
+						),
 						children: issueCards,
 					},
 					{

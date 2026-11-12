@@ -2,7 +2,6 @@ import { Button, Empty } from 'antd';
 import 'dayjs/locale/ru';
 import { Building2, ChevronRight, Plus, Users } from 'lucide-react';
 import { AdminOverview } from '../components/AdminOverview';
-import { RoleSwitch } from '../components/RoleSwitch';
 import dayjs from '../lib/date';
 
 import type { WorkspaceView } from '../App';
@@ -38,11 +37,6 @@ export function ObjectsPage({ workspace }: { workspace: WorkspaceView }) {
 					Новый объект
 				</Button>
 			</div>
-			{session.can_switch_role && (
-				<div className="dashboard-role">
-					<RoleSwitch workspace={workspace} />
-				</div>
-			)}
 			{isAdmin && <AdminOverview workspace={workspace} />}
 			{!isAdmin && session.projects.length > 0 && <QuickReportComposer workspace={workspace} />}
 			<div className="object-grid">

@@ -92,7 +92,7 @@ export function ObjectCatalogue({
 										</small>
 									</>
 								)}
-								{position.hidden && <Tag color="gold">Скрыта из подбора</Tag>}
+								{position.hidden && <Tag className="status-tag-attention">Скрыта из подбора</Tag>}
 								<ChevronRight className="catalogue-position-arrow" size={17} />
 							</button>
 						</li>

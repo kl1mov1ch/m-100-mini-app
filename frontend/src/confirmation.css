@@ -203,7 +203,7 @@
 	flex-shrink: 0;
 }
 .confirmation-delivery.not-connected {
-	color: var(--ios-warning-line);
+	color: var(--ios-warning-text);
 }
 .confirmation-detail > .ant-alert {
 	margin-top: 16px;

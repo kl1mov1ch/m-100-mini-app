@@ -62,7 +62,10 @@ export function SettingsPage({ workspace }: { workspace: WorkspaceView }) {
 					<summary>
 						<Sparkles size={20} />
 						<b>Умный подбор</b>
-						<Tag color={session.ai_connected ? 'green' : 'gold'}>
+						<Tag
+							color={session.ai_connected ? 'green' : undefined}
+							className={session.ai_connected ? undefined : 'status-tag-attention'}
+						>
 							{session.ai_connected ? 'Подключён' : 'Нужен ключ'}
 						</Tag>
 					</summary>

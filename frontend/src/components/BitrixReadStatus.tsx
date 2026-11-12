@@ -15,7 +15,7 @@ export function BitrixReadStatus({ workspace }: { workspace: WorkspaceView }) {
 		<div className="bitrix-read-status">
 			<div>
 				{read?.status === 'unavailable' ? (
-					<Tag color="gold">Битрикс24 недоступен</Tag>
+					<Tag className="status-tag-attention">Битрикс24 недоступен</Tag>
 				) : read?.status === 'review' ? (
 					<Button
 						size="small"
