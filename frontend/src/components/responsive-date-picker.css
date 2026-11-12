@@ -1,0 +1,115 @@
+.date-control {
+	display: flex;
+	align-items: center;
+	min-width: 0;
+}
+
+.date-control .ant-btn.date-control-trigger {
+	display: flex;
+	flex: 1 1 auto;
+	justify-content: space-between;
+	gap: 6px;
+	min-width: 0;
+	min-height: 44px;
+	padding-inline: 10px;
+	background: var(--ios-surface);
+	border-color: var(--ios-separator);
+	color: var(--ios-label);
+	font-size: 13px;
+	font-weight: 500;
+}
+
+.date-control-trigger > span {
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.date-control-trigger > svg {
+	color: var(--ios-accent);
+}
+
+.date-control .date-control-clear {
+	flex: none;
+	width: 36px;
+	min-height: 44px;
+	color: var(--ios-secondary);
+}
+
+.date-control-modal .ant-modal-wrap .ant-modal {
+	width: min(392px, 100%) !important;
+}
+
+.date-control-modal .ant-modal-body {
+	padding-inline: 0;
+}
+
+.date-control-modal .ant-picker-calendar {
+	border: 0;
+}
+
+.date-control-header,
+.date-control-footer {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 4px;
+}
+
+.date-control-modal .date-control-header .ant-btn,
+.date-control-modal .date-control-footer .ant-btn {
+	color: var(--ios-accent);
+	min-height: 44px;
+	font-size: 14px;
+}
+
+.date-control-header .ant-btn:nth-child(2) {
+	text-transform: capitalize;
+}
+
+.date-control-footer {
+	justify-content: flex-end;
+	border-top: 1px solid var(--ios-separator);
+}
+
+.date-control-footer .calendar-work-legend {
+	margin-right: auto;
+}
+
+.date-control-cell {
+	position: relative;
+	display: grid;
+	place-items: center;
+	margin: auto;
+	width: min(44px, 100%);
+	min-height: 40px;
+	padding: 0 2px;
+	border: 1px solid transparent;
+	border-radius: 10px;
+	background: transparent;
+	color: var(--ios-label);
+	font: inherit;
+}
+
+.ant-picker-cell:not(.ant-picker-cell-in-view) .date-control-cell,
+.date-control-cell:disabled {
+	color: var(--ios-tertiary);
+}
+
+.date-control-cell:disabled {
+	opacity: 0.55;
+	cursor: default;
+}
+
+.date-control-modal .ant-picker-cell-disabled::before {
+	background: transparent;
+}
+
+.date-control-cell[aria-current='date'],
+.date-control-cell[data-work='true'] {
+	border-color: var(--ios-accent);
+}
+
+.date-control-cell[aria-pressed='true'] {
+	background: var(--ios-accent);
+	color: var(--ios-surface);
+}

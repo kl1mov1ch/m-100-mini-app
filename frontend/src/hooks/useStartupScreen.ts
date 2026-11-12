@@ -15,9 +15,9 @@ export function useStartupScreen(ready: boolean) {
 			() => {
 				screen.classList.add('is-finished');
 				screen.setAttribute('aria-hidden', 'true');
-				removalTimer = window.setTimeout(() => screen.remove(), 250);
+				removalTimer = window.setTimeout(() => screen.remove(), 340);
 			},
-			Math.max(0, 650 - performance.now()),
+			Math.max(0, 520 - performance.now()),
 		);
 
 		return () => {

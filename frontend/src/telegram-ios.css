@@ -20,6 +20,7 @@
 	--ios-danger-fill: #fff0ef;
 	--ios-danger-line: #f2c5c5;
 	--ios-group-radius: 12px;
+	--ios-group-shadow: 0 1px 2px #18181a08, 0 4px 14px #18181a08;
 	font-family: var(--ios-font);
 	color: var(--ios-label);
 	background: var(--ios-background);
@@ -106,7 +107,7 @@ h3 {
 	.confirm-bar
 ) {
 	border-radius: var(--ios-group-radius);
-	box-shadow: none;
+	box-shadow: var(--ios-group-shadow);
 }
 
 :is(.object-card, .settings-menu, .settings-card, .history-card, .team-card, .empty-panel) {
@@ -116,7 +117,7 @@ h3 {
 
 .object-card.selected {
 	border-color: var(--ios-separator);
-	box-shadow: none;
+	box-shadow: var(--ios-group-shadow);
 }
 
 .object-tile,
@@ -194,12 +195,13 @@ h3 {
 .report-metrics {
 	border-radius: var(--ios-group-radius);
 	border: 0;
+	box-shadow: var(--ios-group-shadow);
 }
 
 .bottom-nav {
 	background: var(--ios-surface);
 	border-color: var(--ios-separator);
-	box-shadow: none;
+	box-shadow: 0 -2px 12px #18181a09;
 }
 
 .bottom-nav > button {
@@ -348,23 +350,31 @@ h3 {
 	color: var(--ios-secondary);
 }
 
-.ant-message .ant-message-notice-content {
-	background: #27272a;
-	color: var(--ios-surface);
-	border: 0;
-	box-shadow: 0 4px 14px #0002;
+.ant-alert :is(.ant-alert-message, .ant-alert-description),
+.ant-message .ant-message-notice-content,
+.ant-message .ant-message-custom-content,
+.ant-notification :is(.ant-notification-notice-message, .ant-notification-notice-description) {
+	color: var(--ios-label);
+	overflow-wrap: anywhere;
+}
+
+.ant-message .ant-message-notice-content,
+.ant-notification .ant-notification-notice {
+	background: var(--ios-surface);
+	border: 1px solid var(--ios-separator);
+	box-shadow: 0 4px 18px #18181a20;
 }
 
 .ant-message .ant-message-success .anticon {
-	color: #65dc89 !important;
+	color: var(--ios-success) !important;
 }
 
 .ant-message .ant-message-warning .anticon {
-	color: #ffcc55 !important;
+	color: var(--ios-warning-text) !important;
 }
 
 .ant-message .ant-message-error .anticon {
-	color: #ff8888 !important;
+	color: var(--ios-danger) !important;
 }
 
 @media (max-width: 600px) {
