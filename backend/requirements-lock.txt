@@ -50,3 +50,4 @@ tzdata==2026.6
 uvicorn==0.54.0
 SQLAlchemy==2.0.57
 greenlet==3.5.6
+pypdf==6.21.4

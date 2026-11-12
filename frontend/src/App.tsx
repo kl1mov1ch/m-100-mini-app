@@ -3,6 +3,7 @@ import ruRU from 'antd/locale/ru_RU';
 import 'dayjs/locale/ru';
 import {
 	Building2,
+	Files,
 	Check,
 	ChevronDown,
 	ChevronRight,
@@ -28,6 +29,7 @@ import { ObjectPage } from './pages/ObjectPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { TeamPage } from './pages/TeamPage';
+import { DocumentsPage } from './pages/DocumentsPage';
 import { RemindersPage } from './pages/RemindersPage';
 import './reports.css';
 import './search-controls.css';
@@ -99,6 +101,7 @@ export function WorkspaceApp() {
 			busy ||
 			controller.switchingRole ||
 			controller.page === 'more' ||
+			controller.page === 'documents' ||
 			Boolean(
 				(controller.report && controller.dirty) ||
 				controller.freeText.trim() ||
@@ -148,6 +151,7 @@ export function WorkspaceApp() {
 					{page === 'more' && <SettingsPage workspace={workspace} />}
 					{page === 'team' && <TeamPage workspace={workspace} />}
 					{page === 'reminders' && <RemindersPage workspace={workspace} />}
+					{page === 'documents' && <DocumentsPage workspace={workspace} />}
 				</main>
 			</div>
 			<nav className="bottom-nav">
@@ -155,6 +159,7 @@ export function WorkspaceApp() {
 					{ id: 'objects', label: 'Объекты', icon: Building2 },
 					...(!isAdmin ? [{ id: 'today', label: 'Отчёт', icon: Plus }] : []),
 					{ id: 'history', label: 'История', icon: History },
+					{ id: 'documents', label: 'PDF', icon: Files },
 					{ id: 'more', label: 'Настройки', icon: Settings2 },
 				].map((n) => (
 					<button

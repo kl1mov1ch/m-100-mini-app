@@ -93,6 +93,7 @@ async def access(request: Request, call_next):
                 "/api/ai",
                 "/api/analytics",
                 "/api/profile",
+                "/api/documents",
             )
             if not any(
                 request.url.path == p or request.url.path.startswith(p + "/") for p in unscoped
