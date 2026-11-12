@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import io
 import json
 from datetime import date, timedelta
@@ -8,6 +9,8 @@ import openpyxl
 
 from backend import bitrix, matcher, store, workspaces
 from backend.clock import today
+from backend.table_editing import DailyColumnChange, apply_changes
+from backend.workbook_journal import is_journal
 from test_reconciliation_restore import approval, upload, workbook
 from test_workspaces import client, create, grant
 
@@ -172,8 +175,8 @@ def test_bitrix_review_suggests_verified_values_without_editing_reports(client, 
     assert issues["remaining"]["cell"] == "F2"
     assert issues["remaining"]["remote"] == 9 and issues["remaining"]["suggested"] == 92
     assert issues["remaining"]["formula"] == "=C2-E2"
-    assert issues["report"]["local"] == 2 and issues["report"]["remote"] == 8
-    assert "suggested" not in issues["report"]
+    assert response.json()["conflicts"]["days"] == 1
+    assert response.json()["conflicts"]["positions"] == 1
 
     workspaces.set_shared({"llm_api_key": "test-key"})
 
@@ -234,7 +237,6 @@ def test_import_suggests_from_cells_and_recovers_failed_journal_write(client, mo
 
     async def write(*args):
         nonlocal current
-        import base64
 
         current = base64.b64decode(args[2]["fileContent"][1])
         return True
@@ -254,7 +256,8 @@ def test_import_suggests_from_cells_and_recovers_failed_journal_write(client, mo
 
     monkeypatch.setattr(matcher, "complete", model)
     suggestions = client.post("/api/imports/consult", headers=headers, json=body).json()
-    for cell, expected in (("H2", [12]), ("I2", []), ("B3", ["шт"])):
+    assert not any(issue.get("cell") == "H2" for issue in preview["warnings"])
+    for cell, expected in (("I2", []), ("B3", ["шт"])):
         key = next(issue["id"] for issue in preview["warnings"] if issue.get("cell") == cell)
         assert [option["value"] for option in suggestions[key]["options"]] == expected
     confirmed = client.post("/api/imports/confirm", headers=headers, json=body)
@@ -267,3 +270,126 @@ def test_import_suggests_from_cells_and_recovers_failed_journal_write(client, mo
     saved = openpyxl.load_workbook(io.BytesIO(current))
     assert saved["Монтаж"]["H2"].value == "12 м"
     assert "Журнал работ" in saved.sheetnames
+    assert bitrix.day_values(bitrix.read_workbook(current), today())["excel-2"] == 12
+
+
+def test_resolve_conflict_in_either_direction_and_reject_changed_snapshot(client, monkeypatch):
+    grant(client, "9001")
+    ident = create(client, "9001", sample=False)
+    headers = {"X-Project-Id": ident, "X-Preview-User": "9001"}
+    original = current = workbook()
+    preview = upload(client, headers, current)
+    assert client.post("/api/imports/confirm", json=approval(preview), headers=headers).is_success
+    exported = client.get("/api/imports/workbook.xlsx", headers=headers)
+    assert is_journal(openpyxl.load_workbook(io.BytesIO(exported.content)).active)
+    project = workspaces.project(workspaces.user("9001"), ident)
+    with store.connect(project["db_path"]) as db:
+        store.set_setting(db, "source", "bitrix")
+        store.set_setting(db, "file_id", "123")
+        store.set_setting(db, "webhook", "test-webhook")
+
+    writes = []
+
+    async def read(*args):
+        return current, {"NAME": "Смета.xlsx"}
+
+    async def write(*args):
+        nonlocal current
+        current = base64.b64decode(args[2]["fileContent"][1])
+        writes.append(current)
+        return True
+
+    def edit_remote(value, rate=None):
+        nonlocal current
+        workbook = openpyxl.load_workbook(io.BytesIO(current))
+        journal = workbook.active
+        column = next(cell.column for cell in journal[3] if str(cell.value)[:10] == today())
+        journal.cell(5, column).value = value
+        if rate is not None:
+            journal["E5"] = rate
+        stream = io.BytesIO()
+        workbook.save(stream)
+        current = stream.getvalue()
+
+    def review():
+        with store.connect(project["db_path"]) as db:
+            store.set_setting(db, "bitrix_read_status", "null")
+        assert client.post("/api/bitrix/refresh", headers=headers).json()["status"] == "review"
+        return client.post("/api/bitrix/consult", headers=headers).json()["conflicts"]
+
+    monkeypatch.setattr(bitrix, "download_rest", read)
+    monkeypatch.setattr(bitrix, "rest", write)
+    save = {
+        "date": today(),
+        "revision": 0,
+        "crew_count": 4,
+        "lines": [{"item_id": "excel-2", "quantity": 4}],
+    }
+    first = client.post("/api/reports", headers=headers, json=save).json()
+    assert first["sync_status"] == "synced"
+    edit_remote(None)
+    conflict = review()
+    assert conflict["deleted"] == 1
+    result = client.post(
+        "/api/bitrix/reconcile",
+        headers=headers,
+        json={"direction": "app", "version": conflict["version"]},
+    )
+    assert result.is_success, result.text
+    saved = client.get("/api/report/" + today(), headers=headers).json()
+    assert saved["lines"] == [] and len(writes) == 1
+
+    save["revision"] = saved["revision"]
+    assert client.post("/api/reports", headers=headers, json=save).json()["sync_status"] == "synced"
+    edit_remote(9, 3)
+    conflict = review()
+    assert conflict["days"] == 1 and conflict["fields"] == 1
+    edit_remote(10, 3)
+    stale = client.post(
+        "/api/bitrix/reconcile",
+        headers=headers,
+        json={"direction": "table", "version": conflict["version"]},
+    )
+    assert stale.status_code == 409 and len(writes) == 2
+    conflict = review()
+    resolved = client.post(
+        "/api/bitrix/reconcile",
+        headers=headers,
+        json={"direction": "table", "version": conflict["version"]},
+    )
+    assert resolved.is_success, resolved.text
+    parsed = bitrix.read_workbook(current)
+    assert bitrix.day_values(parsed, today()) == {"excel-2": 4}
+    assert parsed["positions"][0]["rate"] == 2 and parsed["crew_by_day"][today()] == 4
+    assert len(writes) == 3
+    sheet = openpyxl.load_workbook(io.BytesIO(original), data_only=False).active
+    copied = openpyxl.load_workbook(io.BytesIO(current), data_only=False)[sheet.title]
+    assert list(sheet.values) == list(copied.values)
+
+
+def test_daily_column_errors_are_grouped_and_fixed_in_one_action():
+    from backend import tables
+
+    book = openpyxl.load_workbook(
+        io.BytesIO(workbook([(f"Работа {row}", "м", 2) for row in range(70)]))
+    )
+    sheet = book.active
+    for row in range(2, 72):
+        sheet.cell(row, 8, "удалено")
+    stream = io.BytesIO()
+    book.save(stream)
+    content = stream.getvalue()
+    mappings, _ = tables.discover(content)
+    warnings = tables.extract(content, mappings)["warnings"]
+    assert len(warnings) == 1
+    warning = warnings[0]
+    assert warning["cell"] == "H2:H71" and len(warning["affected_rows"]) == 70
+    for strategy, expected in (("zero", 0), ("remove", None), ("restore", 7)):
+        column = DailyColumnChange(sheet=sheet.title, column="H", date=today(), strategy=strategy)
+        restoration = {today(): {f"excel-{row}": 7 for row in range(2, 72)}}
+        updated, changes = apply_changes(content, mappings, [], [], [column], restoration)
+        result = openpyxl.load_workbook(io.BytesIO(updated)).active
+        assert all(result.cell(row, 8).value == expected for row in range(2, 72))
+        assert result["I2"].value == 7 and len(changes) >= 70
+        assert bool(result.column_dimensions["H"].hidden) == (strategy == "remove")
+        assert tables.extract(updated, mappings)["warnings"] == []

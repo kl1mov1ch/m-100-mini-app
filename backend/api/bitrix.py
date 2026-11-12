@@ -8,6 +8,7 @@ from .. import bitrix, bitrix_review, store, tables
 from ..clock import now
 from ..bitrix_refresh import freshness, refresh_project, review_issues
 from ..reporting import ai_settings, safe_config
+from ..report_conflicts import ConflictResolution, conflict_state, resolve
 from ..schemas import Connection
 from ..synchronization import write_journal
 from .objects import owned_object
@@ -39,9 +40,15 @@ async def consult(request: Request, explain: bool = False):
             raise HTTPException(409, "Битрикс24 не ответил. Обновите данные и попробуйте ещё раз.")
         issues = (review_issues(database) or []) if status["status"] == "review" else []
         settings = ai_settings(database) if explain else None
+        conflicts = None if explain else conflict_state(database, issues)[0]
     if explain:
         return {"advice": await bitrix_review.advise(issues, settings)}
-    return {"issues": issues}
+    return {"issues": [item for item in issues if item["kind"] != "report"], "conflicts": conflicts}
+
+
+@router.post("/api/bitrix/reconcile")
+async def reconcile(request: Request, body: ConflictResolution):
+    return await resolve(owned_object(request), request.state.user, body)
 
 
 @router.post("/api/bitrix/check")
@@ -64,7 +71,7 @@ async def check_connection():
             detail_url = public_url
         if not mappings:
             mappings, _ = tables.discover(content)
-        parsed = tables.extract(content, mappings)
+        parsed = bitrix.read_workbook(content, mappings)
         problems = [warning for warning in parsed["warnings"] if warning.get("severity") != "info"]
         result = {
             "reachable": True,
@@ -72,7 +79,7 @@ async def check_connection():
             "checked_at": now(),
             "name": name,
             "positions": len(parsed["positions"]),
-            "sheets": len(mappings),
+            "sheets": len(parsed.get("sheets", mappings)),
             "issues": problems,
             "write_configured": bool(webhook),
             "message": "Таблица отвечает"

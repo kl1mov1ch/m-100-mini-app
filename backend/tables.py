@@ -14,7 +14,7 @@ from openpyxl.workbook.properties import CalcProperties
 
 from . import matcher
 from .table_advice import explain_issues, with_tips
-from .workbook_journal import is_journal
+from .workbook_journal import is_journal, journal_mapping, journal_row
 
 ALIASES = {
     "name": [
@@ -107,6 +107,53 @@ def number(v):
     return float(s) if re.fullmatch(r"-?\d+(?:\.\d+)?", s) else None
 
 
+def daily_quantity(value, unit):
+    parsed = number(value)
+    if parsed is not None or not isinstance(value, str) or not unit:
+        return parsed
+    match = re.fullmatch(r"(\d+(?:[.,]\d+)?)\s*([^\d].*)", value.strip())
+    if match and text(match[2]).rstrip(".") == text(unit).rstrip("."):
+        return number(match[1])
+    return None
+
+
+def group_daily_warnings(warnings):
+    groups = {}
+    for warning in warnings:
+        if (
+            warning.get("field") == "Дневной объём"
+            and warning.get("date")
+            and warning.get("column")
+        ):
+            key = (warning["sheet"], warning["column"], warning["date"])
+            groups.setdefault(key, []).append(warning)
+    grouped = {}
+    for (sheet, column, day), items in groups.items():
+        if len(items) < 2:
+            continue
+        rows = sorted(item["row"] for item in items)
+        cells = f"{column}{rows[0]}:{column}{rows[-1]}"
+        grouped[items[0]["id"]] = {
+            "id": f"{sheet}:daily-column:{column}:{day}",
+            "sheet": sheet,
+            "column": column,
+            "cell": cells,
+            "date": day,
+            "affected_rows": rows,
+            "field": "Дневной объём",
+            "message": f"Нечисловой объём в {len(rows)} ячейках столбца {column}.",
+            "fix": "Уберите дату, заполните повреждённые ячейки нулями или восстановите их по сохранённому отчёту.",
+            "confirmation_label": "Пропустить при чтении",
+        }
+        for item in items[1:]:
+            grouped[item["id"]] = None
+    return [
+        result
+        for warning in warnings
+        if (result := grouped.get(warning["id"], warning)) is not None
+    ]
+
+
 def as_date(v):
     if isinstance(v, datetime):
         return v.date().isoformat()
@@ -181,6 +228,10 @@ def header_candidates(values):
 
 def discover(content):
     w = grid(content)
+    for sheet in w:
+        mapping = journal_mapping(sheet)
+        if mapping:
+            return [mapping], []
     sheets = []
     warnings = []
     for s in w:
@@ -254,16 +305,18 @@ def discover(content):
     return sheets, warnings
 
 
-def extract(content, sheets):
-    w = grid(content)
+def extract(content, sheets, workbook=None):
+    w = workbook if workbook is not None else grid(content)
     positions = []
     entries = []
+    crew_by_day = {}
     warnings = []
     multiple = len(sheets) > 1
     for desc in sheets:
         if desc["name"] not in w.sheetnames:
             raise ValueError("Лист не найден в книге")
         s = w[desc["name"]]
+        canonical = journal_mapping(s) is not None
         m = desc["mapping"]
         header = int(desc["header_row"])
         date_row = int(desc.get("date_row") or header)
@@ -349,11 +402,14 @@ def extract(content, sheets):
         }
         skipped = []
         row_issues = []
+        journal_ids = set()
 
         def value(r, key):
             return s.cell(r, int(m[key])).value if m.get(key) else None
 
-        for r in range(header + 1, s.max_row + 1):
+        for r in range(5 if canonical else header + 1, s.max_row + 1):
+            if canonical and not isinstance(s.cell(r, 1).value, int):
+                continue
             name = str(value(r, "name") or "").strip()
             if not name:
                 continue
@@ -366,7 +422,13 @@ def extract(content, sheets):
             plan = number(value(r, "planned"))
             rate = number(value(r, "rate"))
             completed = number(value(r, "completed"))
-            if not unit_value and plan is None and rate is None and completed in (None, 0):
+            if (
+                not canonical
+                and not unit_value
+                and plan is None
+                and rate is None
+                and completed in (None, 0)
+            ):
                 section = name
                 skipped.append(r)
                 continue
@@ -376,12 +438,26 @@ def extract(content, sheets):
                 else f"excel-{r}"
             )
             ident = desc.get("position_ids", {}).get(str(r), ident)
+            row_metadata = journal_row(s.cell(r, 1)) if canonical else None
+            if row_metadata:
+                saved_id, section, baseline = row_metadata
+                ident = desc.get("position_ids", {}).get(str(r), saved_id)
+            else:
+                baseline = completed or 0 if not dates else 0
+            if canonical:
+                if ident in journal_ids:
+                    raise ValueError("На рабочем листе повторяются строки. Проверьте смету.")
+                journal_ids.add(ident)
             for field, parsed_value in [
                 ("planned", plan),
                 ("rate", rate),
                 ("unit", unit_value or None),
             ]:
-                if m.get(field) and parsed_value is None:
+                if (
+                    m.get(field)
+                    and parsed_value is None
+                    and (value(r, field) not in (None, "") or field == "unit")
+                ):
                     warnings.append(
                         cell_warning(s.title, r, int(m[field]), name, field, value(r, field))
                     )
@@ -395,7 +471,8 @@ def extract(content, sheets):
                 "source_row": r,
                 "source_sheet": s.title,
                 "source_cells": {key: f"{column}{r}" for key, column in review_columns.items()},
-                "baseline": completed or 0 if not dates else 0,
+                "baseline": baseline,
+                "journal_position": bool(row_metadata),
                 "workbook_completed": completed,
                 "workbook_remaining": number(s.cell(r, remaining_column).value)
                 if remaining_column
@@ -404,13 +481,20 @@ def extract(content, sheets):
             positions.append(p)
             for c, day in dates.items():
                 raw = s.cell(r, c).value
-                qty = number(raw)
+                qty = daily_quantity(raw, unit_value)
                 if qty is not None and qty:
                     entries.append({"item_id": ident, "date": day, "quantity": qty})
                 elif raw not in (None, "") and qty is None:
                     warnings.append(
                         {**cell_warning(s.title, r, c, name, "Дневной объём", raw), "date": day}
                     )
+        if canonical:
+            crew_row = next((cell.row for cell in s["B"] if cell.value == "Работников"), None)
+            if crew_row:
+                for column, day in dates.items():
+                    count = number(s.cell(crew_row, column).value)
+                    if count is not None and count.is_integer() and 1 <= count <= 1000:
+                        crew_by_day[day] = int(count)
         if row_issues:
             warnings.append(
                 {
@@ -445,7 +529,8 @@ def extract(content, sheets):
     return {
         "positions": positions,
         "entries": entries,
-        "warnings": warnings,
+        "crew_by_day": crew_by_day,
+        "warnings": group_daily_warnings(warnings),
         "sheets": sheets,
     }
 

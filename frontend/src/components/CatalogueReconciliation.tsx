@@ -1,6 +1,5 @@
-import { Alert, Button, Checkbox, Collapse, Segmented, Select, Tag } from 'antd';
+import { Alert, Button, Checkbox, Select, Tag } from 'antd';
 import { Sparkles, TriangleAlert } from 'lucide-react';
-import dayjs from '../lib/date';
 import { Money, nf, unit } from '../lib/format';
 import type { CatalogueReconciliation as Reconciliation, Position } from '../types';
 import './reconciliation.css';
@@ -15,11 +14,12 @@ type ReconciliationProps = {
 	busy: boolean;
 	onResolve: () => void;
 	dayResolutions: Record<string, string>;
-	onResolveDay: (day: string, value: string) => void;
+	onResolveDays: (value: 'report' | 'table') => void;
 };
 
 export function CatalogueReconciliation(props: ReconciliationProps) {
 	const { plan, positions, selected } = props;
+	const direction = Object.values(props.dayResolutions)[0];
 	return (
 		<div className="reconciliation-panel">
 			<Alert
@@ -112,43 +112,32 @@ export function CatalogueReconciliation(props: ReconciliationProps) {
 				})}
 			{!!plan.report_conflicts.length && (
 				<section className="reconciliation-row needs-review">
-					<b>Отчёты отличаются от таблицы</b>
-					<p>
-						Проверьте разницу и выберите, какие объёмы сохранить. Расчёты обновятся после
-						подтверждения.
-					</p>
-					<Collapse
-						ghost
-						defaultActiveKey={
-							plan.report_conflicts.length === 1 ? [plan.report_conflicts[0].date] : []
-						}
-						items={plan.report_conflicts.map((report) => ({
-							key: report.date,
-							label: dayjs(report.date).format('D MMMM YYYY'),
-							children: (
-								<div className="reconciliation-day">
-									{report.lines.map((line) => (
-										<div className="reconciliation-day-line" key={line.item_id}>
-											<b>{line.name}</b>
-											<span>
-												В отчёте {nf.format(line.local)} {unit(line.unit)} · в таблице{' '}
-												{nf.format(line.remote)} {unit(line.unit)}
-											</span>
-										</div>
-									))}
-									<Segmented
-										block
-										value={props.dayResolutions[report.date] || 'report'}
-										onChange={(value) => props.onResolveDay(report.date, value)}
-										options={[
-											{ label: 'Сохранить отчёт', value: 'report' },
-											{ label: 'Принять таблицу', value: 'table' },
-										]}
-									/>
-								</div>
-							),
-						}))}
-					/>
+					<b>Различия за {plan.report_conflicts.length} дн.</b>
+					<Button
+						block
+						type={direction === 'table' ? 'primary' : 'default'}
+						onClick={() => props.onResolveDays('table')}
+					>
+						Заменить в приложении
+					</Button>
+					<Button
+						block
+						type={direction === 'report' ? 'primary' : 'default'}
+						onClick={() => props.onResolveDays('report')}
+					>
+						Заменить в таблице
+					</Button>
+					{direction && (
+						<Alert
+							type="warning"
+							showIcon
+							message={
+								direction === 'table'
+									? 'Отчёты примут объёмы из таблицы. Пустой объём считается нулём.'
+									: 'Отчёты заменят объёмы на рабочем листе.'
+							}
+						/>
+					)}
 				</section>
 			)}
 			<Checkbox checked={props.accepted} onChange={(event) => props.onAccept(event.target.checked)}>

@@ -20,6 +20,7 @@ def warning_issue(warning):
         "sheet": warning.get("sheet"),
         "row": warning.get("row"),
         "cell": warning.get("cell"),
+        "date": warning.get("date"),
         "position": warning.get("position_name"),
         "value": warning.get("value"),
         "advice": warning.get("fix") or "Проверьте заголовки и сопоставление столбцов.",
@@ -44,6 +45,7 @@ def compare_values(position, remote_position, snapshot, invalid_fields):
             issues.append(
                 {
                     **coordinates,
+                    "item_id": position["id"],
                     "kind": key,
                     "cell": cells.get(key),
                     "title": f"{label} различается",

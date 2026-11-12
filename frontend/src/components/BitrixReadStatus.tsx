@@ -8,28 +8,27 @@ import { BitrixReviewModal } from './BitrixReviewModal';
 export function BitrixReadStatus({ workspace }: { workspace: WorkspaceView }) {
 	const { data, isAdmin, project, readingBitrix, refreshBitrix } = workspace;
 	const [reviewProject, setReviewProject] = useState<string | null>(null);
-	if (data?.config.source !== 'bitrix') return null;
+	if (isAdmin || data?.config.source !== 'bitrix') return null;
 	const read = data.config.bitrix_read;
 	const updatedAt = read?.updated_at || data.config.last_import;
 	return (
 		<div className="bitrix-read-status">
 			<div>
 				{read?.status === 'unavailable' ? (
-					<Tag color="gold">Битрикс24 недоступен · сохранённые данные</Tag>
+					<Tag color="gold">Битрикс24 недоступен</Tag>
 				) : read?.status === 'review' ? (
-					<Tag color="gold">Есть различия с Битрикс24</Tag>
-				) : (
-					<Tag color={read ? 'green' : 'default'}>Битрикс24</Tag>
-				)}
-				{updatedAt && <small>{dayjs(updatedAt).format('D MMM, HH:mm')}</small>}
-				{read?.status === 'review' && !isAdmin && (
 					<Button
 						size="small"
 						icon={<Sparkles size={15} />}
 						onClick={() => setReviewProject(project)}
 					>
-						Разобрать различия
+						Различия с Битрикс24
 					</Button>
+				) : (
+					<Tag color={read ? 'green' : 'default'}>Битрикс24</Tag>
+				)}
+				{updatedAt && read?.status !== 'review' && (
+					<small>{dayjs(updatedAt).format('D MMM, HH:mm')}</small>
 				)}
 			</div>
 			<Button
@@ -41,7 +40,7 @@ export function BitrixReadStatus({ workspace }: { workspace: WorkspaceView }) {
 				icon={<RefreshCw size={15} />}
 				onClick={() => void refreshBitrix(true)}
 			/>
-			{reviewProject === project && !isAdmin && (
+			{reviewProject === project && (
 				<BitrixReviewModal workspace={workspace} close={() => setReviewProject(null)} />
 			)}
 		</div>

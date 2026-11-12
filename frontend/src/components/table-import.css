@@ -470,3 +470,12 @@
 	margin: 8px 0;
 	font-size: 13px;
 }
+.table-column-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	margin-top: 10px;
+}
+.table-column-actions > .ant-btn {
+	min-height: 38px;
+}

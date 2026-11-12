@@ -1,6 +1,7 @@
 import { Alert, Button, Empty, InputNumber, Spin, Tag } from 'antd';
 import 'dayjs/locale/ru';
-import { Check, Mic, Plus, RotateCcw, Trash2, Users } from 'lucide-react';
+import { Check, Mic, Plus, RotateCcw, TextCursorInput, Trash2, Users } from 'lucide-react';
+import { useState } from 'react';
 import { DatePicker } from '../components/ResponsiveDatePicker';
 import dayjs from '../lib/date';
 
@@ -10,12 +11,15 @@ import { useReportDateSwipe } from '../hooks/useReportDateSwipe';
 import { Status } from '../components/SyncStatus';
 import { Money, nf, shortName, unit } from '../lib/format';
 import { AdminDailyReport } from '../components/AdminDailyReport';
+import { QuickReportComposer } from '../components/QuickReportComposer';
+import { ReportDraftFields } from '../components/ReportDraftFields';
 export function DailyReportPage({ workspace }: { workspace: WorkspaceView }) {
 	if (workspace.isAdmin) return <AdminDailyReport workspace={workspace} />;
 	return <MasterDailyReport workspace={workspace} />;
 }
 
 function MasterDailyReport({ workspace }: { workspace: WorkspaceView }) {
+	const [textVisible, setTextVisible] = useState(false);
 	const confirmRemoval = useConfirmWorkRemoval();
 	const dateSwipe = useReportDateSwipe(workspace);
 	const {
@@ -105,6 +109,15 @@ function MasterDailyReport({ workspace }: { workspace: WorkspaceView }) {
 			<div className="report-toolbar">
 				<Button
 					size="small"
+					icon={<TextCursorInput size={17} />}
+					aria-expanded={textVisible}
+					onClick={() => setTextVisible((visible) => !visible)}
+					disabled={!positions.length}
+				>
+					Текст
+				</Button>
+				<Button
+					size="small"
 					icon={<Plus size={18} />}
 					onClick={() => {
 						setReplaceIndex(null);
@@ -120,9 +133,11 @@ function MasterDailyReport({ workspace }: { workspace: WorkspaceView }) {
 					onClick={() => setTextOpen(true)}
 					disabled={!positions.length}
 				>
-					Текстом или голосом
+					Голос
 				</Button>
 			</div>
+			{textVisible && <QuickReportComposer workspace={workspace} inline />}
+			<ReportDraftFields workspace={workspace} />
 			<div className="work-list">
 				{lines.map((l, i) => {
 					const p = l.item_id ? byId[l.item_id] : null;

@@ -6,9 +6,11 @@ from pathlib import Path
 from fastapi import HTTPException, Request
 from pydantic import BaseModel, Field
 
-from . import bitrix, import_suggestions, reconciliation, store, tables
+from . import bitrix, import_suggestions, reconciliation, store, tables, workspaces
+from .report_downloads import report_export
 from .synchronization import JOURNAL_PENDING_NOTE, table_lock, write_journal
 from .table_advice import explain_issues, with_tips
+from .workbook_journal import format_journal
 
 
 class ConfirmImport(BaseModel):
@@ -44,6 +46,7 @@ def remove_project_imports(project_id):
             saved = json.loads(metadata.read_text(encoding="utf-8"))
             if isinstance(saved, dict) and saved.get("project_id") == project_id:
                 metadata.with_suffix(".xlsx").unlink(missing_ok=True)
+                metadata.with_suffix(".journal.xlsx").unlink(missing_ok=True)
                 metadata.unlink(missing_ok=True)
         except (OSError, ValueError):
             logging.getLogger(__name__).warning("Could not remove an object import")
@@ -60,6 +63,36 @@ def read_pending(token, project):
 
 
 def register(app, settings, now):
+    @app.get("/api/imports/workbook.xlsx")
+    def normalized_workbook(request: Request, prepare: bool = False):
+        if request.state.user["role"] != "master":
+            raise HTTPException(403, "Таблица доступна мастеру объекта")
+        project_id = request.state.project["id"]
+
+        def render(user):
+            project = workspaces.project(user, project_id)
+            with store.connect(project["db_path"]) as db:
+                raw = store.setting(db, "import_file_path")
+                file = Path(raw)
+                if (
+                    store.setting(db, "source") != "file"
+                    or not raw
+                    or file.parent != directory()
+                    or not file.is_file()
+                ):
+                    raise HTTPException(404, "Загрузите Excel для этого объекта")
+                positions, entries, crew = journal_data(db)
+                content = file.read_bytes()
+            return format_journal(content, positions, entries, crew, [])
+
+        return report_export(
+            request.state.user,
+            "work-journal.xlsx",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            render,
+            prepare,
+        )
+
     async def prepare(request, content, name, source, remote=None):
         with store.connect() as db:
             cfg = settings(db)
@@ -201,6 +234,23 @@ def register(app, settings, now):
         with store.connect() as db:
             suggestions, unknown_units = import_suggestions.verified_options(db, data)
             cfg = settings(db)
+            for warning in data["warnings"]:
+                if not warning.get("affected_rows"):
+                    continue
+                saved = import_suggestions.restore_day_values(
+                    db, data["positions"], warning["date"]
+                )
+                count = sum(
+                    position["id"] in saved
+                    for position in data["positions"]
+                    if position["source_sheet"] == warning["sheet"]
+                    and position["source_row"] in warning["affected_rows"]
+                )
+                suggestions[warning["id"]] = {
+                    "options": [],
+                    "message": "",
+                    "restore_count": count,
+                }
         units = await import_suggestions.suggest_units(unknown_units, cfg)
         for item in unknown_units:
             ident = item["id"]
@@ -319,8 +369,8 @@ def register(app, settings, now):
                             ],
                         )
                         db.execute(
-                            "UPDATE reports SET revision=revision+1,sync_status='pending',sync_error='',retry_at='',sync_attempts=0 WHERE date=?",
-                            (report_day,),
+                            "UPDATE reports SET revision=revision+1,sync_status=?,sync_error='',retry_at='',sync_attempts=0 WHERE date=?",
+                            ("synced" if meta["source"] == "bitrix" else "pending", report_day),
                         )
                         continue
                     local = {
@@ -367,9 +417,17 @@ def register(app, settings, now):
                     "bitrix_read_status": "null",
                     "bitrix_read_positions": "{}",
                     "bitrix_read_days": "{}",
+                    "connection_check": "null",
                     "journal_status": "pending" if meta["source"] == "bitrix" else "",
                     "journal_note": JOURNAL_PENDING_NOTE if meta["source"] == "bitrix" else "",
                 }
+                if meta["source"] == "file":
+                    positions, entries, crew = journal_data(db)
+                    path = directory() / f"{body.token}.journal.xlsx"
+                    temporary = path.with_suffix(".tmp")
+                    temporary.write_bytes(format_journal(content, positions, entries, crew, []))
+                    temporary.replace(path)
+                    values["import_file_path"] = str(path)
                 if meta.get("remote", {}):
                     values["file_id"] = str(meta["remote"]["file_id"] or 0)
                 for k, v in values.items():
@@ -393,3 +451,12 @@ def register(app, settings, now):
             "source": meta["source"],
             "journal": journal,
         }
+
+
+def journal_data(db):
+    positions = store.positions(db)
+    entries = [dict(row) for row in db.execute("SELECT item_id,date,quantity FROM entries")]
+    crew = {
+        row["date"]: row["crew_count"] for row in db.execute("SELECT date,crew_count FROM reports")
+    }
+    return positions, entries, crew

@@ -261,11 +261,19 @@ export type ImportWarning = {
 	fix?: string;
 	ai_tip?: string;
 	confirmation_label?: string;
+	date?: string;
+	affected_rows?: number[];
 	duplicates?: { date: string; columns: number[]; cells: string[] }[];
 };
 export type TableFixPayload = {
 	edits?: { sheet: string; cell: string; value: string | number | null }[];
 	duplicates?: { sheet: string; date: string; strategy: string; new_date?: string }[];
+	daily_columns?: {
+		sheet: string;
+		column: string;
+		date: string;
+		strategy: 'zero' | 'remove' | 'restore';
+	}[];
 };
 declare global {
 	interface Window {

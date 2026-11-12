@@ -1,7 +1,7 @@
 import hashlib
 import json
 import uuid
-from collections import Counter
+from collections import Counter, defaultdict
 
 import httpx
 from fastapi import HTTPException
@@ -38,29 +38,34 @@ def build_plan(database, incoming, entries=None):
         event = json.loads(row[0])
         referenced.update(line["item_id"] for line in event.get("before", {}).get("lines", []))
     counts = Counter(position_key(position) for position in previous)
+    incoming_by_key = defaultdict(list)
+    journal_by_id = {}
+    for position in incoming:
+        incoming_by_key[position_key(position)].append(position)
+        if position.get("journal_position"):
+            journal_by_id[position["id"]] = position
     rows = []
     occupied = set()
     for old in previous:
-        candidates = [
-            position for position in incoming if position_key(position) == position_key(old)
-        ]
+        canonical = journal_by_id.get(old["id"])
+        candidates = incoming_by_key[position_key(old)]
         if len(candidates) > 1:
             candidates = [
                 position
                 for position in candidates
                 if matcher.norm(position["section"]) == matcher.norm(old["section"])
             ]
-        selected = (
+        selected = canonical or (
             candidates[0] if len(candidates) == 1 and counts[position_key(old)] == 1 else None
         )
         if selected and selected["id"] in occupied:
             selected = None
         if selected:
             occupied.add(selected["id"])
-        changed = selected is None or any(
-            old.get(field) != selected.get(field)
-            for field in ("name", "unit", "rate", "planned", "source_row", "source_sheet")
-        )
+        fields = ("name", "unit", "rate", "planned")
+        if not canonical:
+            fields += ("source_row", "source_sheet")
+        changed = selected is None or any(old.get(field) != selected.get(field) for field in fields)
         rows.append(
             {
                 "previous": old,
@@ -78,25 +83,20 @@ def build_plan(database, incoming, entries=None):
         selected_ids = {
             row["selected_id"]: row["previous"]["id"] for row in rows if row["selected_id"]
         }
+        local_by_day = defaultdict(dict)
+        for row in database.execute("SELECT item_id,date,quantity FROM entries"):
+            local_by_day[row["date"]][row["item_id"]] = row["quantity"]
+        remote_by_day = defaultdict(dict)
+        for entry in entries:
+            values = remote_by_day[entry["date"]]
+            key = selected_ids.get(entry["item_id"], entry["item_id"])
+            values[key] = values.get(key, 0) + entry["quantity"]
+        names = {position["id"]: position for position in incoming}
+        names.update({position["id"]: position for position in previous})
         for report in database.execute("SELECT date FROM reports ORDER BY date"):
-            local = {
-                row["item_id"]: row["quantity"]
-                for row in database.execute("SELECT * FROM entries WHERE date=?", (report["date"],))
-            }
-            remote = {}
-            for entry in entries:
-                if entry["date"] == report["date"]:
-                    key = selected_ids.get(entry["item_id"], entry["item_id"])
-                    remote[key] = remote.get(key, 0) + entry["quantity"]
+            local = local_by_day[report["date"]]
+            remote = remote_by_day[report["date"]]
             if local != remote:
-                names = {position["id"]: position for position in previous}
-                names.update(
-                    {
-                        position["id"]: position
-                        for position in incoming
-                        if position["id"] not in names
-                    }
-                )
                 report_conflicts.append(
                     {
                         "date": report["date"],

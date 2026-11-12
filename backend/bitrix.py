@@ -15,7 +15,7 @@ import httpx
 import openpyxl
 from openpyxl.workbook.properties import CalcProperties
 
-from .workbook_journal import is_journal
+from .workbook_journal import is_journal, journal_mapping
 
 PUBLIC_URL = ""
 READ_TIMEOUT = httpx.Timeout(25, connect=7)
@@ -102,11 +102,15 @@ async def fetch_public_workbook(url, proxy):
 
 
 def read_workbook(content, mappings=None):
-    if mappings:
-        from .tables import extract
+    from .tables import extract, grid
 
-        return extract(content, mappings)
-    w = openpyxl.load_workbook(io.BytesIO(content), data_only=True)
+    w = grid(content)
+    canonical = next((mapping for sheet in w if (mapping := journal_mapping(sheet))), None)
+    if canonical or mappings:
+        if canonical:
+            saved = next((item for item in mappings or [] if item["name"] == canonical["name"]), {})
+            canonical["position_ids"] = saved.get("position_ids", {})
+        return extract(content, [canonical] if canonical else mappings, w)
     result = {"positions": [], "entries": [], "sheet": None}
     for sheet in w:
         if is_journal(sheet):
@@ -378,28 +382,55 @@ async def upload_day(
     mappings=None,
     crew_by_day=None,
 ):
-    from .workbook_journal import format_journal, verify_day_totals
+    return await upload_days(
+        webhook,
+        file_id,
+        {day: {"lines": lines, "payroll": payroll}},
+        catalogue,
+        mappings,
+        crew_by_day,
+        {day: baseline} if baseline is not None else {},
+    )
+
+
+async def upload_days(
+    webhook, file_id, reports, catalogue, mappings, crew_by_day, expected, fields=None
+):
+    from .workbook_journal import format_journal
 
     content, meta = await download_rest(webhook, file_id)
-    if baseline is not None:
-        remote = {}
-        for e in read_workbook(content, mappings)["entries"]:
-            if e["date"] == day:
-                remote[e["item_id"]] = remote.get(e["item_id"], 0) + e["quantity"]
-        wanted = {l["item_id"]: l["quantity"] for l in lines}
-        if not equal_quantities(remote, baseline) and not equal_quantities(remote, wanted):
-            raise ValueError(
-                "Объёмы дня изменены в Битрикс. Обновите таблицу и проверьте изменения перед отправкой."
-            )
+    parsed = read_workbook(content, mappings)
+    damaged = next(
+        (
+            warning
+            for warning in parsed.get("warnings", [])
+            if warning.get("affected_rows") and warning["date"] not in reports
+        ),
+        None,
+    )
+    if damaged:
+        raise ValueError(f"Проверьте столбец {damaged['column']} на листе «{damaged['sheet']}».")
+    verify_report_inputs(parsed, reports, catalogue, expected, fields)
     issues = []
-    patched = patch_workbook(content, day, lines, catalogue, payroll, mappings, issues)
-    entries = read_workbook(patched, mappings)["entries"]
-    crew = dict(crew_by_day or {})
-    if payroll:
-        crew[day] = payroll["crew_count"]
-    patched = format_journal(patched, catalogue, entries, crew, issues)
-    if payroll:
-        verify_day_totals(patched, day, payroll, len(catalogue))
+    entries = [entry for entry in parsed["entries"] if entry["date"] not in reports]
+    crew = {**(crew_by_day or {}), **parsed.get("crew_by_day", {})}
+    for day, report in reports.items():
+        entries.extend({**line, "date": day} for line in report["lines"])
+        if report["payroll"]:
+            crew[day] = report["payroll"]["crew_count"]
+    local = {position["id"]: position for position in catalogue}
+    positions = [
+        {
+            **position,
+            **{
+                field: local[position["id"]][field]
+                for field in (fields or {}).get(position["id"], {})
+            },
+        }
+        for position in parsed["positions"]
+    ]
+    patched = format_journal(content, positions, entries, crew, issues)
+    verify_report_totals(patched, reports, len(catalogue))
     latest, _ = await download_rest(webhook, file_id)
     if hashlib.sha256(content).digest() != hashlib.sha256(latest).digest():
         raise ValueError(
@@ -418,24 +449,65 @@ async def upload_day(
     verified, _ = await download_rest(webhook, file_id)
     from .workbook_calculation import verify_calculations
 
-    verify_calculations(patched, verified)
     parsed = read_workbook(verified, mappings)
-    actual = {}
-    for e in parsed["entries"]:
-        if e["date"] == day:
-            actual[e["item_id"]] = actual.get(e["item_id"], 0) + e["quantity"]
-    expected = {l["item_id"]: l["quantity"] for l in lines}
-    if not equal_quantities(actual, expected):
-        raise ValueError(
-            "Версия отправлена, но проверка значений не прошла. Нажмите «Решить в приложении», чтобы прочитать актуальные данные и сравнить объёмы."
-        )
-    if payroll:
-        verify_day_totals(verified, day, payroll, len(catalogue))
+    sheet_name = parsed["sheets"][0]["name"]
+    verify_calculations(patched, verified, sheet_name)
+    verified_fields = {position["id"]: position for position in parsed["positions"]}
+    for ident, names in (fields or {}).items():
+        if any(verified_fields.get(ident, {}).get(field) != local[ident][field] for field in names):
+            raise ValueError("Битрикс24 не подтвердил изменения сметы.")
+    for day, report in reports.items():
+        if not equal_quantities(day_values(parsed, day), line_values(report)):
+            raise ValueError("Битрикс24 не подтвердил объёмы. Обновите данные перед повтором.")
+    verify_report_totals(verified, reports, len(catalogue))
     return {
         "ok": True,
         "file_id": file_id,
-        "issues": list({issue["id"]: issue for issue in issues}.values()),
+        "issues": list(
+            {issue["id"]: issue for issue in issues if issue.get("sheet") == sheet_name}.values()
+        ),
     }
+
+
+def line_values(report):
+    return {line["item_id"]: line["quantity"] for line in report["lines"]}
+
+
+def day_values(parsed, day):
+    result = {}
+    for entry in parsed["entries"]:
+        if entry["date"] == day:
+            ident = entry["item_id"]
+            result[ident] = result.get(ident, 0) + entry["quantity"]
+    return result
+
+
+def verify_report_inputs(parsed, reports, catalogue, expected, fields=None):
+    current = {position["id"]: position for position in catalogue}
+    source = {position["id"]: position for position in parsed["positions"]}
+    if current.keys() != source.keys() or any(
+        any(
+            source[ident][field]
+            not in (position[field], (fields or {}).get(ident, {}).get(field, position[field]))
+            for field in ("planned", "rate", "unit")
+        )
+        for ident, position in current.items()
+    ):
+        raise ValueError("Смета изменилась. Проверьте таблицу перед отправкой отчёта.")
+    for day, baseline in expected.items():
+        remote = day_values(parsed, day)
+        if not equal_quantities(remote, baseline) and not equal_quantities(
+            remote, line_values(reports[day])
+        ):
+            raise ValueError("Объёмы изменились в Битрикс24. Откройте проверку различий.")
+
+
+def verify_report_totals(content, reports, count):
+    from .workbook_journal import verify_day_totals
+
+    for day, report in reports.items():
+        if report["payroll"]:
+            verify_day_totals(content, day, report["payroll"], count)
 
 
 async def upload_journal(webhook, file_id, mappings, crew_by_day):
@@ -444,7 +516,7 @@ async def upload_journal(webhook, file_id, mappings, crew_by_day):
 
     content, meta = await download_rest(webhook, file_id)
     book = openpyxl.load_workbook(io.BytesIO(content), data_only=True)
-    if any(is_journal(sheet) for sheet in book):
+    if any(journal_mapping(sheet) for sheet in book):
         return []
     parsed = read_workbook(content, mappings)
     issues = []
@@ -461,7 +533,8 @@ async def upload_journal(webhook, file_id, mappings, crew_by_day):
         raise ValueError("Битрикс24 не подтвердил создание листа «Журнал работ».")
     verified, _ = await download_rest(webhook, file_id)
     verified_book = openpyxl.load_workbook(io.BytesIO(verified), data_only=True)
-    if not any(is_journal(sheet) for sheet in verified_book):
+    sheet_name = next((sheet.title for sheet in verified_book if journal_mapping(sheet)), None)
+    if not sheet_name:
         raise ValueError("Лист «Журнал работ» пока не появился в Битрикс24.")
-    verify_calculations(patched, verified)
+    verify_calculations(patched, verified, sheet_name)
     return issues
