@@ -37,5 +37,5 @@
 }
 .work-position-options .ant-select-item-group {
 	font-size: 12px;
-	color: #536d89;
+	color: var(--ios-secondary);
 }

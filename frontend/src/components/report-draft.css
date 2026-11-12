@@ -1,6 +1,6 @@
 .quick-report-composer {
 	background: white;
-	border: 1px solid #d8e3f3;
+	border: 1px solid var(--ios-separator);
 	border-radius: 20px;
 	padding: 18px;
 	margin-bottom: 18px;
@@ -13,11 +13,11 @@
 .quick-report-heading h2 {
 	font-size: 18px;
 	margin: 0;
-	color: #153351;
+	color: var(--ios-label);
 }
 .quick-report-heading > span {
 	font-size: 12px;
-	color: #536d8c;
+	color: var(--ios-secondary);
 }
 .quick-report-composer textarea {
 	font-size: 16px;
@@ -39,7 +39,7 @@
 }
 .quick-report-voice-status {
 	font-size: 12px;
-	color: #5d718b;
+	color: var(--ios-secondary);
 	margin-top: 8px;
 }
 .quick-report-actions > button {
@@ -54,15 +54,15 @@
 	margin-top: 16px;
 }
 .draft-status {
-	color: #456681;
+	color: var(--ios-secondary);
 	font-size: 13px;
 }
 .draft-crew {
 	padding: 12px;
-	border: 1px solid #bddccd;
-	background: #f2fbf6;
+	border: 1px solid var(--ios-success-line);
+	background: var(--ios-success-fill);
 	border-radius: 12px;
-	color: #276446;
+	color: var(--ios-success);
 }
 .draft-crew > span {
 	display: inline-flex;
@@ -76,26 +76,26 @@
 .draft-work {
 	display: grid;
 	gap: 10px;
-	background: #f8fbff;
-	border: 1px solid #d8e5f6;
+	background: var(--ios-surface);
+	border: 1px solid var(--ios-separator);
 	border-radius: 14px;
 	padding: 12px;
 	min-width: 0;
 }
 .draft-work.needs-review {
-	background: #fffbec;
-	border-color: #f0d078;
+	background: var(--ios-warning-fill);
+	border-color: var(--ios-warning-line);
 }
 .draft-work-heading > b {
 	font-size: 13px;
 	line-height: 1.5;
 	font-weight: 500;
-	color: #445f7c;
+	color: var(--ios-secondary);
 	overflow-wrap: anywhere;
 }
 .draft-work-heading > .ant-btn {
 	flex: none;
-	color: #a34a4a;
+	color: var(--ios-danger);
 	min-width: 32px;
 	min-height: 32px;
 }
@@ -120,7 +120,7 @@
 	display: grid;
 	gap: 6px;
 	font-size: 12px;
-	color: #576c86;
+	color: var(--ios-secondary);
 	min-width: 0;
 }
 .draft-work-values .ant-input-number-group-wrapper,
@@ -132,7 +132,7 @@
 }
 .draft-work-values strong {
 	font-size: 20px;
-	color: #205a9c;
+	color: var(--ios-accent);
 	min-height: 46px;
 	display: flex;
 	align-items: center;
@@ -140,19 +140,19 @@
 }
 .draft-review-hint {
 	font-size: 12px;
-	color: #916400;
+	color: var(--ios-warning-text);
 }
 .draft-mode {
 	display: grid;
 	gap: 8px;
 	font-size: 12px;
-	color: #526782;
+	color: var(--ios-secondary);
 }
 .draft-addition-hint {
 	margin: 0;
 	font-size: 12px;
 	line-height: 1.5;
-	color: #526782;
+	color: var(--ios-secondary);
 }
 .draft-mode .ant-segmented {
 	font-size: 12px;

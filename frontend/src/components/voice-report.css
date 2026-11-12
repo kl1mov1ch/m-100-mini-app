@@ -8,7 +8,7 @@
 }
 .voice-report-drawer .ant-drawer-content {
 	border-radius: 25px 25px 0 0;
-	background: #fff;
+	background: var(--ios-surface);
 	max-height: 86dvh;
 	overflow: hidden;
 }
@@ -20,7 +20,7 @@
 	width: 35px;
 	height: 4px;
 	border-radius: 5px;
-	background: #dce4f0;
+	background: var(--ios-separator);
 	margin: 0 auto 12px;
 }
 .voice-sheet-heading {
@@ -30,7 +30,7 @@
 	align-items: center;
 	margin-bottom: 12px;
 	font-size: 14px;
-	color: #9aacc4;
+	color: var(--ios-tertiary);
 }
 .voice-sheet-heading > span {
 	white-space: nowrap;
@@ -44,22 +44,22 @@
 	width: 26px;
 	border: 0;
 	background: none;
-	color: #b2bfd2;
+	color: var(--ios-tertiary);
 	padding: 0;
 	flex-shrink: 0;
 }
 .voice-sheet-text.ant-input {
-	border: 1px solid #e0e7f2;
+	border: 1px solid var(--ios-fill);
 	border-radius: 14px;
-	background: #fafbfe;
+	background: var(--ios-surface);
 	padding: 16px 17px;
 	font-size: 13px;
 	line-height: 1.9;
-	color: #526d92;
+	color: var(--ios-secondary);
 	resize: none;
 }
 .voice-sheet-text.ant-input::placeholder {
-	color: #b0bed2;
+	color: var(--ios-tertiary);
 }
 .voice-example-link {
 	display: flex;
@@ -67,7 +67,7 @@
 	align-items: center;
 	border: 0;
 	background: none;
-	color: #9eb4d3;
+	color: var(--ios-tertiary);
 	font-size: 12px;
 	padding: 0;
 	margin: 10px 2px 0;
@@ -85,46 +85,46 @@
 	border: 0;
 	display: grid;
 	place-items: center;
-	background: #2563eb;
-	color: #fff;
+	background: var(--ios-accent);
+	color: var(--ios-surface);
 	box-shadow:
-		0 0 0 7px #f1f6ff,
-		0 5px 15px #2563eb18;
+		0 0 0 7px var(--ios-fill),
+		0 5px 15px rgba(0, 0, 0, 0.094);
 }
 .voice-microphone:hover {
-	background: #1d58d3;
+	background: var(--ios-accent);
 }
 .voice-microphone.recording {
-	background: #e17b81;
-	box-shadow: 0 0 0 7px #fff1f2;
+	background: var(--ios-danger);
+	box-shadow: 0 0 0 7px var(--ios-danger-fill);
 	animation: microphone-pulse 1.5s ease-in-out infinite;
 }
 .voice-microphone:disabled {
-	background: #79a3f2;
+	background: var(--ios-accent);
 	cursor: wait;
 }
 .voice-microphone-area > span {
 	font-size: 13px;
-	color: #9fb1ca;
+	color: var(--ios-tertiary);
 	margin-top: 18px;
 }
 .voice-microphone-area .ant-btn {
 	font-size: 12px;
-	color: #b0bfd5;
+	color: var(--ios-tertiary);
 	height: 29px;
 	margin-top: 3px;
 }
 .voice-recognition-results {
 	margin-top: 18px;
 	padding-top: 15px;
-	border-top: 1px solid #edf1f8;
+	border-top: 1px solid var(--ios-fill);
 }
 .voice-recognition-heading {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
 	font-size: 13px;
-	color: #9cb1cf;
+	color: var(--ios-tertiary);
 	margin-bottom: 11px;
 }
 .voice-recognition-heading b {
@@ -139,14 +139,14 @@
 	margin-bottom: 13px;
 }
 .voice-recognized-card {
-	border: 1px solid #e5ebf5;
+	border: 1px solid var(--ios-fill);
 	border-radius: 9px;
 	padding: 12px;
 	display: flex;
 	justify-content: space-between;
 	align-items: center;
 	gap: 15px;
-	background: #fcfdff;
+	background: var(--ios-surface);
 }
 .voice-recognized-card > span {
 	flex: 1;
@@ -157,20 +157,20 @@
 	font-size: 14px;
 	line-height: 1.7;
 	font-weight: 500;
-	color: #7893b5;
+	color: var(--ios-tertiary);
 	overflow-wrap: anywhere;
 }
 .voice-recognized-card small {
 	display: block;
 	font-size: 12px;
 	line-height: 1.7;
-	color: #b3a06c;
+	color: var(--ios-warning-line);
 	margin-top: 4px;
 }
 .voice-recognized-card > strong {
 	font-size: 12px;
 	font-weight: 550;
-	color: #789ac5;
+	color: var(--ios-tertiary);
 	white-space: nowrap;
 }
 .voice-recognition-results > .ant-btn {
@@ -179,7 +179,7 @@
 }
 @keyframes microphone-pulse {
 	50% {
-		box-shadow: 0 0 0 11px #fff4f4;
+		box-shadow: 0 0 0 11px var(--ios-danger-fill);
 	}
 }
 @media (max-width: 600px) {
@@ -237,10 +237,10 @@
 	gap: 12px;
 	padding: 12px 14px;
 	margin-block: 8px;
-	border: 1px solid #b9d8cf;
+	border: 1px solid var(--ios-success-line);
 	border-radius: 14px;
-	background: #f0faf5;
-	color: #286d51;
+	background: var(--ios-success-fill);
+	color: var(--ios-success);
 	font-size: 14px;
 }
 .voice-recognized-crew > span {

@@ -49,6 +49,8 @@ import './bottom-sheets.css';
 import './avatar.css';
 import './keyboard.css';
 import './select-controls.css';
+import './telegram-ios.css';
+import { telegramLightTheme } from './lib/telegram-theme';
 import { useInputVisibility } from './hooks/useInputVisibility';
 import { useStartupScreen } from './hooks/useStartupScreen';
 import { useAppRelease } from './hooks/useAppRelease';
@@ -345,28 +347,7 @@ export function WorkspaceApp() {
 }
 export function renderApp() {
 	createRoot(document.getElementById('root')!).render(
-		<ConfigProvider
-			locale={ruRU}
-			theme={{
-				token: {
-					colorPrimary: '#2563eb',
-					colorInfo: '#2563eb',
-					colorText: '#172b4d',
-					colorTextSecondary: '#566b87',
-					colorBorder: '#c7d5e9',
-					colorSuccess: '#16834a',
-					colorWarning: '#c88e00',
-					colorError: '#c53244',
-					borderRadius: 12,
-					fontFamily: 'Inter, "Segoe UI", Arial, sans-serif',
-					controlHeight: 46,
-				},
-				components: {
-					Button: { primaryShadow: 'none' },
-					InputNumber: { controlWidth: 100 },
-				},
-			}}
-		>
+		<ConfigProvider locale={ruRU} theme={telegramLightTheme}>
 			<AntApp message={{ maxCount: 2 }}>
 				<WorkspaceApp />
 			</AntApp>

@@ -3,8 +3,8 @@
 .draft-work.work-overrun,
 .admin-work-row.work-overrun,
 .work-overruns {
-	border: 1px solid #d9a625;
-	background: #fffbeb;
+	border: 1px solid var(--ios-warning-text);
+	background: var(--ios-warning-fill);
 }
 .work-estimate {
 	min-width: 0;
@@ -19,15 +19,15 @@
 	min-width: 0;
 	padding: 6px;
 	border-radius: 8px;
-	background: #f1f5fc;
+	background: var(--ios-fill);
 }
 .work-estimate dt {
 	font-size: 11px;
-	color: #50647e;
+	color: var(--ios-secondary);
 }
 .work-estimate dd {
 	margin: 3px 0 0;
-	color: #183252;
+	color: var(--ios-label);
 	font-size: 13px;
 	font-weight: 700;
 	overflow-wrap: anywhere;
@@ -37,7 +37,7 @@
 	display: flex;
 	align-items: flex-start;
 	gap: 6px;
-	color: #7a5100;
+	color: var(--ios-warning-text);
 }
 .work-estimate-warning {
 	margin-top: 8px;
@@ -46,11 +46,11 @@
 .work-estimate-warning svg,
 .work-overruns svg {
 	flex: none;
-	color: #a46b00;
+	color: var(--ios-warning-text);
 }
 .work-estimate-warning b,
 .work-overruns li b {
-	color: #b42318;
+	color: var(--ios-danger);
 }
 .work-overruns {
 	margin: 10px 0;
@@ -69,7 +69,7 @@
 	overflow-wrap: anywhere;
 }
 .work-overruns li small {
-	color: #533c16;
+	color: var(--ios-warning-text);
 }
 @media (max-width: 420px) {
 	.work-estimate dl {

@@ -2,7 +2,7 @@
 	position: sticky;
 	top: -20px;
 	z-index: 5;
-	background: #f9fbff;
+	background: var(--ios-surface);
 	padding: 20px 0 1px;
 	margin-top: -20px;
 	transition:
@@ -22,7 +22,7 @@
 	display: flex;
 	align-items: center;
 	gap: 7px;
-	color: #8aa6ca;
+	color: var(--ios-tertiary);
 	font-size: 10px;
 	margin-bottom: 14px;
 }
@@ -35,14 +35,14 @@
 }
 .voice-context > span:last-child {
 	font-size: 9px;
-	color: #a8b9d1;
+	color: var(--ios-tertiary);
 }
 .report-example {
-	background: #f0f5ff;
-	border: 1px solid #e1eafb;
+	background: var(--ios-fill);
+	border: 1px solid var(--ios-fill);
 	border-radius: 7px;
 	padding: 7px 9px;
-	color: #85a2cb;
+	color: var(--ios-tertiary);
 	font-size: 9px;
 	display: flex;
 	align-items: center;
@@ -67,7 +67,7 @@
 	font-size: 10px;
 }
 .voice-upload-actions .voice-file .ant-btn {
-	color: #92aacb;
+	color: var(--ios-tertiary);
 	font-size: 9px;
 }
 .recording-indicator {
@@ -75,18 +75,18 @@
 	align-items: center;
 	gap: 6px;
 	font-size: 10px;
-	color: #ad7777;
+	color: var(--ios-danger);
 }
 .recording-indicator > span {
 	width: 6px;
 	height: 6px;
-	background: #d88888;
+	background: var(--ios-danger-line);
 	border-radius: 50%;
 	animation: recording-pulse 1s infinite;
 }
 .audio-transcribing {
 	font-size: 10px;
-	color: #849fc6;
+	color: var(--ios-tertiary);
 	display: flex;
 	align-items: center;
 	gap: 6px;

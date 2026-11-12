@@ -1,7 +1,7 @@
 .report-filter-card,
 .report-metrics > div {
-	background: #fff;
-	border: 1px solid #dce6f6;
+	background: var(--ios-surface);
+	border: 1px solid var(--ios-fill);
 	border-radius: 16px;
 	padding: 16px;
 }
@@ -48,22 +48,22 @@
 	min-width: 0;
 }
 .report-metrics span {
-	color: #617590;
+	color: var(--ios-secondary);
 	font-size: 12px;
 }
 .report-metrics strong {
 	font-size: 23px;
-	color: #173c71;
+	color: var(--ios-label);
 	overflow-wrap: anywhere;
 }
 .report-metrics small {
 	font-size: 11px;
-	color: #617590;
+	color: var(--ios-secondary);
 	line-height: 1.5;
 }
 .report-metrics .metric-primary {
-	background: #eaf2ff;
-	border-color: #b9d2ff;
+	background: var(--ios-fill);
+	border-color: var(--ios-separator);
 }
 .reminder-settings .ant-select,
 .reminder-settings .ant-picker {
@@ -84,20 +84,20 @@
 	display: block;
 }
 .reminder-toggle small {
-	color: #617590;
+	color: var(--ios-secondary);
 	margin-top: 6px;
 }
 .reminder-recipients > div {
 	display: grid;
 	gap: 7px;
 	padding: 12px 0;
-	border-bottom: 1px solid #e5edf7;
+	border-bottom: 1px solid var(--ios-fill);
 }
 .reminder-recipients {
 	margin-bottom: 16px;
 }
 .reminder-recipients span {
-	color: #617590;
+	color: var(--ios-secondary);
 	line-height: 1.6;
 	font-size: 12px;
 	overflow-wrap: anywhere;
@@ -112,7 +112,7 @@
 }
 .overview-statistics span {
 	font-size: 11px;
-	color: #e6efff;
+	color: var(--ios-fill);
 }
 .overview-statistics b {
 	display: block;
@@ -149,7 +149,7 @@
 }
 .profile-intro small,
 .profile-test-role > span {
-	color: #617590;
+	color: var(--ios-secondary);
 	line-height: 1.6;
 	font-size: 12px;
 }
@@ -180,7 +180,7 @@
 	margin-top: 2px;
 }
 .profile-test-role {
-	border-top: 1px solid #edf1f8;
+	border-top: 1px solid var(--ios-fill);
 	padding-top: 10px;
 }
 .profile-button > img {
@@ -201,7 +201,7 @@
 	border: 0;
 	border-radius: 8px;
 	background: transparent;
-	color: #60718a;
+	color: var(--ios-secondary);
 	cursor: pointer;
 	touch-action: manipulation;
 }
@@ -210,7 +210,7 @@
 	place-items: center;
 	width: 16px;
 	height: 16px;
-	border: 1px solid #a7b5c8;
+	border: 1px solid var(--ios-tertiary);
 	border-radius: 50%;
 	font-family: Georgia, serif;
 	font-size: 11px;
@@ -219,11 +219,11 @@
 }
 .field-help-button:hover,
 .field-help-button[aria-describedby] {
-	color: #245fc1;
-	background: #edf4ff;
+	color: var(--ios-accent);
+	background: var(--ios-fill);
 }
 .field-help-button:focus-visible {
-	outline: 2px solid #3975da;
+	outline: 2px solid var(--ios-accent);
 	outline-offset: 2px;
 }
 .field-help-content {
@@ -249,7 +249,7 @@
 .admin-work-row {
 	padding: 17px;
 	background: white;
-	border: 1px solid #dce6f6;
+	border: 1px solid var(--ios-fill);
 	border-radius: 14px;
 }
 .admin-work-row > b {
@@ -264,5 +264,5 @@
 	align-items: center;
 	justify-content: space-between;
 	margin-top: 12px;
-	color: #577294;
+	color: var(--ios-secondary);
 }

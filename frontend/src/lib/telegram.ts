@@ -1,3 +1,5 @@
+import { telegramLightBackground } from './telegram-theme';
+
 export async function initializeTelegram(): Promise<void> {
 	if (!location.hash.includes('tgWebAppData=') || window.Telegram?.WebApp) return;
 	await new Promise<void>((resolve, reject) => {
@@ -37,7 +39,7 @@ export function configureTelegram(): void {
 	}
 	if (app.isVersionAtLeast('6.1')) {
 		app.setHeaderColor('#ffffff');
-		app.setBackgroundColor('#f4f7fd');
+		app.setBackgroundColor(telegramLightBackground);
 	}
 	if (app.isVersionAtLeast('7.10')) app.setBottomBarColor?.('#ffffff');
 	app.expand();
