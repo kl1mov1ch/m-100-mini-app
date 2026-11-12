@@ -9,7 +9,7 @@ import type { WorkspaceView } from '../App';
 import { useConfirmWorkRemoval } from '../hooks/useConfirmWorkRemoval';
 import { useReportDateSwipe } from '../hooks/useReportDateSwipe';
 import { Status } from '../components/SyncStatus';
-import { Money, nf, shortName, unit } from '../lib/format';
+import { Money, countLabel, nf, shortName, unit } from '../lib/format';
 import { AdminDailyReport } from '../components/AdminDailyReport';
 import { QuickReportComposer } from '../components/QuickReportComposer';
 import { ReportDraftFields } from '../components/ReportDraftFields';
@@ -91,26 +91,30 @@ function MasterDailyReport({ workspace }: { workspace: WorkspaceView }) {
 					<strong>
 						<Money value={amount} />
 					</strong>
-					<small>{lines.length} работ по расценкам вашей сметы</small>
+					<small>
+						{countLabel(Object.keys(nextLines).length, 'работа', 'работы', 'работ')} за день
+					</small>
 				</div>
-				<div className="crew-control">
-					<span>
-						<Users size={16} /> Работников на объекте
-					</span>
-					<InputNumber
-						aria-label="Количество работников"
-						min={1}
-						max={1000}
-						precision={0}
-						value={crew}
-						onChange={(v) => setCrew(v || 1)}
-					/>
-				</div>
-				<div className="earnings-person">
-					<span>На одного человека</span>
-					<strong>
-						<Money value={each} />
-					</strong>
+				<div className="daily-team-summary">
+					<div className="earnings-person">
+						<span>На человека</span>
+						<strong>
+							<Money value={each} />
+						</strong>
+					</div>
+					<div className="crew-control">
+						<span>
+							<Users size={16} /> Бригада
+						</span>
+						<InputNumber
+							aria-label="Количество работников"
+							min={1}
+							max={1000}
+							precision={0}
+							value={crew}
+							onChange={(v) => setCrew(v || 1)}
+						/>
+					</div>
 				</div>
 				{extra > 0 && (
 					<div className="rounding-note">

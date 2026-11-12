@@ -1,0 +1,249 @@
+.quick-report-composer {
+	padding: 14px;
+	border-radius: var(--ios-group-radius);
+	margin-bottom: 14px;
+}
+
+.quick-report-heading {
+	margin-bottom: 4px;
+	gap: 3px;
+}
+
+.quick-report-heading h2 {
+	font-size: 17px;
+}
+
+.quick-report-project {
+	margin-bottom: 8px;
+}
+
+.quick-report-project .ant-select {
+	width: 100%;
+	font-weight: 500;
+}
+
+.quick-report-project .ant-select-selector {
+	padding-inline: 0 !important;
+}
+
+.quick-report-project .ant-select-selection-item {
+	color: var(--ios-accent) !important;
+}
+
+.quick-report-composer textarea.ant-input {
+	font-size: 16px;
+	line-height: 1.45;
+}
+
+.quick-report-actions {
+	gap: 8px;
+	margin-top: 8px;
+}
+
+.quick-report-actions > button:last-child {
+	flex: 1;
+	font-size: 14px;
+}
+
+.object-grid {
+	gap: 12px;
+}
+
+.object-grid .object-card {
+	padding: 14px;
+}
+
+.object-card-top {
+	margin-bottom: 6px;
+	gap: 10px;
+}
+
+.object-card-identity {
+	flex: 1;
+	min-width: 0;
+}
+
+.object-card-identity h2 {
+	font-size: 16px;
+	line-height: 1.3;
+	margin: 0;
+	overflow-wrap: anywhere;
+}
+
+.object-card-identity p {
+	color: var(--ios-secondary);
+	font-size: 12px;
+	margin-top: 3px;
+	overflow-wrap: anywhere;
+}
+
+.object-card > .connection-dot {
+	margin: 0;
+	font-size: 11px;
+}
+
+.object-card .object-totals {
+	margin: 12px 0;
+	gap: 8px;
+}
+
+.object-card .object-totals > span {
+	gap: 4px;
+	font-size: 12px;
+}
+
+.object-card .object-totals strong {
+	font-size: clamp(18px, 4.6vw, 22px);
+}
+
+.object-card-bottom {
+	padding-top: 9px;
+	font-size: 12px;
+	flex-wrap: wrap;
+	gap: 4px 12px;
+}
+
+.object-card-status {
+	margin-top: 5px;
+	color: var(--ios-secondary);
+	font-size: 11px;
+}
+
+.daily-earnings {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+	align-items: start;
+	gap: 12px;
+	padding: 16px;
+	margin-bottom: 12px;
+}
+
+.earnings-total {
+	gap: 6px;
+}
+
+.earnings-total > strong {
+	font-size: clamp(24px, 6.6vw, 32px);
+	letter-spacing: -0.6px;
+}
+
+.earnings-total > small {
+	font-size: 12px;
+}
+
+.daily-team-summary {
+	display: grid;
+	gap: 10px;
+	padding-left: 12px;
+	border-left: 1px solid var(--ios-separator);
+}
+
+.daily-team-summary .earnings-person {
+	display: grid;
+	gap: 4px;
+	margin: 0;
+	padding: 0;
+	border: 0;
+}
+
+.daily-team-summary .earnings-person > span {
+	font-size: 12px;
+}
+
+.daily-team-summary .earnings-person > strong {
+	font-size: clamp(18px, 4.7vw, 24px);
+	color: var(--ios-label);
+}
+
+.daily-team-summary .crew-control {
+	display: flex;
+	gap: 6px;
+	padding: 0;
+	margin: 0;
+	border: 0;
+	flex-wrap: wrap;
+}
+
+.daily-team-summary .crew-control > span {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	font-size: 12px;
+}
+
+.daily-team-summary .ant-input-number {
+	width: 68px;
+}
+
+.daily-team-summary .ant-input-number-input {
+	padding-inline: 6px;
+}
+
+.daily-earnings .rounding-note {
+	grid-column: 1 / -1;
+}
+
+.report-toolbar {
+	gap: 8px;
+	margin-bottom: 0;
+}
+
+.object-page:has(.daily-team-summary) {
+	gap: 10px;
+}
+
+.work-list:empty {
+	display: none;
+}
+
+.no-work {
+	padding: 16px 10px;
+	margin: 0;
+	min-height: 0;
+	font-size: 13px;
+}
+
+.confirm-bar {
+	padding: 12px 14px;
+	margin-top: 0;
+	gap: 10px;
+}
+
+.confirm-bar > div > span {
+	font-size: 12px;
+	line-height: 1.4;
+}
+
+.confirm-bar > div {
+	gap: 4px;
+}
+
+.confirm-bar strong {
+	font-size: 21px;
+}
+
+.confirm-bar .ant-btn {
+	height: 44px;
+	min-width: 0;
+	font-size: 13px;
+	padding-inline: 12px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+	button:enabled > svg,
+	button:enabled .ant-btn-icon > svg,
+	a.ant-btn .ant-btn-icon > svg {
+		transition: transform 160ms ease;
+		transform-origin: center;
+	}
+
+	button:enabled:active > svg,
+	button:enabled:active .ant-btn-icon > svg,
+	a.ant-btn:active .ant-btn-icon > svg {
+		transform: scale(0.88);
+	}
+
+	.bottom-nav > button:active > svg {
+		transform: translateY(2px) scale(0.9);
+	}
+}
