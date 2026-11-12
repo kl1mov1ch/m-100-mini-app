@@ -101,6 +101,10 @@ def seed_database(database):
 
 
 def positions(db):
+    if postgres.enabled():
+        from .orm_repository import positions as orm_positions
+
+        return orm_positions(db)
     project_join = " AND e.project_id=p.project_id" if postgres.enabled() else ""
     project_group = ",p.project_id" if postgres.enabled() else ""
     return [
@@ -141,6 +145,10 @@ def selectable_positions(db):
 
 
 def insert_position(db, p):
+    if postgres.enabled():
+        from .orm_repository import insert_position as orm_insert
+
+        return orm_insert(db, p)
     db.execute(
         "INSERT INTO positions(id,name,section,unit,planned,rate,source_row,source_sheet,baseline) VALUES(:id,:name,:section,:unit,:planned,:rate,:source_row,:source_sheet,:baseline)",
         {
@@ -152,11 +160,19 @@ def insert_position(db, p):
 
 
 def setting(db, key, default=""):
+    if postgres.enabled():
+        from .orm_repository import setting as orm_setting
+
+        return orm_setting(db, key, default)
     r = db.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
     return r["value"] if r else default
 
 
 def set_setting(db, key, value):
+    if postgres.enabled():
+        from .orm_repository import set_setting as orm_set_setting
+
+        return orm_set_setting(db, key, value)
     db.execute(
         "INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
         (key, value),

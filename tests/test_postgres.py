@@ -108,11 +108,49 @@ def test_sqlite_migration_and_report_lifecycle(tmp_path, monkeypatch):
                     )
                     assert restored.status_code == 200, restored.text
                     assert restored.json()["payroll"]["amount"] == 0
+                    webhook = client.post(
+                        "/api/profile/disk-webhooks",
+                        headers=headers,
+                        json={
+                            "name": "Портал",
+                            "url": "https://example.bitrix24.by/rest/1/ormCheck/",
+                        },
+                    )
+                    assert webhook.status_code == 200, webhook.text
+                    webhook_id = webhook.json()["id"]
+                    edited_hook = client.post(
+                        f"/api/profile/disk-webhooks/{webhook_id}/update",
+                        headers=headers,
+                        json={"name": "Обновлён"},
+                    )
+                    assert edited_hook.status_code == 200, edited_hook.text
+                    assert (
+                        client.post(
+                            f"/api/profile/disk-webhooks/{webhook_id}/delete",
+                            headers=headers,
+                            json={},
+                        ).status_code
+                        == 200
+                    )
+                    exported = client.get(
+                        "/api/analytics/export.xlsx", params={"project_id": first}, headers=headers
+                    )
+                    assert exported.status_code == 200, (
+                        exported.text[:100] if exported.status_code != 200 else ""
+                    )
+                    with pytest.raises(RuntimeError), store.connect(f"project:{first}") as database:
+                        store.set_setting(database, "transaction_rollback_test", "not committed")
+                        raise RuntimeError("rollback")
+                    with store.connect(f"project:{first}") as database:
+                        assert store.setting(database, "transaction_rollback_test") == ""
                     assert workspaces.user("7001")["role"] == "master"
                     assert create(client, "7001", sample=True)
-                    assert client.post(
-                        "/api/object/delete", json={"name": "Объект"}, headers=headers
-                    ).status_code == 200
+                    assert (
+                        client.post(
+                            "/api/object/delete", json={"name": "Объект"}, headers=headers
+                        ).status_code
+                        == 200
+                    )
                     assert not workspaces.exists(first)
                     assert workspaces.exists(second)
             finally:

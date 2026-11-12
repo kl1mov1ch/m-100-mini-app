@@ -20,7 +20,9 @@ services:
       - postgres_owner_password
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    command: ['postgres', '-c', 'shared_buffers=64MB', '-c', 'max_connections=20']
+    mem_limit: 256m
+    cpus: 1
+    command: ['postgres', '-c', 'shared_buffers=32MB', '-c', 'work_mem=2MB', '-c', 'maintenance_work_mem=32MB', '-c', 'effective_cache_size=256MB', '-c', 'max_connections=20', '-c', 'max_parallel_workers_per_gather=0', '-c', 'jit=off']
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U m100_owner -d m100']
       interval: 5s

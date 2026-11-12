@@ -11,3 +11,4 @@ av>=14,<17
 tzdata>=2025.1
 numpy>=1.26,<2.3
 psycopg[binary,pool]>=3.3,<4
+SQLAlchemy>=2.0,<2.1

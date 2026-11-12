@@ -24,20 +24,30 @@ def pool():
     global _pool
     with _pool_lock:
         if _pool is None:
-            from psycopg.rows import dict_row
-            from psycopg_pool import ConnectionPool
+            from psycopg.conninfo import conninfo_to_dict
+            from sqlalchemy import URL, create_engine
 
-            _pool = ConnectionPool(
-                os.environ["DATABASE_URL"],
-                min_size=1,
-                max_size=5,
-                num_workers=1,
-                timeout=10,
-                kwargs={
-                    "row_factory": dict_row,
-                    "options": "-c timezone=UTC -c statement_timeout=15000",
+            values = conninfo_to_dict(os.environ["DATABASE_URL"])
+            url = URL.create(
+                "postgresql+psycopg",
+                username=values.pop("user", None),
+                password=values.pop("password", None),
+                host=values.pop("host", None),
+                port=int(values.pop("port", 5432)),
+                database=values.pop("dbname", None),
+            )
+            _pool = create_engine(
+                url,
+                pool_size=3,
+                max_overflow=1,
+                pool_timeout=10,
+                pool_recycle=600,
+                pool_pre_ping=True,
+                connect_args={
+                    **values,
+                    "connect_timeout": 10,
+                    "options": "-c timezone=UTC -c statement_timeout=15000 -c idle_in_transaction_session_timeout=30000",
                 },
-                open=True,
             )
         return _pool
 
@@ -46,7 +56,7 @@ def close_pool():
     global _pool
     with _pool_lock:
         if _pool is not None:
-            _pool.close()
+            _pool.dispose()
             _pool = None
 
 
@@ -80,19 +90,30 @@ class Cursor:
     def __init__(self, cursor):
         self.cursor = cursor
 
+    @property
+    def rowcount(self):
+        return self.cursor.rowcount
+
+    def convert_row(self, row):
+        if row is None:
+            return None
+        if not isinstance(row, dict):
+            row = dict(zip((column.name for column in self.cursor.description), row, strict=True))
+        return Row(row)
+
     def fetchone(self):
-        row = self.cursor.fetchone()
-        return Row(row) if row is not None else None
+        return self.convert_row(self.cursor.fetchone())
 
     def fetchall(self):
-        return [Row(row) for row in self.cursor.fetchall()]
+        return [self.convert_row(row) for row in self.cursor.fetchall()]
 
     def __iter__(self):
-        return (Row(row) for row in self.cursor)
+        return (self.convert_row(row) for row in self.cursor)
 
 
 class Connection:
-    def __init__(self, connection):
+    def __init__(self, connection, session=None):
+        self.session = session
         self.connection = connection
         self.project = None
 
@@ -109,7 +130,10 @@ class Connection:
             )
             if self.project is not None:
                 parts[index] = re.sub(
-                    r"ON CONFLICT\s*\(", "ON CONFLICT (project_id,", parts[index], flags=re.I
+                    r"ON CONFLICT\s*\(",
+                    "ON CONFLICT (project_id,",
+                    parts[index],
+                    flags=re.IGNORECASE,
                 )
         return "".join(parts)
 
@@ -131,13 +155,20 @@ class Connection:
 
 @contextmanager
 def connect(ident=None):
-    with pool().connection() as raw_connection:
-        database = Connection(raw_connection)
+    from sqlalchemy.orm import Session
+
+    with (
+        pool().begin() as transaction,
+        Session(bind=transaction, expire_on_commit=False) as session,
+    ):
+        raw_connection = transaction.connection.driver_connection
+        database = Connection(raw_connection, session)
         if ident is None:
             raw_connection.execute("SET LOCAL search_path TO registry, pg_catalog")
         else:
             database.select_project(ident)
         yield database
+        session.flush()
 
 
 def check_schema():
