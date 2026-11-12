@@ -1,7 +1,8 @@
 import { Button, Tag } from 'antd';
-import { ExternalLink, FileSearch, RefreshCw } from 'lucide-react';
+import { ExternalLink, RefreshCw } from 'lucide-react';
 import type { WorkspaceView } from '../App';
 import dayjs from '../lib/date';
+import { countLabel } from '../lib/format';
 import { openExternalLink } from '../lib/telegram';
 
 export function ObjectTableCard({ workspace }: { workspace: WorkspaceView }) {
@@ -12,7 +13,6 @@ export function ObjectTableCard({ workspace }: { workspace: WorkspaceView }) {
 		checkingConnection,
 		checkConnection,
 		reviewBitrixChanges,
-		reviewOriginalTable,
 		busy,
 	} = workspace;
 	if (!data || !active || data.project?.id !== active.id || data.config.source !== 'bitrix')
@@ -25,7 +25,7 @@ export function ObjectTableCard({ workspace }: { workspace: WorkspaceView }) {
 			<div className="object-table-card-top">
 				<div>
 					<b>{config.source_name}</b>
-					<small>{positions.length} работ · Битрикс24.Диск</small>
+					<small>{countLabel(positions.length, 'позиция', 'позиции', 'позиций')} · Битрикс24</small>
 				</div>
 				<Tag
 					color={config.has_webhook ? 'green' : undefined}
@@ -34,6 +34,27 @@ export function ObjectTableCard({ workspace }: { workspace: WorkspaceView }) {
 					{config.has_webhook ? 'Подключена' : 'Только чтение'}
 				</Tag>
 			</div>
+			{(config.bitrix_read?.updated_at || config.last_import) && (
+				<p className="table-updated-at">
+					Обновлено{' '}
+					{dayjs(config.bitrix_read?.updated_at || config.last_import).format('D MMMM, HH:mm')}
+				</p>
+			)}
+			{config.bitrix_read?.status === 'unavailable' && (
+				<p className="table-connection-notice" role="status">
+					Битрикс24 недоступен. Показаны последние загруженные данные.
+				</p>
+			)}
+			{config.bitrix_read?.status === 'review' && !check?.issues.length && (
+				<Button
+					type="text"
+					className="table-review-link"
+					loading={busy}
+					onClick={reviewBitrixChanges}
+				>
+					Проверить различия с Битрикс24
+				</Button>
+			)}
 			{check && (
 				<div
 					className={
@@ -66,25 +87,27 @@ export function ObjectTableCard({ workspace }: { workspace: WorkspaceView }) {
 				</div>
 			)}
 			<div className="object-table-card-actions">
-				<Button loading={busy} icon={<FileSearch size={15} />} onClick={reviewOriginalTable}>
-					Проверить исходные листы
-				</Button>
 				<Button
+					type="primary"
+					aria-label="Проверить таблицу"
 					loading={checkingConnection}
+					disabled={busy}
 					icon={<RefreshCw size={15} />}
 					onClick={checkConnection}
 				>
-					Проверить соединение
+					Проверить
 				</Button>
 				{original && (
 					<Button
+						type="text"
+						aria-label="Открыть таблицу Битрикс24"
 						href={original}
 						onClick={(event) => openExternalLink(event, original)}
 						target="_blank"
 						rel="noreferrer"
 						icon={<ExternalLink size={15} />}
 					>
-						Открыть таблицу
+						Открыть
 					</Button>
 				)}
 			</div>

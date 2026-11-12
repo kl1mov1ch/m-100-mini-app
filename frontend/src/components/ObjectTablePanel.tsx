@@ -1,11 +1,11 @@
 import { Alert, App, Button, Input, Select, Upload } from 'antd';
-import { Download, Trash2, Unlink } from 'lucide-react';
+import { ChevronDown, Download, FileSearch, Settings2, Trash2, Unlink } from 'lucide-react';
 import { useId, useState } from 'react';
 import type { WorkspaceView } from '../App';
 import { FieldHelp } from './FieldHelp';
-import { BitrixReadStatus } from './BitrixReadStatus';
 import { ObjectTableCard } from './ObjectTableCard';
 import { downloadReport } from '../lib/report-download';
+import './object-table-panel.css';
 
 export function ObjectTablePanel({
 	workspace,
@@ -35,7 +35,7 @@ export function ObjectTablePanel({
 		importRemote,
 		resumeImport,
 		retryJournal,
-		openObjectSection,
+		reviewOriginalTable,
 	} = workspace;
 	const config = data?.config;
 	if (!config) return null;
@@ -53,19 +53,13 @@ export function ObjectTablePanel({
 		}
 	};
 	return (
-		<section className="object-panel">
+		<section className="object-panel table-panel">
 			<div className="object-panel-heading">
 				<h2>Таблица</h2>
-				{(connected || config.public_url || config.has_webhook) && (
-					<Button danger icon={<Unlink size={16} />} onClick={onDetach}>
-						Отвязать
-					</Button>
-				)}
 			</div>
 			{connected ? (
 				<>
 					<ObjectTableCard workspace={workspace} />
-					<BitrixReadStatus workspace={workspace} />
 					{config.has_webhook && config.file_id > 0 && config.journal_status !== 'ready' && (
 						<Alert
 							type="warning"
@@ -99,17 +93,17 @@ export function ObjectTablePanel({
 					)}
 				</>
 			)}
-			<div className="object-panel-actions">
-				<Button
-					type={!connected && !configuring ? 'primary' : 'default'}
+			<div className="table-setup-actions">
+				<button
+					type="button"
+					className="table-settings-toggle"
+					aria-expanded={configuring}
 					onClick={() => setConfiguring(!configuring)}
 				>
-					{configuring
-						? 'Скрыть настройки'
-						: connected
-							? 'Настроить подключение'
-							: 'Подключить Битрикс24'}
-				</Button>
+					<Settings2 size={17} aria-hidden />
+					<span>{connected ? 'Настройки подключения' : 'Подключить Битрикс24'}</span>
+					<ChevronDown size={17} className={configuring ? 'is-open' : ''} aria-hidden />
+				</button>
 				{!connected && (
 					<Upload accept=".xlsx,.csv" maxCount={1} showUploadList={false} beforeUpload={upload}>
 						<Button loading={busy}>Загрузить Excel</Button>
@@ -129,7 +123,7 @@ export function ObjectTablePanel({
 				)}
 			</div>
 			{configuring && (
-				<div className="object-connection-form">
+				<div className="object-connection-form table-settings-form">
 					<label>
 						Ссылка на таблицу Битрикс24
 						<Input
@@ -173,8 +167,19 @@ export function ObjectTablePanel({
 						disabled={!url.trim() && !(config.file_id && (currentWebhookId || config.has_webhook))}
 						onClick={importRemote}
 					>
-						Прочитать таблицу
+						{connected ? 'Применить подключение' : 'Подключить таблицу'}
 					</Button>
+					{connected && (
+						<Button
+							type="text"
+							icon={<FileSearch size={16} />}
+							loading={busy}
+							disabled={workspace.checkingConnection}
+							onClick={reviewOriginalTable}
+						>
+							Проверить исходные листы
+						</Button>
+					)}
 				</div>
 			)}
 			{config.pending_import && (
@@ -189,17 +194,25 @@ export function ObjectTablePanel({
 					}
 				/>
 			)}
-			{ready && (
-				<Button type="primary" onClick={() => openObjectSection('catalogue')}>
-					Проверить смету
-				</Button>
-			)}
+
 			<div className="object-danger-zone">
+				{(connected || config.public_url || config.has_webhook) && (
+					<Button
+						type="text"
+						danger
+						icon={<Unlink size={17} />}
+						disabled={loadingAction || busy || workspace.checkingConnection}
+						onClick={onDetach}
+					>
+						Отвязать таблицу
+					</Button>
+				)}
 				<Button
 					type="text"
 					danger
 					icon={<Trash2 size={17} />}
 					loading={loadingAction}
+					disabled={busy || workspace.checkingConnection}
 					onClick={onDelete}
 				>
 					Удалить объект
