@@ -10,18 +10,20 @@ export function useStartupScreen(ready: boolean) {
 			return;
 		}
 
+		let active = true;
 		let removalTimer: number | undefined;
-		const revealTimer = window.setTimeout(
-			() => {
-				screen.classList.add('is-finished');
-				screen.setAttribute('aria-hidden', 'true');
-				removalTimer = window.setTimeout(() => screen.remove(), 340);
-			},
-			Math.max(0, 520 - performance.now()),
+		const reveal = Promise.allSettled(
+			(screen.getAnimations?.({ subtree: true }) ?? []).map((animation) => animation.finished),
 		);
+		void reveal.then(() => {
+			if (!active) return;
+			screen.classList.add('is-finished');
+			screen.setAttribute('aria-hidden', 'true');
+			removalTimer = window.setTimeout(() => screen.remove(), 340);
+		});
 
 		return () => {
-			window.clearTimeout(revealTimer);
+			active = false;
 			window.clearTimeout(removalTimer);
 		};
 	}, [ready]);
