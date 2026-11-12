@@ -12,6 +12,7 @@ from weakref import WeakValueDictionary
 from fastapi import HTTPException
 
 from . import postgres, store
+from .naming import unique_project_name
 
 PROJECT_LOCKS = WeakValueDictionary()
 
@@ -183,6 +184,22 @@ def add_project(current_user, name, owner_id=None, sample=False):
         path = str(store.base_path().parent / "objects" / f"{ident}.sqlite3")
         store.init(path, seed=sample)
     with registry() as db:
+        if postgres.enabled():
+            from sqlalchemy import select
+
+            from .orm_models import Project, User
+
+            db.session.scalar(select(User).where(User.telegram_id == owner_id).with_for_update())
+            existing = list(
+                db.session.scalars(select(Project.name).where(Project.owner_id == owner_id))
+            )
+        else:
+            db.execute("BEGIN IMMEDIATE")
+            existing = [
+                row[0]
+                for row in db.execute("SELECT name FROM projects WHERE owner_id=?", (owner_id,))
+            ]
+        name = unique_project_name(name, existing)
         db.execute(
             "INSERT INTO projects VALUES(?,?,?,?,?)",
             (ident, owner_id, name, str(path), datetime.now(UTC).isoformat()),

@@ -50,19 +50,7 @@ def test_document_queue_ownership_ocr_ai_and_export(client, monkeypatch, tmp_pat
     )
     assert worker.run_once()
     job = client.get("/api/documents/" + ident, headers=owner).json()
-    assert job["status"] == "text_ready" and job["processed"] == 1
-    assert (
-        client.post(
-            "/api/documents/" + ident + "/analyse", headers=owner, json={"pages": [999]}
-        ).status_code
-        == 422
-    )
-    assert (
-        client.post(
-            "/api/documents/" + ident + "/analyse", headers=owner, json={"pages": [1]}
-        ).status_code
-        == 200
-    )
+    assert job["status"] == "ai_queued" and job["processed"] == 1
     monkeypatch.setattr(worker.matcher, "provider", lambda *args: {"key": "test"})
 
     async def complete(*args):
@@ -83,7 +71,7 @@ def test_document_queue_ownership_ocr_ai_and_export(client, monkeypatch, tmp_pat
     monkeypatch.setattr(worker.matcher, "complete", complete)
     assert worker.run_once()
     result = client.get("/api/documents/" + ident, headers=owner).json()
-    assert result["status"] == "draft"
+    assert result["status"] == "needs_review"
     assert result["payload"]["works"][0]["quantity"] == 10
     assert result["payload"]["works"][0]["confirmed"] is False
     exported = client.get("/api/documents/" + ident + "/export.xlsx", headers=owner)
@@ -94,6 +82,74 @@ def test_document_queue_ownership_ocr_ai_and_export(client, monkeypatch, tmp_pat
     assert book.active["H2"].value == "Уточнить высоту"
     assert book.active["F2"].value is None
     assert client.get("/api/documents/" + ident + "/export.xlsx", headers=other).status_code == 404
+    assert (
+        client.get("/api/documents/" + ident + "/export.xlsx?final=true", headers=owner).status_code
+        == 409
+    )
+    group = result["payload"]["groups"][0]
+    body = {"version": result["updated_at"], "quantity": "10", "rate": "12.345", "unit": "м"}
+    route = "/api/documents/" + ident + "/groups/" + group["id"]
+    assert client.post(route, headers=other, json=body).status_code == 404
+    assert client.post(route, headers=owner, json={**body, "rate": "NaN"}).status_code == 422
+    assert client.post(route, headers=owner, json={**body, "unit": "см"}).status_code == 422
+    first = client.post(route, headers=owner, json=body)
+    assert first.status_code == 200, first.text
+    reviewed = first.json()
+    assert reviewed["payload"]["summary"]["amount"] == 123.45
+    assert reviewed["status"] == "needs_review"
+    assert client.post(route, headers=owner, json=body).status_code == 409
+    accepted = client.post(
+        route,
+        headers=owner,
+        json={**body, "version": reviewed["updated_at"], "acknowledge_scope": True},
+    )
+    assert accepted.status_code == 200 and accepted.json()["status"] == "ready"
+    final = client.get("/api/documents/" + ident + "/export.xlsx?final=true", headers=owner)
+    assert final.status_code == 200
+    book = openpyxl.load_workbook(io.BytesIO(final.content))
+    assert book.active["G2"].value == 123.45
+
+
+def test_review_batch_is_atomic_and_duplicate_resolution_is_explicit(client, monkeypatch, tmp_path):
+    from backend.documents.normalization import build_groups
+
+    monkeypatch.setattr(repository.store, "ROOT", tmp_path)
+    work = {
+        "name": "Монтаж трубы",
+        "category": "Вентиляция",
+        "unit": "м",
+        "quantity": 10,
+        "page": 1,
+        "quote": "П1: труба 10 м",
+    }
+    groups = build_groups([work, {**work, "page": 2, "quote": "П1 спецификация: труба 10 м"}])
+    job = repository.create("local-admin", "test.pdf")
+    job.status = "needs_review"
+    job.payload = {"groups": groups, "coverage": {"complete": True}}
+    with repository.session() as database:
+        database.add(job)
+        database.flush()
+    loaded = client.get("/api/documents/" + job.id).json()
+    body = {
+        "version": loaded["updated_at"],
+        "items": [{"group_id": groups[0]["id"], "quantity": "10", "rate": "2", "unit": "м"}],
+    }
+    route = "/api/documents/" + job.id + "/review"
+    assert client.post(route, json=body).status_code == 422
+    body["items"][0]["resolution"] = "one"
+    body["items"][0]["quantity"] = "20"
+    assert client.post(route, json=body).status_code == 422
+    body["items"][0]["resolution"] = "sum"
+    bad = {**body, "items": [*body["items"], {**body["items"][0], "group_id": "a" * 24}]}
+    assert client.post(route, json=bad).status_code == 404
+    unchanged = client.get("/api/documents/" + job.id).json()
+    assert unchanged["updated_at"] == loaded["updated_at"]
+    assert not unchanged["payload"]["groups"][0]["confirmed"]
+    assert client.post(route, json={**body, "items": body["items"] * 2}).status_code == 422
+    result = client.post(route, json=body)
+    assert result.status_code == 200, result.text
+    assert result.json()["payload"]["summary"]["amount"] == 40
+    assert result.json()["status"] == "ready"
 
 
 @pytest.mark.parametrize(

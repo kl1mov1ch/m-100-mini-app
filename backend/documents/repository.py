@@ -50,10 +50,18 @@ def session():
         engine.dispose()
 
 
+def version(value):
+    return (
+        value.replace(tzinfo=UTC).isoformat()
+        if value.tzinfo is None
+        else value.astimezone(UTC).isoformat()
+    )
+
+
 def public(job):
     return {
         key: getattr(job, key) for key in ("id", "name", "status", "pages", "processed", "payload")
-    } | {"created_at": job.created_at.isoformat(), "updated_at": job.updated_at.isoformat()}
+    } | {"created_at": version(job.created_at), "updated_at": version(job.updated_at)}
 
 
 def owned(database, ident, owner):

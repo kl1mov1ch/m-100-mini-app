@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
-import ts from '../frontend/node_modules/typescript/lib/typescript.js';
+import { fileURLToPath } from 'node:url';
+import { build } from '../frontend/node_modules/esbuild/lib/main.js';
 
-const source = await readFile(new URL('../frontend/src/lib/telegram.ts', import.meta.url), 'utf8');
-const compiled = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 } }).outputText;
+const bundle = await build({ entryPoints: [fileURLToPath(new URL('../frontend/src/lib/telegram.ts', import.meta.url))], bundle: true, write: false, format: 'esm', target: 'es2022' });
+const compiled = bundle.outputFiles[0].text;
 const properties = new Map();
 const handlers = new Map();
 const links = [];

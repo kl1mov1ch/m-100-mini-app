@@ -1,15 +1,20 @@
+import hashlib
 import io
 import shutil
 from datetime import UTC, datetime
+from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from ..analytics import style_sheet
 from ..report_downloads import report_export
-from .repository import DocumentJob, create, folder, owned, public, session
+from .normalization import build_groups, canonical, financial_summary, unit_value
+from .repository import DocumentJob, create, folder, owned, public, session, version
 
 router = APIRouter(prefix="/api/documents")
 
@@ -17,28 +22,53 @@ router = APIRouter(prefix="/api/documents")
 @router.get("")
 def list_jobs(request: Request):
     with session() as database:
-        return [
-            public(job)
-            for job in database.scalars(
-                select(DocumentJob)
-                .where(DocumentJob.owner_id == request.state.user["telegram_id"])
-                .order_by(DocumentJob.created_at.desc())
-                .limit(40)
+        columns = ("id", "name", "status", "pages", "processed", "created_at", "updated_at")
+        rows = database.execute(
+            select(
+                *(getattr(DocumentJob, name) for name in columns),
+                DocumentJob.payload["query"].as_string().label("query"),
+                DocumentJob.payload["notice"].as_string().label("notice"),
+                DocumentJob.payload["summary"].label("summary"),
+                DocumentJob.payload["coverage"].label("coverage"),
             )
+            .where(DocumentJob.owner_id == request.state.user["telegram_id"])
+            .order_by(DocumentJob.created_at.desc())
+            .limit(40)
+        ).mappings()
+        return [
+            {
+                **{
+                    name: version(row[name]) if name.endswith("_at") else row[name]
+                    for name in columns
+                },
+                "payload": {
+                    name: row[name]
+                    for name in ("query", "notice", "summary", "coverage")
+                    if row[name] is not None
+                },
+            }
+            for row in rows
         ]
 
 
 @router.post("")
 async def upload(request: Request):
-    form = await request.form(max_files=1, max_fields=1, max_part_size=52 * 1024 * 1024)
+    form = await request.form(max_files=1, max_fields=3, max_part_size=52 * 1024 * 1024)
     file = form.get("file")
     if not file or not hasattr(file, "read") or not str(file.filename).lower().endswith(".pdf"):
         raise HTTPException(422, "Выберите PDF-файл проекта")
-    job = create(request.state.user["telegram_id"], Path(file.filename).name[:180])
+    job = create(
+        request.state.user["telegram_id"], Path(str(file.filename).replace("\\", "/")).name[:180]
+    )
+    query = str(form.get("query") or "Подготовить перечень монтажных работ по проекту").strip()
+    if len(query) > 2000:
+        raise HTTPException(422, "Сократите запрос до 2000 символов")
+    job.payload = {**job.payload, "query": query, "automatic": True, "groups": [], "reviews": []}
     destination = folder(job.id)
     destination.mkdir(parents=True, exist_ok=False)
     try:
         size = 0
+        digest = hashlib.sha256()
         with (destination / "source.pdf").open("wb") as output:
             while block := await file.read(1024 * 1024):
                 if size == 0 and not block.startswith(b"%PDF-"):
@@ -47,9 +77,28 @@ async def upload(request: Request):
                 if size > 50 * 1024 * 1024:
                     raise HTTPException(413, "Один PDF должен быть не больше 50 МБ")
                 output.write(block)
+                digest.update(block)
         if not size:
             raise HTTPException(422, "Файл пустой")
         with session() as database:
+            existing = database.scalar(
+                select(DocumentJob)
+                .where(
+                    DocumentJob.owner_id == job.owner_id,
+                    DocumentJob.payload["file_hash"].as_string() == digest.hexdigest(),
+                    DocumentJob.payload["query_key"].as_string() == canonical(query),
+                    DocumentJob.status != "failed",
+                )
+                .limit(1)
+            )
+            if existing:
+                shutil.rmtree(destination)
+                return public(existing)
+            job.payload = {
+                **job.payload,
+                "file_hash": digest.hexdigest(),
+                "query_key": canonical(query),
+            }
             database.add(job)
             database.flush()
             return public(job)
@@ -66,6 +115,22 @@ def get_job(ident: str, request: Request):
         return public(owned(database, ident, request.state.user["telegram_id"]))
 
 
+@router.get("/{ident}/pages/{page}/preview")
+def preview_page(ident: str, page: int, request: Request):
+    with session() as database:
+        job = owned(database, ident, request.state.user["telegram_id"])
+        if page < 1 or page > job.pages:
+            raise HTTPException(404, "Страница не найдена")
+    path = folder(ident) / f"page-{page}.jpg"
+    if not path.is_file():
+        raise HTTPException(404, "Для этой страницы доступны текстовые источники")
+    return FileResponse(
+        path,
+        media_type="image/jpeg",
+        headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"},
+    )
+
+
 class AnalysisInput(BaseModel):
     pages: list[int] = Field(default_factory=list, max_length=12)
 
@@ -74,19 +139,22 @@ class AnalysisInput(BaseModel):
 def analyse(ident: str, request: Request, body: AnalysisInput):
     with session() as database:
         job = owned(database, ident, request.state.user["telegram_id"])
-        if job.status not in {"text_ready", "draft", "needs_ai"}:
+        if job.status not in {"text_ready", "draft", "needs_ai", "needs_budget", "needs_review"}:
             raise HTTPException(409, "Дождитесь извлечения текста")
         available = {
             page["page"]
             for page in job.payload.get("page_results", [])
             if page["kind"] != "needs_ocr"
         }
-        pages = sorted(set(body.pages))
+        pages = sorted(set(body.pages)) if body.pages else sorted(available)
         if not pages or not set(pages) <= available:
             raise HTTPException(422, "Выберите от 1 до 12 распознанных страниц")
         job.payload = {
             **job.payload,
             "selected_pages": pages,
+            "call_budget": int(job.payload.get("call_budget", 1000)) + 1000
+            if job.status == "needs_budget"
+            else int(job.payload.get("call_budget", 1000)),
             "notice": "Страницы поставлены в очередь ИИ",
         }
         job.status = "ai_queued"
@@ -105,14 +173,176 @@ def retry(ident: str, request: Request):
         return public(job)
 
 
+class ReviewValues(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=300)
+    category: str | None = Field(default=None, min_length=1, max_length=80)
+    quantity: Decimal = Field(ge=0, le=1000000000, decimal_places=8)
+    rate: Decimal = Field(ge=0, le=1000000000, decimal_places=4)
+    unit: str = Field(min_length=1, max_length=24)
+    notes: str = Field(default="", max_length=2000)
+    resolution: Literal["sum", "one", "manual"] | None = None
+    acknowledge_scope: bool = False
+
+
+class ReviewInput(ReviewValues):
+    version: str = Field(min_length=1, max_length=80)
+
+
+class BatchItem(ReviewValues):
+    group_id: str = Field(min_length=24, max_length=24)
+
+
+class BatchReview(BaseModel):
+    version: str = Field(min_length=1, max_length=80)
+    items: list[BatchItem] = Field(min_length=1, max_length=100)
+    acknowledge_scope: bool = False
+
+
+def apply_review(row, body):
+    measure, factor = unit_value(body.unit)
+    if factor != 1:
+        raise HTTPException(
+            422, "Укажите объём в единых единицах: м, м², м³, шт., кг, компл., чел·ч или чел·дн"
+        )
+    if row.get("issues") and not body.resolution:
+        raise HTTPException(422, "Подтвердите способ проверки спорного объёма")
+    if body.quantity * body.rate > Decimal(1000000000000):
+        raise HTTPException(422, "Стоимость позиции превышает допустимый диапазон")
+    if body.resolution == "sum" and (
+        row.get("proposed_quantity") is None
+        or Decimal(str(row["proposed_quantity"])) != body.quantity
+        or measure != row.get("unit")
+    ):
+        raise HTTPException(
+            422, "Для суммы используйте рассчитанный объём или выберите ручное уточнение"
+        )
+    if body.resolution == "one" and (
+        not row.get("sources")
+        or row["sources"][0].get("quantity") is None
+        or Decimal(str(row["sources"][0]["quantity"])) != body.quantity
+        or measure != row.get("unit")
+    ):
+        raise HTTPException(
+            422, "Для повтора используйте объём первого источника или выберите ручное уточнение"
+        )
+    before = {
+        key: row.get(key)
+        for key in ("name", "category", "quantity", "unit", "rate", "notes", "confirmed")
+    }
+    if body.name is not None:
+        row["name"] = body.name.strip()
+        if not row["name"]:
+            raise HTTPException(422, "Укажите название работы")
+    if body.category is not None:
+        row["category"] = body.category.strip()
+        if not row["category"]:
+            raise HTTPException(422, "Укажите категорию")
+    row.update(
+        quantity=str(body.quantity),
+        rate=str(body.rate),
+        unit=measure,
+        notes=body.notes,
+        confirmed=True,
+        resolution=body.resolution or "manual",
+        issues=[],
+    )
+    row["amount"] = float(
+        (body.quantity * body.rate).quantize(Decimal(".01"), rounding=ROUND_HALF_UP)
+    )
+    return before
+
+
+def save_reviews(ident, request, expected_version, items, acknowledge_scope):
+    if len({group_id for group_id, _ in items}) != len(items):
+        raise HTTPException(422, "Одна позиция не может повторяться в подтверждении")
+    with session() as database:
+        job = database.scalar(
+            select(DocumentJob)
+            .where(
+                DocumentJob.id == ident, DocumentJob.owner_id == request.state.user["telegram_id"]
+            )
+            .with_for_update()
+        )
+        if job is None:
+            raise HTTPException(404, "Документ не найден")
+        if job.status not in {"needs_review", "ready", "draft"}:
+            raise HTTPException(409, "Дождитесь окончания обработки")
+        if version(job.updated_at) != expected_version:
+            raise HTTPException(
+                409, "Выборка обновилась. Обновите данные и повторите подтверждение."
+            )
+        groups = [dict(row) for row in job.payload.get("groups", [])]
+        reviews = list(job.payload.get("reviews", []))
+        for group_id, body in items:
+            row = next((row for row in groups if row["id"] == group_id), None)
+            if row is None:
+                raise HTTPException(404, "Позиция не найдена")
+            before = apply_review(row, body)
+            reviews.append(
+                {
+                    "group_id": group_id,
+                    "actor": request.state.user["telegram_id"],
+                    "at": datetime.now(UTC).isoformat(),
+                    "before": before,
+                    "after": {key: row.get(key) for key in before},
+                }
+            )
+        summary = financial_summary(groups)
+        acknowledge = acknowledge_scope or job.payload.get("acknowledge_scope", False)
+        coverage = job.payload.get("coverage", {})
+        if Decimal(str(summary["amount"])) > Decimal(1000000000000):
+            raise HTTPException(422, "Итог превышает допустимый диапазон")
+        ready = (
+            bool(groups)
+            and summary["priced"] == len(groups)
+            and coverage.get("complete")
+            and (
+                not (
+                    coverage.get("drawings") or coverage.get("low_ocr") or coverage.get("questions")
+                )
+                or acknowledge
+            )
+        )
+        job.payload = {
+            **job.payload,
+            "groups": groups,
+            "summary": summary,
+            "reviews": reviews,
+            "acknowledge_scope": acknowledge,
+        }
+        job.status = "ready" if ready else "needs_review"
+        job.updated_at = datetime.now(UTC)
+        return public(job)
+
+
+@router.post("/{ident}/groups/{group_id}")
+def review_group(ident: str, group_id: str, request: Request, body: ReviewInput):
+    return save_reviews(ident, request, body.version, [(group_id, body)], body.acknowledge_scope)
+
+
+@router.post("/{ident}/review")
+def review_batch(ident: str, request: Request, body: BatchReview):
+    return save_reviews(
+        ident,
+        request,
+        body.version,
+        [(item.group_id, item) for item in body.items],
+        body.acknowledge_scope,
+    )
+
+
 @router.get("/{ident}/export.xlsx")
-def export(ident: str, request: Request, prepare: bool = False):
+def export(ident: str, request: Request, prepare: bool = False, final: bool = False):
     def render(user):
         from openpyxl import Workbook
 
         with session() as database:
             job = owned(database, ident, user["telegram_id"])
-            rows = job.payload.get("works", [])
+            if final and job.status != "ready":
+                raise HTTPException(
+                    409, "Для итогового отчёта подтвердите все объёмы, расценки и полноту выборки"
+                )
+            rows = job.payload.get("groups") or build_groups(job.payload.get("works", []))
             workbook = Workbook()
             sheet = workbook.active
             sheet.title = "Работы по категориям"
@@ -137,24 +367,81 @@ def export(ident: str, request: Request, prepare: bool = False):
                         work["category"],
                         work["name"],
                         work["unit"],
-                        work["quantity"],
-                        None,
-                        None,
+                        float(work["quantity"]) if work["quantity"] is not None else None,
+                        float(work["rate"]) if work.get("rate") is not None else None,
+                        work.get("amount") if work.get("confirmed") else None,
                         work["notes"],
-                        work["page"],
-                        work["question"],
+                        ", ".join(str(source["page"]) for source in work.get("sources", [])),
+                        "Подтверждено"
+                        if work.get("confirmed")
+                        else "; ".join(work.get("issues", []))
+                        or "Проверьте объём и введите расценку",
                     ]
                 )
             style_sheet(sheet, 1, [7, 24, 55, 10, 14, 19, 19, 45, 16, 45], (6, 7))
+            sheet.freeze_panes = "D2"
+            sheet.append(
+                [
+                    None,
+                    None,
+                    "Итого подтверждено",
+                    None,
+                    None,
+                    None,
+                    financial_summary(rows)["amount"],
+                ]
+            )
+            from openpyxl.styles import Font, PatternFill
+
+            for cell in sheet[sheet.max_row]:
+                cell.font = Font(bold=True, color="FFFFFF")
+                cell.fill = PatternFill("solid", fgColor="007AFF")
+            sheet.cell(sheet.max_row, 7).number_format = "#,##0.00"
+            sources = workbook.create_sheet("Источники")
+            sources.append(["Позиция", "Страница", "Исходный объём", "Исходная единица", "Цитата"])
+            for work in rows:
+                for source in work.get("sources", []):
+                    sources.append(
+                        [
+                            work["name"],
+                            source["page"],
+                            source.get("original_quantity", source.get("quantity")),
+                            source.get("original_unit", source.get("unit")),
+                            source["quote"],
+                        ]
+                    )
+            style_sheet(sources, 1, [50, 14, 18, 18, 100])
+            report = workbook.create_sheet("Контроль")
+            report.append(["Показатель", "Значение"])
+            report.append(["Запрос", job.payload.get("query", "")])
+            report.append(["Файл", job.name])
+            report.append(["Страниц", job.pages])
+            report.append(["Обработано", job.processed])
+            report.append(["Проверено строк", financial_summary(rows)["confirmed"]])
+            report.append(
+                ["Стоимость подтверждённых работ, BYN", financial_summary(rows)["amount"]]
+            )
+            report.append(["Статус", "Итоговый отчёт" if final else "Черновик"])
+            for question in job.payload.get("questions", []):
+                report.append(["Вопрос для проверки", question])
+            report.append(
+                [
+                    "Ограничения",
+                    "Геометрия по изображениям не измерялась. Процент ошибок 1% не подтверждён испытаниями.",
+                ]
+            )
+            style_sheet(report, 1, [48, 105])
             output = io.BytesIO()
             workbook.save(output)
             return output.getvalue()
 
     with session() as database:
-        owned(database, ident, request.state.user["telegram_id"])
+        job = owned(database, ident, request.state.user["telegram_id"])
+        if final and job.status != "ready":
+            raise HTTPException(409, "Подтвердите объёмы и расценки перед итоговой выгрузкой")
     return report_export(
         request.state.user,
-        "Работы_из_PDF.xlsx",
+        f"Выборка_{Path(job.name).stem[:90]}_{datetime.now(UTC):%Y-%m-%d}.xlsx",
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         render,
         prepare,

@@ -1,0 +1,11 @@
+[Unit]
+Description=Check M-100 PDF document queue
+
+[Timer]
+OnBootSec=15s
+OnUnitInactiveSec=15s
+AccuracySec=5s
+Unit=m100-document-worker.service
+
+[Install]
+WantedBy=timers.target

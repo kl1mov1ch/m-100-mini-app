@@ -266,14 +266,17 @@ def provider(settings=None):
 
 async def complete(system, text, settings=None):
     cfg = provider(settings)
-    cache_key = hashlib.sha256((cfg["model"] + cfg["base"] + system + text).encode()).hexdigest()
+    output_limit = min(8000, max(2500, int((settings or {}).get("response_token_limit", 2500))))
+    cache_key = hashlib.sha256(
+        (cfg["model"] + cfg["base"] + str(output_limit) + system + text).encode()
+    ).hexdigest()
     cached = CACHE.get(cache_key)
     if cached and time.monotonic() - cached[0] < 300:
         return json.loads(cached[1])
     payload = {
         "model": cfg["model"],
         "temperature": 0,
-        "max_tokens": 2500,
+        "max_tokens": output_limit,
         "response_format": {"type": "json_object"},
         "messages": [
             {"role": "system", "content": system},

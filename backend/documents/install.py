@@ -1,8 +1,9 @@
 import os
 
-from sqlalchemy import DDL
+from sqlalchemy import DDL, Index, func
 
 from .. import postgres
+from ..orm_models import Project
 from .repository import DocumentJob
 
 
@@ -16,6 +17,12 @@ def main():
     try:
         with postgres.pool().begin() as connection:
             DocumentJob.__table__.create(connection, checkfirst=True)
+            Index(
+                "projects_owner_name_unique",
+                Project.owner_id,
+                func.lower(func.trim(Project.name)),
+                unique=True,
+            ).create(connection, checkfirst=True)
             connection.execute(
                 DDL("GRANT SELECT, INSERT, UPDATE, DELETE ON registry.document_jobs TO m100_app")
             )
