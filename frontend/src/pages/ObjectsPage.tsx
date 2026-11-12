@@ -50,24 +50,26 @@ export function ObjectsPage({ workspace }: { workspace: WorkspaceView }) {
 							<span className="object-tile">
 								<Building2 size={21} />
 							</span>
-							<span className={'connection-dot ' + (p.table?.read_connected ? 'connected' : '')}>
-								{!isAdmin && p.table?.pending_review
-									? 'Проверьте импорт'
-									: p.table?.read_connected
-										? 'Таблица подключена'
-										: p.source === 'detached'
-											? 'Таблица отвязана'
-											: p.positions > 0
-												? 'Смета в приложении'
-												: 'Добавьте таблицу'}
-							</span>
+							<div className="object-card-identity">
+								<h2>{p.name}</h2>
+								<p>
+									{isAdmin && p.owner_name + ' · '}
+									{countLabel(p.positions, 'работа', 'работы', 'работ')}
+								</p>
+							</div>
 							<ChevronRight size={17} />
 						</div>
-						<h2>{p.name}</h2>
-						<p>
-							{isAdmin && p.owner_name + ' · '}
-							{countLabel(p.positions, 'работа', 'работы', 'работ')}
-						</p>
+						<span className={'connection-dot ' + (p.table?.read_connected ? 'connected' : '')}>
+							{!isAdmin && p.table?.pending_review
+								? 'Проверьте импорт'
+								: p.table?.read_connected
+									? 'Таблица подключена'
+									: p.source === 'detached'
+										? 'Таблица отвязана'
+										: p.positions > 0
+											? 'Смета в приложении'
+											: 'Добавьте таблицу'}
+						</span>
 						<div className="object-totals">
 							<span>
 								{summaryDate === session.today ? 'Сегодня' : dayjs(summaryDate).format('D MMMM')}
@@ -91,12 +93,17 @@ export function ObjectsPage({ workspace }: { workspace: WorkspaceView }) {
 								<Users size={13} />
 								{p.today_crew ? `${p.today_crew} чел.` : 'Бригада не указана'}
 							</span>
+							<span>{countLabel(p.today_positions, 'работа', 'работы', 'работ')} за день</span>
+						</div>
+						<div className="object-card-status">
 							<span>
 								{p.pending && p.table?.write_connected
 									? `${p.pending} отч. не отправлено`
 									: p.last_change
 										? dayjs(p.last_change).format('D MMM, HH:mm')
-										: 'Нет новых отчётов'}
+										: p.today_confirmed
+											? 'Отчёт подтверждён'
+											: 'Отчёт ещё не сдан'}
 							</span>
 						</div>
 					</button>

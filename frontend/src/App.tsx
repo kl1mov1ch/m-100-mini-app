@@ -38,6 +38,7 @@ import './avatar.css';
 import './keyboard.css';
 import './select-controls.css';
 import './telegram-ios.css';
+import './compact-workspace.css';
 import { telegramLightTheme } from './lib/telegram-theme';
 import { useInputVisibility } from './hooks/useInputVisibility';
 import { useStartupScreen } from './hooks/useStartupScreen';

@@ -3,6 +3,7 @@ import { Mic, Square } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { WorkspaceView } from '../App';
 import { ReportDraftFields } from './ReportDraftFields';
+import { shortName, unit } from '../lib/format';
 
 export function QuickReportComposer({
 	workspace,
@@ -27,7 +28,20 @@ export function QuickReportComposer({
 		busy,
 	} = workspace;
 	const [selectedProject, setSelectedProject] = useState<string>();
+	const [exampleIndex, setExampleIndex] = useState(0);
 	const explicitlySelected = selectedProject === project;
+	const examples = [...positions]
+		.sort((left, right) => shortName(left).length - shortName(right).length)
+		.slice(0, 3);
+	const example = examples[exampleIndex % Math.max(examples.length, 1)];
+	useEffect(() => {
+		setExampleIndex(0);
+	}, [project]);
+	useEffect(() => {
+		if ((!inline && !explicitlySelected) || freeText || examples.length < 2) return;
+		const timer = window.setInterval(() => setExampleIndex((current) => current + 1), 7000);
+		return () => window.clearInterval(timer);
+	}, [project, inline, explicitlySelected, freeText, examples.length]);
 	useEffect(() => {
 		if (!inline && selectedProject && !explicitlySelected) setSelectedProject(undefined);
 		if (!inline && explicitlySelected && day !== session.today) void changeDay(session.today);
@@ -52,9 +66,9 @@ export function QuickReportComposer({
 				</div>
 			)}
 			{!inline && (
-				<label className="quick-report-project">
-					<span>Объект</span>
+				<div className="quick-report-project">
 					<Select
+						variant="borderless"
 						aria-label="Объект для сегодняшнего отчёта"
 						aria-required="true"
 						placeholder="Выберите объект"
@@ -66,20 +80,22 @@ export function QuickReportComposer({
 							selectQuickReportProject(id);
 						}}
 					/>
-				</label>
+				</div>
 			)}
 			<Input.TextArea
 				aria-label="Сообщение о выполненных работах"
 				value={freeText}
 				onChange={(event) => setFreeText(event.target.value)}
-				autoSize={{ minRows: 3, maxRows: 6 }}
+				autoSize={{ minRows: 2, maxRows: 5 }}
 				maxLength={8000}
 				disabled={disabled}
 				readOnly={audioInput.recording || audioInput.pending}
 				placeholder={
 					!inline && !explicitlySelected
 						? 'Сначала выберите объект'
-						: 'Например: 5 человек, проложили 100 м медной трубы 6 мм'
+						: example
+							? 'Например: 3 человека. ' + shortName(example) + ' — 1 ' + unit(example.unit)
+							: 'Сколько человек работало и что сделали?'
 				}
 			/>
 			<div className="quick-report-actions">
