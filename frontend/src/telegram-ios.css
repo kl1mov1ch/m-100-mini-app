@@ -21,6 +21,8 @@
 	--ios-danger-line: #f2c5c5;
 	--ios-group-radius: 12px;
 	--ios-group-shadow: 0 1px 2px #18181a08, 0 4px 14px #18181a08;
+	--ios-button-shadow: 0 1px 2px #18181a14, 0 3px 8px #18181a12;
+	--ios-primary-button-shadow: 0 1px 2px #00397624, 0 3px 8px #0068d72b;
 	font-family: var(--ios-font);
 	color: var(--ios-label);
 	background: var(--ios-background);
@@ -301,6 +303,33 @@ h3 {
 
 .ant-btn.ant-btn-default:not(:disabled, .ant-btn-dangerous):is(:hover, :active) {
 	background: var(--ios-accent-fill);
+}
+
+.ant-btn:is(.ant-btn-default, .ant-btn-dashed):not(
+		:disabled,
+		[aria-disabled='true'],
+		.ant-btn-disabled
+	),
+.plain-icon:enabled,
+.profile-button:enabled,
+.ant-modal .ant-modal-close:enabled,
+.field-help-button:is(:hover, [aria-expanded='true']) {
+	box-shadow: var(--ios-button-shadow);
+}
+
+.ant-btn.ant-btn-primary:not(:disabled, [aria-disabled='true'], .ant-btn-disabled),
+.report-toolbar .ant-btn:nth-child(2):enabled {
+	box-shadow: var(--ios-primary-button-shadow);
+}
+
+.ant-btn:is(.ant-btn-default, .ant-btn-dashed, .ant-btn-primary):active:not(
+		:disabled,
+		[aria-disabled='true'],
+		.ant-btn-disabled
+	),
+.plain-icon:enabled:active,
+.profile-button:enabled:active {
+	box-shadow: 0 1px 2px #18181a18;
 }
 
 .ant-segmented .ant-segmented-item-label {

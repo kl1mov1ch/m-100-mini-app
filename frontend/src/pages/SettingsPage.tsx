@@ -4,9 +4,11 @@ import { ProfileWebhooks } from '../components/ProfileWebhooks';
 import { FieldHelp } from '../components/FieldHelp';
 import 'dayjs/locale/ru';
 import { Bell, ChevronRight, ShieldCheck, Sparkles, Users } from 'lucide-react';
+import { useId } from 'react';
 
 import type { WorkspaceView } from '../App';
 export function SettingsPage({ workspace }: { workspace: WorkspaceView }) {
+	const aiKeyFieldId = useId();
 	const {
 		session,
 		setPage,
@@ -71,10 +73,12 @@ export function SettingsPage({ workspace }: { workspace: WorkspaceView }) {
 					</summary>
 					<label>Модель</label>
 					<Input value={aiModel} onChange={(e) => setAiModel(e.target.value)} />
-					<label>
-						Ключ API <FieldHelp topic="ai" />
-					</label>
+					<div className="help-field-heading">
+						<label htmlFor={aiKeyFieldId}>Ключ API</label>
+						<FieldHelp topic="ai" />
+					</div>
 					<Input.Password
+						id={aiKeyFieldId}
 						value={aiKey}
 						onChange={(e) => setAiKey(e.target.value)}
 						placeholder={session.ai_connected ? 'Настроен · введите для замены' : 'Ключ DeepSeek'}

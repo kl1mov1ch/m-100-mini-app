@@ -1,0 +1,117 @@
+.help-field-heading {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	min-width: 0;
+}
+
+.help-field-heading label {
+	margin: 0;
+}
+
+.help-field-heading + .ant-select {
+	width: 100%;
+}
+
+.field-help-button {
+	display: inline-grid;
+	place-items: center;
+	flex: 0 0 44px;
+	width: 44px;
+	height: 44px;
+	padding: 0;
+	border: 0;
+	border-radius: 50%;
+	background: transparent;
+	color: var(--ios-accent);
+	touch-action: manipulation;
+}
+
+.field-help-button:is(:hover, [aria-expanded='true']) {
+	background: var(--ios-accent-fill);
+}
+
+.field-help-button:focus-visible {
+	outline: 2px solid var(--ios-accent);
+	outline-offset: -4px;
+}
+
+.field-help-sheet .ant-modal-wrap .ant-modal {
+	width: min(520px, 100%) !important;
+}
+
+.field-help-sheet .ant-modal-body {
+	max-height: none;
+	padding-inline: 0;
+}
+
+.field-help-sheet .ant-modal-footer {
+	border-top: 1px solid var(--ios-separator);
+}
+
+.field-help-steps {
+	display: grid;
+	gap: 0;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.field-help-steps li {
+	display: grid;
+	grid-template-columns: 28px minmax(0, 1fr);
+	align-items: start;
+	gap: 12px;
+	padding: 12px 0;
+	border-bottom: 1px solid var(--ios-separator);
+}
+
+.field-help-steps li > span {
+	display: grid;
+	place-items: center;
+	height: 28px;
+	border-radius: 50%;
+	background: var(--ios-accent-fill);
+	color: var(--ios-accent);
+	font-size: 13px;
+	font-weight: 650;
+}
+
+.field-help-steps strong {
+	display: block;
+	margin-bottom: 4px;
+	font-weight: 650;
+}
+
+.field-help-steps p,
+.field-help-note p {
+	color: var(--ios-secondary);
+	font-size: 14px;
+	line-height: 1.5;
+	overflow-wrap: anywhere;
+}
+
+.field-help-note {
+	display: flex;
+	align-items: flex-start;
+	gap: 8px;
+	margin-top: 12px;
+	padding: 10px;
+	border-radius: 10px;
+	background: var(--ios-fill);
+}
+
+.field-help-note svg,
+.field-help-link svg {
+	flex-shrink: 0;
+	color: var(--ios-accent);
+}
+
+.field-help-link {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	min-height: 44px;
+	color: var(--ios-accent);
+	font-weight: 500;
+}
