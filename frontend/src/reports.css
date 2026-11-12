@@ -258,7 +258,7 @@
 	overflow-wrap: anywhere;
 	display: block;
 }
-.admin-work-row > div {
+.admin-work-row > div:not(.work-estimate) {
 	display: flex;
 	gap: 12px;
 	align-items: center;

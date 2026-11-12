@@ -3,6 +3,8 @@ import { Trash2, Users } from 'lucide-react';
 import type { WorkspaceView } from '../App';
 import { useConfirmWorkRemoval } from '../hooks/useConfirmWorkRemoval';
 import { Money, unit, countLabel } from '../lib/format';
+import { estimateBalance } from '../lib/position-volume';
+import { WorkEstimate } from './WorkEstimate';
 import './report-draft.css';
 
 export function ReportDraftFields({ workspace }: { workspace: WorkspaceView }) {
@@ -20,6 +22,8 @@ export function ReportDraftFields({ workspace }: { workspace: WorkspaceView }) {
 		updateParsedCrew,
 		crew,
 		report,
+		estimateLines,
+		lines,
 		confirmParsedReport,
 		busy,
 	} = workspace;
@@ -34,6 +38,11 @@ export function ReportDraftFields({ workspace }: { workspace: WorkspaceView }) {
 		parsed.length > 0 &&
 		!parsedCrewAmbiguous &&
 		parsed.every((line) => line.item_id && line.quantity && line.quantity > 0);
+	const daily = new Map<string, number>();
+	for (const line of [...lines, ...parsed]) {
+		if (line.item_id)
+			daily.set(line.item_id, (daily.get(line.item_id) || 0) + (line.quantity || 0));
+	}
 	return (
 		<div className="report-draft-fields">
 			<div className="draft-status">
@@ -58,6 +67,9 @@ export function ReportDraftFields({ workspace }: { workspace: WorkspaceView }) {
 			</label>
 			{parsed.map((line, index) => {
 				const position = line.item_id ? byId[line.item_id] : null;
+				const balance = position
+					? estimateBalance(position, estimateLines[position.id], daily.get(position.id))
+					: null;
 				const candidates = positions.filter((item) => (line.candidates || []).includes(item.id));
 				const others = positions.filter(
 					(item) => !candidates.some((candidate) => candidate.id === item.id),
@@ -66,7 +78,10 @@ export function ReportDraftFields({ workspace }: { workspace: WorkspaceView }) {
 					items.map((item) => ({ value: item.id, label: `${item.name} · ${unit(item.unit)}` }));
 				return (
 					<section
-						className={'draft-work ' + (!position || !line.quantity ? 'needs-review' : '')}
+						className={
+							'draft-work ' +
+							(!position || !line.quantity ? 'needs-review' : balance?.excess ? 'work-overrun' : '')
+						}
 						key={index}
 					>
 						<div className="draft-work-heading">
@@ -124,6 +139,7 @@ export function ReportDraftFields({ workspace }: { workspace: WorkspaceView }) {
 								</strong>
 							</div>
 						</div>
+						{position && balance && <WorkEstimate balance={balance} unit={position.unit} />}
 						{!position && (
 							<small className="draft-review-hint">Выберите подходящую работу из вариантов</small>
 						)}
