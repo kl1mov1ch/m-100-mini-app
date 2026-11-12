@@ -1,6 +1,6 @@
 import { Alert, App, Button, Input, Select, Upload } from 'antd';
 import { Download, Trash2, Unlink } from 'lucide-react';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import type { WorkspaceView } from '../App';
 import { FieldHelp } from './FieldHelp';
 import { BitrixReadStatus } from './BitrixReadStatus';
@@ -19,6 +19,7 @@ export function ObjectTablePanel({
 	loadingAction: boolean;
 }) {
 	const [configuring, setConfiguring] = useState(false);
+	const webhookFieldId = useId();
 	const { message } = App.useApp();
 	const {
 		data,
@@ -137,9 +138,13 @@ export function ObjectTablePanel({
 							placeholder="https://bitrix24public.com/…"
 						/>
 					</label>
-					<label>
-						Вебхук для записи <FieldHelp topic="bitrix" />
+					<div>
+						<div className="help-field-heading">
+							<label htmlFor={webhookFieldId}>Вебхук для записи</label>
+							<FieldHelp topic="bitrix" />
+						</div>
 						<Select
+							id={webhookFieldId}
 							aria-label="Вебхук для записи"
 							value={
 								diskWebhooks.some(({ id }) => id === currentWebhookId)
@@ -153,7 +158,7 @@ export function ObjectTablePanel({
 								label: name === portal ? portal : name + ' · ' + portal,
 							}))}
 						/>
-					</label>
+					</div>
 					<div className="object-panel-actions">
 						{config.has_webhook && !currentWebhookId && (
 							<Button onClick={() => void saveCurrentWebhook()}>Сохранить текущий в профиль</Button>
