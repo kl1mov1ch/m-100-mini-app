@@ -163,31 +163,40 @@
 .profile-meta .ant-tag {
 	margin: 0;
 }
-.profile-name-form,
+.profile-name-form {
+	grid-column: 2 / -1;
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto auto;
+	align-items: center;
+	gap: 3px;
+	min-width: 0;
+}
+
+.profile-name-form .ant-input {
+	min-width: 0;
+	height: 44px;
+}
+
+.profile-intro .ant-btn {
+	width: 44px;
+	min-width: 44px;
+	height: 44px;
+	padding: 0;
+}
+
+.profile-intro .profile-name-edit,
+.profile-name-form .profile-name-save:enabled {
+	color: var(--ios-accent);
+}
+
 .profile-test-role {
 	display: grid;
 	gap: 6px;
 	min-width: 0;
 }
-.profile-name-form > label {
-	margin: 0;
-}
-.profile-name-actions {
-	display: flex;
-	flex-wrap: wrap;
-	justify-content: flex-end;
-	gap: 8px;
-	margin-top: 2px;
-}
 .profile-test-role {
 	border-top: 1px solid var(--ios-fill);
 	padding-top: 10px;
-}
-.profile-button > img {
-	width: 100%;
-	height: 100%;
-	border-radius: inherit;
-	object-fit: cover;
 }
 .admin-work-list {
 	margin-top: 16px;

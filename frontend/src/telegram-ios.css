@@ -30,28 +30,10 @@
 
 .application {
 	background-color: var(--ios-background);
-	background-image: linear-gradient(
-		var(--ios-surface) 0 var(--app-safe-top),
-		transparent var(--app-safe-top)
-	);
 }
 
-.app-header {
-	height: 56px;
-	background: var(--ios-surface);
-	border-bottom: 1px solid var(--ios-separator);
-}
-
-.app-wordmark {
-	min-height: 44px;
-	background: transparent;
-	color: var(--ios-label);
-	padding-inline: 0;
-}
-
-.profile-button {
-	background: var(--ios-accent-fill);
-	color: var(--ios-accent);
+.workspace {
+	padding-block-start: 8px;
 }
 
 .context-bar {
@@ -311,7 +293,6 @@ h3 {
 		.ant-btn-disabled
 	),
 .plain-icon:enabled,
-.profile-button:enabled,
 .ant-modal .ant-modal-close:enabled,
 .field-help-button:is(:hover, [aria-expanded='true']) {
 	box-shadow: var(--ios-button-shadow);
@@ -327,8 +308,7 @@ h3 {
 		[aria-disabled='true'],
 		.ant-btn-disabled
 	),
-.plain-icon:enabled:active,
-.profile-button:enabled:active {
+.plain-icon:enabled:active {
 	box-shadow: 0 1px 2px #18181a18;
 }
 
@@ -407,10 +387,6 @@ h3 {
 		padding-inline: 16px;
 	}
 
-	.app-header {
-		padding-inline: 16px;
-	}
-
 	.page-title h1 {
 		min-width: 0;
 		overflow-wrap: anywhere;
@@ -438,8 +414,7 @@ h3 {
 }
 
 @media (max-width: 360px) {
-	.workspace,
-	.app-header {
+	.workspace {
 		padding-inline: 12px;
 	}
 

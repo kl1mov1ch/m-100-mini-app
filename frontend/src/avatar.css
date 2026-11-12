@@ -1,22 +1,3 @@
-.header-user {
-	display: flex;
-	align-items: center;
-	min-width: 0;
-	gap: 10px;
-}
-.profile-button {
-	padding: 0 !important;
-	width: 44px;
-	height: 44px;
-	min-width: 44px;
-	min-height: 44px;
-	flex: 0 0 44px;
-	aspect-ratio: 1;
-	border-radius: 50%;
-	overflow: hidden;
-	display: grid;
-	place-items: center;
-}
 .telegram-avatar {
 	display: inline-grid;
 	place-items: center;

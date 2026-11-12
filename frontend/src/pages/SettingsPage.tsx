@@ -3,7 +3,7 @@ import { ProfileCard } from '../components/ProfileCard';
 import { ProfileWebhooks } from '../components/ProfileWebhooks';
 import { FieldHelp } from '../components/FieldHelp';
 import 'dayjs/locale/ru';
-import { Bell, ChevronRight, ShieldCheck, Sparkles, Users } from 'lucide-react';
+import { Bell, ChevronRight, Sparkles, Users } from 'lucide-react';
 import { useId } from 'react';
 
 import type { WorkspaceView } from '../App';
@@ -24,14 +24,9 @@ export function SettingsPage({ workspace }: { workspace: WorkspaceView }) {
 	return (
 		<>
 			<div className="page-title">
-				<div>
-					<span className="overline">{session.user.name}</span>
-					<h1>Настройки</h1>
-				</div>
-				<span className="profile-badge">
-					{isAdmin ? <ShieldCheck size={20} /> : <Users size={20} />}
-				</span>
+				<h1>Настройки</h1>
 			</div>
+			<ProfileCard workspace={workspace} />
 			{isAdmin && (
 				<button
 					className="settings-menu"
@@ -89,7 +84,6 @@ export function SettingsPage({ workspace }: { workspace: WorkspaceView }) {
 					</Button>
 				</details>
 			)}
-			<ProfileCard workspace={workspace} />
 			{!isAdmin && <ProfileWebhooks workspace={workspace} />}
 		</>
 	);
