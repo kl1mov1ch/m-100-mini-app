@@ -82,51 +82,6 @@ small {
 	min-height: 100dvh;
 	padding-bottom: 90px;
 }
-.app-header {
-	display: flex;
-	justify-content: space-between;
-	align-items: center;
-	height: 75px;
-	padding: 0 max(24px, calc((100% - 1100px) / 2));
-	background: var(--ios-surface);
-	border-bottom: 1px solid var(--ios-fill);
-	gap: 20px;
-}
-.app-wordmark {
-	background: var(--ios-surface);
-	border: 0;
-	border-radius: 11px;
-	color: var(--ios-surface);
-	display: grid;
-	justify-items: center;
-	gap: 3px;
-	padding: 8px 12px 7px;
-	flex-shrink: 0;
-}
-.app-wordmark img {
-	display: block;
-	width: 65px;
-	height: auto;
-}
-.header-user {
-	display: flex;
-	align-items: center;
-	gap: 13px;
-	font-size: 12px;
-	color: var(--ios-tertiary);
-}
-.profile-button {
-	width: 36px;
-	height: 36px;
-	display: grid;
-	place-items: center;
-	border: 0;
-	border-radius: 50%;
-	background: var(--ios-fill);
-	color: var(--ios-secondary);
-	font-size: 13px;
-	font-weight: 700;
-}
 .workspace {
 	max-width: 1052px;
 	margin: auto;
@@ -1598,18 +1553,6 @@ small {
 	.application {
 		padding-bottom: 92px;
 	}
-	.app-header {
-		height: 65px;
-		padding: 0 20px;
-	}
-	.header-user > span {
-		display: none;
-	}
-	.profile-button {
-		height: 32px;
-		width: 32px;
-		font-size: 12px;
-	}
 	.workspace {
 		padding: 0 17px;
 	}
@@ -2118,9 +2061,6 @@ small {
 @media (max-width: 350px) {
 	.workspace {
 		padding: 0 12px;
-	}
-	.app-header {
-		padding: 0 15px;
 	}
 	.overview-hero {
 		padding: 22px 18px;

@@ -22,8 +22,6 @@ import {
 	ShieldCheck,
 } from 'lucide-react';
 import { createRoot } from 'react-dom/client';
-import { ProjectLogo } from './components/ProjectLogo';
-import { TelegramAvatar } from './components/TelegramAvatar';
 import { TableImportModal } from './components/TableImportModal';
 import { VoiceReportDrawer } from './components/VoiceReportDrawer';
 
@@ -150,27 +148,8 @@ export function WorkspaceApp() {
 	const workspace = { ...controller, session, projects, todayRow };
 	return (
 		<div className="application">
-			<header className="app-header">
-				<button
-					className="app-wordmark"
-					aria-label="М100 — к списку объектов"
-					onClick={() => setPage('objects')}
-				>
-					<ProjectLogo />
-				</button>
-				<div className="header-user">
-					<span>{session.user.name}</span>
-					<button className="profile-button" onClick={openSettings} aria-label="Профиль">
-						<TelegramAvatar
-							userId={session.user.telegram_id}
-							name={session.user.name}
-							source={session.user.avatar_url}
-						/>
-					</button>
-				</div>
-			</header>
 			<div className="workspace">
-				{!(isAdmin && page === 'objects') && page !== 'object' && (
+				{isAdmin && page === 'today' && (
 					<div className="context-bar">
 						<button className="object-switch" onClick={() => setProjectOpen(true)}>
 							<Building2 size={17} />

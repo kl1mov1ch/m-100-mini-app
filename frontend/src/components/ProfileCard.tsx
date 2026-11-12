@@ -1,5 +1,5 @@
 import { App, Button, Input, Tag } from 'antd';
-import { Pencil } from 'lucide-react';
+import { Check, Pencil, X } from 'lucide-react';
 import { useState } from 'react';
 import type { WorkspaceView } from '../App';
 import { request } from '../lib/api';
@@ -35,60 +35,71 @@ export function ProfileCard({ workspace }: { workspace: WorkspaceView }) {
 					userId={session.user.telegram_id}
 					name={session.user.name}
 					source={session.user.avatar_url}
-					size={46}
+					size={40}
 				/>
-				<div>
-					<b>{session.user.name}</b>
-					<div className="profile-meta">
-						{session.user.username && <small>@{session.user.username}</small>}
-						<Tag color={workspace.isAdmin ? 'blue' : 'green'}>
-							{workspace.isAdmin ? 'Администратор' : 'Мастер'}
-						</Tag>
-					</div>
-				</div>
-				<Button
-					type="text"
-					aria-label="Изменить имя"
-					title="Изменить имя"
-					icon={<Pencil size={17} />}
-					disabled={editing}
-					onClick={() => {
-						setName(session.user.name);
-						setEditing(true);
-					}}
-				/>
-			</div>
-			{editing && (
-				<form
-					className="profile-name-form"
-					onSubmit={(event) => {
-						event.preventDefault();
-						void save();
-					}}
-				>
-					<label htmlFor="profile-name">Имя в приложении</label>
-					<Input
-						id="profile-name"
-						value={name}
-						onChange={(event) => setName(event.target.value)}
-						maxLength={100}
-						disabled={busy}
-					/>
-					<div className="profile-name-actions">
-						<Button disabled={busy} onClick={() => setEditing(false)}>
-							Отмена
-						</Button>
+				{editing ? (
+					<form
+						className="profile-name-form"
+						onSubmit={(event) => {
+							event.preventDefault();
+							void save();
+						}}
+						onKeyDown={(event) => {
+							if (event.key === 'Escape' && !busy) setEditing(false);
+						}}
+					>
+						<Input
+							aria-label="Имя в приложении"
+							autoFocus
+							value={name}
+							onChange={(event) => setName(event.target.value)}
+							maxLength={100}
+							disabled={busy}
+						/>
 						<Button
-							type="primary"
+							type="text"
+							aria-label="Отменить редактирование имени"
+							title="Отмена"
+							icon={<X size={18} />}
+							disabled={busy}
+							onClick={() => setEditing(false)}
+						/>
+						<Button
+							type="text"
 							htmlType="submit"
+							aria-label="Сохранить имя"
+							title="Сохранить"
+							className="profile-name-save"
+							icon={<Check size={19} />}
 							loading={busy}
 							disabled={!trimmedName || !changed}
-						>
-							Сохранить
-						</Button>
-					</div>
-				</form>
-			)}
+						/>
+					</form>
+				) : (
+					<>
+						<div>
+							<b>{session.user.name}</b>
+							<div className="profile-meta">
+								{session.user.username && <small>@{session.user.username}</small>}
+								<Tag color={workspace.isAdmin ? 'blue' : 'green'}>
+									{workspace.isAdmin ? 'Администратор' : 'Мастер'}
+								</Tag>
+							</div>
+						</div>
+						<Button
+							type="text"
+							className="profile-name-edit"
+							aria-label="Изменить имя"
+							title="Изменить имя"
+							icon={<Pencil size={17} />}
+							onClick={() => {
+								setName(session.user.name);
+								setEditing(true);
+							}}
+						/>
+					</>
+				)}
+			</div>
 			{session.can_switch_role && (
 				<div className="profile-test-role">
 					<span>Режим тестирования</span>
