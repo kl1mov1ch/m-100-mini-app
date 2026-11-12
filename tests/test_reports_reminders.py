@@ -117,6 +117,11 @@ def test_analytics_filters_isolation_totals_and_styled_export(client):
     )
     exported = client.get("/api/analytics/export.xlsx" + query)
     workbook = openpyxl.load_workbook(io.BytesIO(exported.content))
+    assert workbook.sheetnames[0] == "Сводка"
+    assert len(workbook["Сводка"]._charts) == 2
+    assert workbook["Сводка"]["A6"].value == 300
+    assert workbook["Прогресс объектов"].max_row == 4
+    assert all(0 <= workbook["Прогресс объектов"].cell(row, 5).value <= 1 for row in (2, 3))
     assert workbook["Общий отчёт"]["A3"].value == 300
     assert workbook["Общий отчёт"].freeze_panes == "A6"
     assert workbook["Выполненные работы"]["D2"].alignment.wrap_text is True
@@ -125,12 +130,12 @@ def test_analytics_filters_isolation_totals_and_styled_export(client):
     ticket = client.get(
         "/api/analytics/export.xlsx" + query + "&prepare=true", headers=headers
     ).json()
+    assert "Отчёт_" in ticket["filename"]
+    assert today() in ticket["filename"]
     head = client.head(ticket["url"])
     assert head.status_code == 200 and head.content == b""
     downloaded = client.get(ticket["url"])
-    assert (
-        downloaded.headers["content-disposition"] == f'attachment; filename="{ticket["filename"]}"'
-    )
+    assert "filename*=UTF-8''" in downloaded.headers["content-disposition"]
     assert downloaded.headers["access-control-allow-origin"] == "https://web.telegram.org"
     assert downloaded.headers["cache-control"] == "private, no-store"
     assert openpyxl.load_workbook(io.BytesIO(downloaded.content))["Общий отчёт"]["A3"].value == 100

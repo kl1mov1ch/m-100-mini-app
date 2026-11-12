@@ -9,6 +9,7 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
 from . import store, workspaces
+from .analytics_workbook import add_dashboard, report_filename
 from .report_downloads import report_export
 from .reporting import get_report, history
 
@@ -74,7 +75,13 @@ def collect(user, start=None, end=None, project_id=None, owner_id=None, sort="da
         else None,
         "pending": sum(row["revision"] > 0 and row["sync_status"] != "synced" for row in rows),
     }
-    return {"rows": rows, "summary": summary}
+    return {
+        "rows": rows,
+        "summary": summary,
+        "project_ids": [project["id"] for project in projects],
+        "period_start": start.isoformat() if start else None,
+        "period_end": end.isoformat() if end else None,
+    }
 
 
 @router.get("/api/analytics")
@@ -231,6 +238,11 @@ def export_workbook(user, data):
                 )
     style_sheet(sheet, 5, [19, 36, 26, 12, 15, 21, 24, 27], (6, 7))
     style_sheet(details, 1, [17, 30, 24, 65, 9, 15, 21, 23], (7, 8))
+    progress = add_dashboard(workbook, user, data)
+    style_sheet(progress, 1, [36, 21, 24, 21, 17, 22, 23, 18], (2, 3, 4, 6))
+    for row in range(2, progress.max_row + 1):
+        progress.cell(row, 5).number_format = "0.0%"
+        progress.cell(row, 8).number_format = "dd.mm.yyyy"
     output = io.BytesIO()
     workbook.save(output)
     return output.getvalue()
@@ -253,8 +265,8 @@ def export(
     user = request.state.user
     if start and end and start > end:
         raise HTTPException(422, "Начальная дата должна быть раньше конечной")
-    if project_id:
-        workspaces.project(user, project_id)
+    project_name = workspaces.project(user, project_id)["name"] if project_id else None
+    export_data = collect(user, start, end, project_id, owner_id, sort)
 
     def render(current_user):
         return export_workbook(
@@ -263,7 +275,7 @@ def export(
 
     return report_export(
         user,
-        "work-reports.xlsx",
+        report_filename(export_data, project_name, start, end),
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         render,
         prepare,
