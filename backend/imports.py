@@ -459,7 +459,7 @@ def register(app, settings, now):
                 store.restore_hidden_positions(db, data["positions"])
                 for e in data["entries"]:
                     db.execute(
-                        "INSERT INTO entries VALUES(:item_id,:date,:quantity) ON CONFLICT(item_id,date) DO UPDATE SET quantity=quantity+excluded.quantity",
+                        "INSERT INTO entries(item_id,date,quantity) VALUES(:item_id,:date,:quantity) ON CONFLICT(item_id,date) DO UPDATE SET quantity=entries.quantity+excluded.quantity",
                         e,
                     )
                 for day in dirty:

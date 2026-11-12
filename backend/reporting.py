@@ -2,7 +2,7 @@ import json
 import os
 from decimal import ROUND_HALF_UP, Decimal
 
-from . import matcher, store, workspaces
+from . import matcher, postgres, store, workspaces
 from .clock import today
 
 
@@ -61,6 +61,10 @@ def get_report(db, day):
 
 
 def history(db):
+    if postgres.enabled():
+        from .orm_repository import report_history
+
+        return report_history(db)
     result = []
     for row in db.execute(
         "SELECT date FROM entries UNION SELECT date FROM reports ORDER BY date DESC"

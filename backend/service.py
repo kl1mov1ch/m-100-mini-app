@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from . import store, workspaces
+from . import postgres, store, workspaces
 from .analytics import router as analytics_router
 from .api import accounts, bitrix, objects, reports
 from .audio import router as audio_router
@@ -32,7 +32,11 @@ async def lifespan(app):
     configure_runtime()
     store.init(seed=False)
     workspaces.init()
-    if os.getenv("APP_ENV", "development") == "development" and workspaces.exists("default"):
+    if (
+        not postgres.enabled()
+        and os.getenv("APP_ENV", "development") == "development"
+        and workspaces.exists("default")
+    ):
         store.init()
     retry_task = asyncio.create_task(retry_pending_reports())
     bitrix_read_task = asyncio.create_task(refresh_linked_tables())
@@ -49,6 +53,7 @@ async def lifespan(app):
         reminders_task.cancel()
         with suppress(asyncio.CancelledError):
             await reminders_task
+        postgres.close_pool()
 
 
 app = FastAPI(title="Журнал работ", lifespan=lifespan)
