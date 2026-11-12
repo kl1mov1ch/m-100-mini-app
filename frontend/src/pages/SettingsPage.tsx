@@ -1,5 +1,6 @@
 import { Button, Input, Tag } from 'antd';
 import { ProfileCard } from '../components/ProfileCard';
+import { ProfileWebhooks } from '../components/ProfileWebhooks';
 import { FieldHelp } from '../components/FieldHelp';
 import 'dayjs/locale/ru';
 import { Bell, ChevronRight, ShieldCheck, Sparkles, Users } from 'lucide-react';
@@ -85,6 +86,7 @@ export function SettingsPage({ workspace }: { workspace: WorkspaceView }) {
 				</details>
 			)}
 			<ProfileCard workspace={workspace} />
+			{!isAdmin && <ProfileWebhooks workspace={workspace} />}
 		</>
 	);
 }

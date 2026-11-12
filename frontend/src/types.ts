@@ -159,6 +159,8 @@ export type HistoryRow = Payroll & {
 	sync_error: string;
 	updated_at: string;
 };
+export type DiskWebhook = { id: string; name: string; portal: string };
+
 export type Config = {
 	today: string;
 	mode: string;
@@ -168,6 +170,7 @@ export type Config = {
 	public_url: string;
 	file_id: number;
 	has_webhook: boolean;
+	webhook_profile_id?: string;
 	last_import: string;
 	pending_import: boolean;
 	bitrix_read?: BitrixRead | null;

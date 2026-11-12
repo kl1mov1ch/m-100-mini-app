@@ -96,6 +96,21 @@
 .object-connection-form .ant-input-number {
 	width: 100%;
 }
+.profile-webhooks ul {
+	list-style: none;
+	padding: 0;
+	margin: 0 0 12px;
+}
+.profile-webhooks li {
+	display: grid;
+	gap: 3px;
+	padding: 9px 0;
+	border-bottom: 1px solid var(--ios-separator);
+	overflow-wrap: anywhere;
+}
+.profile-webhooks li small {
+	color: var(--ios-secondary);
+}
 .object-catalogue {
 	margin: 0;
 	padding: 0;

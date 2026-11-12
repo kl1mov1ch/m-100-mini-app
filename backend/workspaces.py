@@ -195,7 +195,12 @@ def add_project(current_user, name, owner_id=None, sample=False):
 
 def shared():
     with registry() as db:
-        return {r["key"]: r["value"] for r in db.execute("SELECT * FROM shared_settings")}
+        return {
+            r["key"]: r["value"]
+            for r in db.execute(
+                "SELECT * FROM shared_settings WHERE key NOT LIKE 'profile_disk_webhook:%'"
+            )
+        }
 
 
 def set_shared(values):

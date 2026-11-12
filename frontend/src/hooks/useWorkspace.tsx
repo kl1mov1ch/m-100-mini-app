@@ -16,6 +16,7 @@ import type {
 	BitrixRead,
 	Config,
 	Data,
+	DiskWebhook,
 	ImportPreview,
 	ImportSheet,
 	Line,
@@ -83,9 +84,10 @@ export function useWorkspace() {
 		[userName, setUserName] = useState(''),
 		[userRole, setUserRole] = useState('master');
 	const [url, setUrl] = useState(''),
-		[webhook, setWebhook] = useState(''),
+		[webhookId, setWebhookId] = useState<string>(),
 		[aiKey, setAiKey] = useState(''),
 		[aiModel, setAiModel] = useState('deepseek-flash');
+	const [diskWebhooks, setDiskWebhooks] = useState<DiskWebhook[]>([]);
 	const [changes, setChanges] = useState<Change[]>([]),
 		[ownerFilter, setOwnerFilter] = useState('all');
 	const [summaryDate, setSummaryDate] = useState(dayjs().format('YYYY-MM-DD'));
@@ -198,11 +200,24 @@ export function useWorkspace() {
 		loadSession().catch((e) => setFailure(e.message));
 	}, []);
 	useEffect(() => {
+		setDiskWebhooks([]);
+		if (session?.user.role !== 'master') return;
+		const controller = new AbortController();
+		request<DiskWebhook[]>('/profile/disk-webhooks', undefined, undefined, controller.signal)
+			.then((items) => {
+				if (!controller.signal.aborted) setDiskWebhooks(items);
+			})
+			.catch((error: Error) => {
+				if (!controller.signal.aborted) message.error(error.message);
+			});
+		return () => controller.abort();
+	}, [session?.user.role, session?.user.telegram_id]);
+	useEffect(() => {
 		selectionVersion.current++;
 		setPreview(null);
 		setTextOpen(false);
 		setFreeText('');
-		setWebhook('');
+		setWebhookId(undefined);
 		if (!session?.projects.some((p) => p.id === project)) {
 			setData(null);
 			return;
@@ -831,8 +846,8 @@ export function useWorkspace() {
 		const selection = selectionVersion.current;
 		try {
 			if (!reviewOnly) {
-				await request('/bitrix/connection', { public_url: url, webhook }, project);
-				setWebhook('');
+				await request('/bitrix/connection', { public_url: url, webhook_id: webhookId }, project);
+				setWebhookId(undefined);
 			}
 			const endpoint = original ? '/imports/bitrix?original=true' : '/imports/bitrix';
 			const r = await request<ImportPreview | null>(endpoint, {}, project);
@@ -867,6 +882,13 @@ export function useWorkspace() {
 		}
 	};
 	const importRemote = () => loadRemoteImport(false);
+	const saveDiskWebhook = async (body: { name?: string; url?: string; project_id?: string }) => {
+		const saved = await request<DiskWebhook>('/profile/disk-webhooks', body);
+		setDiskWebhooks((current) =>
+			current.some((item) => item.id === saved.id) ? current : [...current, saved],
+		);
+		return saved;
+	};
 	const upload = async (file: File) => {
 		setBusy(true);
 		const selection = selectionVersion.current;
@@ -1081,8 +1103,10 @@ export function useWorkspace() {
 		setUserRole,
 		url,
 		setUrl,
-		webhook,
-		setWebhook,
+		webhookId,
+		setWebhookId,
+		diskWebhooks,
+		saveDiskWebhook,
 		aiKey,
 		setAiKey,
 		aiModel,

@@ -4,11 +4,11 @@ from urllib.parse import urlparse
 import httpx
 from fastapi import APIRouter, HTTPException, Request
 
-from .. import bitrix, bitrix_review, store, tables, workbook_revision
-from ..clock import now
+from .. import bitrix, bitrix_review, profile_webhooks, store, tables, workbook_revision
 from ..bitrix_refresh import freshness, refresh_project, review_issues
-from ..reporting import ai_settings, safe_config
+from ..clock import now
 from ..report_conflicts import ConflictResolution, conflict_state, resolve
+from ..reporting import ai_settings, safe_config
 from ..schemas import Connection
 from ..synchronization import table_lock, write_journal
 from .objects import owned_object
@@ -133,13 +133,19 @@ async def check_connection():
 
 
 @router.post("/api/bitrix/connection")
-async def connection(body: Connection):
+async def connection(request: Request, body: Connection):
     try:
         with store.connect() as db:
             saved_webhook = store.setting(db, "webhook")
             saved_id = int(store.setting(db, "file_id", "0"))
             saved_url = store.setting(db, "public_url")
-        webhook = body.webhook.strip() or saved_webhook
+        if body.webhook_id:
+            owned_object(request)
+            webhook = profile_webhooks.webhook_url(
+                request.state.user["telegram_id"], body.webhook_id
+            )
+        else:
+            webhook = body.webhook.strip() or saved_webhook
         url = body.public_url.strip() or saved_url
         file_id = body.file_id or saved_id or None
         if url:
@@ -156,8 +162,9 @@ async def connection(body: Connection):
                 ("file_id", str(file_id or 0)),
             ]:
                 store.set_setting(db, k, v)
-            if body.webhook:
-                store.set_setting(db, "webhook", body.webhook)
+            if body.webhook_id or body.webhook.strip():
+                store.set_setting(db, "webhook", webhook)
+                store.set_setting(db, "webhook_profile_id", body.webhook_id or "")
             return safe_config(db)
     except ValueError as error:
         raise HTTPException(400, str(error)) from error

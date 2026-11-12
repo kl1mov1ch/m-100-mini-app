@@ -244,11 +244,16 @@ def validate_webhook(webhook):
     p = urlparse(webhook)
     if (
         p.scheme != "https"
+        or p.username is not None
+        or p.password is not None
+        or p.query
+        or p.fragment
+        or p.port not in (None, 443)
         or not re.fullmatch(r"[a-z0-9-]+\.bitrix24\.(by|ru|com|kz|eu|de|net)", p.hostname or "")
         or not re.fullmatch(r"/rest/\d+/[A-Za-z0-9]+/?", p.path)
     ):
         raise ValueError("Укажите входящий HTTPS-вебхук вашего портала Битрикс24 с правом «Диск»")
-    return webhook.rstrip("/") + "/"
+    return f"https://{p.hostname}{p.path.rstrip('/')}/"
 
 
 async def rest(webhook, method, payload):
