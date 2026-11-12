@@ -16,6 +16,7 @@ import openpyxl
 from openpyxl.workbook.properties import CalcProperties
 
 from .workbook_journal import is_journal, journal_mapping
+from . import workbook_revision
 
 PUBLIC_URL = ""
 READ_TIMEOUT = httpx.Timeout(25, connect=7)
@@ -432,7 +433,7 @@ async def upload_days(
     patched = format_journal(content, positions, entries, crew, issues)
     verify_report_totals(patched, reports, len(catalogue))
     latest, _ = await download_rest(webhook, file_id)
-    if hashlib.sha256(content).digest() != hashlib.sha256(latest).digest():
+    if workbook_revision.changes(content, latest):
         raise ValueError(
             "Таблица изменена другим участником во время подготовки. Повторите синхронизацию."
         )
@@ -522,7 +523,7 @@ async def upload_journal(webhook, file_id, mappings, crew_by_day):
     issues = []
     patched = format_journal(content, parsed["positions"], parsed["entries"], crew_by_day, issues)
     latest, _ = await download_rest(webhook, file_id)
-    if hashlib.sha256(content).digest() != hashlib.sha256(latest).digest():
+    if workbook_revision.changes(content, latest):
         raise ValueError("Таблица обновилась во время оформления. Повторите чтение.")
     result = await rest(
         webhook,

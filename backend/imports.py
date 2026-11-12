@@ -3,10 +3,19 @@ import logging
 import uuid
 from pathlib import Path
 
+import httpx
 from fastapi import HTTPException, Request
 from pydantic import BaseModel, Field
 
-from . import bitrix, import_suggestions, reconciliation, store, tables, workspaces
+from . import (
+    bitrix,
+    import_suggestions,
+    reconciliation,
+    store,
+    tables,
+    workbook_revision,
+    workspaces,
+)
 from .report_downloads import report_export
 from .synchronization import JOURNAL_PENDING_NOTE, table_lock, write_journal
 from .table_advice import explain_issues, with_tips
@@ -62,6 +71,67 @@ def read_pending(token, project):
         raise HTTPException(404, "Импорт не найден. Загрузите файл снова.")
 
 
+def save_pending(meta, content):
+    token = uuid.uuid4().hex
+    (directory() / f"{token}.xlsx").write_bytes(content)
+    (directory() / f"{token}.json").write_text(
+        json.dumps(meta, ensure_ascii=False), encoding="utf-8"
+    )
+    with store.connect() as db:
+        store.set_setting(db, "pending_import_token", token)
+    return token
+
+
+def check_latest(original, latest, metadata):
+    difference = workbook_revision.changes(original, latest)
+    if not difference:
+        return
+    try:
+        if difference["kind"] == "appearance":
+            sheets, warnings = metadata["sheets"], []
+        else:
+            sheets, warnings = tables.discover(latest)
+        analysis = tables.extract(latest, sheets)
+    except ValueError as error:
+        raise HTTPException(409, str(error)) from error
+    save_pending(
+        {
+            **metadata,
+            "sheets": sheets,
+            "warnings": warnings + analysis["warnings"],
+            "source_change": difference,
+        },
+        latest,
+    )
+    raise HTTPException(
+        409,
+        {"code": "workbook_changed", "message": "Таблица обновилась. Открыта актуальная проверка."},
+    )
+
+
+async def verify_pending_remote(token, meta, content):
+    with store.connect() as db:
+        pending = store.setting(db, "pending_import_token")
+        file_id = int(store.setting(db, "file_id", "0"))
+        webhook = store.setting(db, "webhook")
+        url = store.setting(db, "public_url")
+    if token != pending or (
+        file_id and file_id != int((meta.get("remote") or {}).get("file_id") or 0)
+    ):
+        raise HTTPException(
+            409, {"code": "workbook_changed", "message": "Открыта текущая проверка таблицы."}
+        )
+    try:
+        latest, _ = await (
+            bitrix.download_rest(webhook, file_id)
+            if webhook and file_id
+            else bitrix.fetch_public(url)
+        )
+    except (httpx.HTTPError, ValueError, KeyError, TypeError) as error:
+        raise HTTPException(502, "Битрикс24 не отдал текущую книгу. Повторите проверку.") from error
+    check_latest(content, latest, meta)
+
+
 def register(app, settings, now):
     @app.get("/api/imports/workbook.xlsx")
     def normalized_workbook(request: Request, prepare: bool = False):
@@ -100,7 +170,6 @@ def register(app, settings, now):
             analysis = await tables.analyze(content, cfg)
         except ValueError as e:
             raise HTTPException(422, str(e))
-        token = uuid.uuid4().hex
         meta = {
             "project_id": request.state.project["id"],
             "owner_id": request.state.user["telegram_id"],
@@ -111,12 +180,7 @@ def register(app, settings, now):
             "sheets": analysis["sheets"],
             "created_at": now(),
         }
-        (directory() / f"{token}.xlsx").write_bytes(content)
-        (directory() / f"{token}.json").write_text(
-            json.dumps(meta, ensure_ascii=False), encoding="utf-8"
-        )
-        with store.connect() as db:
-            store.set_setting(db, "pending_import_token", token)
+        token = save_pending(meta, content)
         return {
             "token": token,
             "name": name,
@@ -147,6 +211,7 @@ def register(app, settings, now):
             "name": meta["name"],
             "source": meta["source"],
             **data,
+            "source_change": meta.get("source_change"),
             "warnings": with_tips(
                 structural + data["warnings"],
                 {
@@ -296,14 +361,10 @@ def register(app, settings, now):
                 "Проверьте и подтвердите жёлтые блоки. После изменения столбцов нажмите «Перепроверить».",
             )
         async with table_lock(request.state.project):
+            if meta["source"] == "bitrix":
+                await verify_pending_remote(body.token, meta, content)
             with store.connect() as db:
                 db.execute("BEGIN IMMEDIATE")
-                configured_id = int(store.setting(db, "file_id", "0"))
-                if meta["source"] == "bitrix" and (
-                    body.token != store.setting(db, "pending_import_token")
-                    or (configured_id and configured_id != int(meta["remote"]["file_id"]))
-                ):
-                    raise HTTPException(409, "Подключение изменилось. Откройте таблицу заново.")
                 data = reconciliation.reconcile_import(
                     db,
                     data,
@@ -418,6 +479,8 @@ def register(app, settings, now):
                     "bitrix_read_positions": "{}",
                     "bitrix_read_days": "{}",
                     "connection_check": "null",
+                    "bitrix_appearance": "null",
+                    "bitrix_appearance_observed": "null",
                     "journal_status": "pending" if meta["source"] == "bitrix" else "",
                     "journal_note": JOURNAL_PENDING_NOTE if meta["source"] == "bitrix" else "",
                 }

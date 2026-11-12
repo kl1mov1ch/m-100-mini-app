@@ -1,5 +1,13 @@
 import type {} from '../types';
 export const previewUser = new URLSearchParams(location.search).get('as');
+export class RequestError extends Error {
+	constructor(
+		message: string,
+		readonly code?: string,
+	) {
+		super(message);
+	}
+}
 export function headers(project?: string) {
 	return {
 		'X-Telegram-Init-Data': window.Telegram?.WebApp?.initData || '',
@@ -32,10 +40,11 @@ export async function request<T>(
 			throw new Error('Нет соединения с сервером');
 		}
 		const detail = typeof d.detail === 'string' ? d.detail : d.detail?.message;
-		throw new Error(
+		throw new RequestError(
 			detail === 'Not Found'
 				? 'Этот раздел недоступен. Обновите приложение.'
 				: detail || 'Проверьте введённые данные',
+			typeof d.detail?.code === 'string' ? d.detail.code : undefined,
 		);
 	}
 	return r.json();

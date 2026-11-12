@@ -3,14 +3,17 @@ import base64
 import io
 import json
 from datetime import date, timedelta
+from zipfile import ZipFile
 
 import httpx
 import openpyxl
+from openpyxl.styles import PatternFill
 
 from backend import bitrix, matcher, store, workspaces
 from backend.clock import today
 from backend.table_editing import DailyColumnChange, apply_changes
 from backend.workbook_journal import is_journal
+from backend import workbook_revision
 from test_reconciliation_restore import approval, upload, workbook
 from test_workspaces import client, create, grant
 
@@ -393,3 +396,71 @@ def test_daily_column_errors_are_grouped_and_fixed_in_one_action():
         assert result["I2"].value == 7 and len(changes) >= 70
         assert bool(result.column_dimensions["H"].hidden) == (strategy == "remove")
         assert tables.extract(updated, mappings)["warnings"] == []
+
+
+def test_bitrix_metadata_drift_does_not_block_edit_but_manual_change_refreshes_preview(
+    client, monkeypatch
+):
+    grant(client, "9001")
+    ident = create(client, "9001", sample=False)
+    headers = {"X-Project-Id": ident, "X-Preview-User": "9001"}
+    project = workspaces.project(workspaces.user("9001"), ident)
+    original = current = workbook()
+    writes = []
+    with store.connect(project["db_path"]) as db:
+        store.set_setting(db, "webhook", "test-webhook")
+        store.set_setting(db, "file_id", "123")
+
+    async def download(*args):
+        return current, {"NAME": "Смета.xlsx"}
+
+    async def write(*args):
+        nonlocal current
+        current = base64.b64decode(args[2]["fileContent"][1])
+        writes.append(current)
+        return True
+
+    monkeypatch.setattr(bitrix, "download_rest", download)
+    monkeypatch.setattr(bitrix, "rest", write)
+    preview = client.post("/api/imports/bitrix", headers=headers).json()
+    repacked = io.BytesIO()
+    with ZipFile(io.BytesIO(original)) as source, ZipFile(repacked, "w") as target:
+        for name in source.namelist():
+            part = source.read(name)
+            target.writestr(
+                name,
+                part.replace(b'topLeftCell="A1"', b'topLeftCell="A2"') + b"\n"
+                if name == "xl/worksheets/sheet1.xml"
+                else part,
+            )
+    current = repacked.getvalue()
+    assert original != current and workbook_revision.changes(original, current) is None
+    edit = {"token": preview["token"], "edits": [{"sheet": "Монтаж", "cell": "D2", "value": 12}]}
+    result = client.post("/api/imports/edit", json=edit, headers=headers)
+    assert result.is_success, result.text
+    assert len(writes) == 1
+
+    book = openpyxl.load_workbook(io.BytesIO(current))
+    book.active["D2"].fill = PatternFill("solid", fgColor="FFFF00")
+    stream = io.BytesIO()
+    book.save(stream)
+    current = stream.getvalue()
+    rejected = client.post("/api/imports/edit", json=edit, headers=headers)
+    assert rejected.status_code == 409 and len(writes) == 1
+    latest = client.get("/api/imports/pending", headers=headers).json()
+    assert latest["source_change"]["kind"] == "appearance"
+    assert latest["token"] != edit["token"]
+    edit["token"] = latest["token"]
+    assert client.post("/api/imports/edit", json=edit, headers=headers).is_success
+    assert (
+        openpyxl.load_workbook(io.BytesIO(current)).active["D2"].fill.fgColor.rgb.endswith("FFFF00")
+    )
+    book = openpyxl.load_workbook(io.BytesIO(current))
+    book.active["I2"] = None
+    stream = io.BytesIO()
+    book.save(stream)
+    current = stream.getvalue()
+    assert client.post("/api/imports/edit", json=edit, headers=headers).status_code == 409
+    latest = client.get("/api/imports/pending", headers=headers).json()
+    assert latest["source_change"] == {"kind": "data", "locations": ["Монтаж · I2"]}
+    assert len(writes) == 2

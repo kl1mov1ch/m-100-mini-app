@@ -107,6 +107,26 @@ export function BitrixReviewModal({
 			});
 		return () => controller.abort();
 	}, [project, attempt, session.ai_connected]);
+	const appearance = issues?.find((issue) => issue.kind === 'appearance');
+	const dataIssues = issues?.filter((issue) => issue.kind !== 'appearance') || [];
+	const acceptAppearance = async () => {
+		if (!appearance?.version) return;
+		setSaving(true);
+		try {
+			await request(
+				'/bitrix/accept-appearance?version=' + encodeURIComponent(appearance.version),
+				{},
+				project,
+			);
+			await refresh(true);
+			setAttempt((current) => current + 1);
+			message.success('Оформление подтверждено');
+		} catch (error) {
+			setError((error as Error).message);
+		} finally {
+			setSaving(false);
+		}
+	};
 	const replace = (direction: 'app' | 'table') => {
 		if (!conflicts || saving) return;
 		modal.confirm({
@@ -114,7 +134,7 @@ export function BitrixReviewModal({
 			content:
 				direction === 'app'
 					? `Приложение примет значения из Битрикс24.${conflicts.deleted ? ' Пустые объёмы станут нулевыми.' : ''}${workspace.dirty ? ' Текущий черновик будет закрыт.' : ''}`
-						: `Значения из приложения заменят данные на рабочем листе Битрикс24.${workspace.dirty ? ' Текущий черновик будет закрыт.' : ''}`,
+					: `Значения из приложения заменят данные на рабочем листе Битрикс24.${workspace.dirty ? ' Текущий черновик будет закрыт.' : ''}`,
 			okText: 'Заменить',
 			cancelText: 'Отмена',
 			async onOk() {
@@ -138,7 +158,7 @@ export function BitrixReviewModal({
 			title="Различия с Битрикс24"
 			onCancel={close}
 			footer={
-				issues?.length && !conflicts ? (
+				dataIssues.length && !conflicts ? (
 					<Button
 						type="primary"
 						onClick={() => {
@@ -190,9 +210,22 @@ export function BitrixReviewModal({
 								</Button>
 							</>
 						)}
-						{issues.length > 0 && (
+						{appearance && (
+							<Alert
+								type="warning"
+								showIcon
+								message={appearance.title}
+								description={appearance.sheet}
+								action={
+									<Button size="small" loading={saving} onClick={acceptAppearance}>
+										Оставить
+									</Button>
+								}
+							/>
+						)}
+						{dataIssues.length > 0 && (
 							<Collapse
-								items={issues.slice(0, 5).map((issue, index) => ({
+								items={dataIssues.slice(0, 5).map((issue, index) => ({
 									key: String(index),
 									label: (
 										<span className="bitrix-review-label">
@@ -204,7 +237,7 @@ export function BitrixReviewModal({
 								}))}
 							/>
 						)}
-						{conflicts && issues.length > 0 && (
+						{conflicts && dataIssues.length > 0 && (
 							<Button
 								type="link"
 								onClick={() => {

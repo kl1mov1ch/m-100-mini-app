@@ -1,5 +1,4 @@
 import base64
-import hashlib
 import io
 import json
 from datetime import date, datetime
@@ -13,7 +12,7 @@ from pydantic import BaseModel, Field
 
 from . import bitrix, import_suggestions, store, tables
 from .clock import now, today
-from .imports import directory, read_pending
+from .imports import check_latest, directory, read_pending
 from .synchronization import table_lock
 
 router = APIRouter()
@@ -220,6 +219,26 @@ def fix_daily_columns(workbook, content, mappings, catalogue, corrections, resto
     return changes
 
 
+def prepare_corrections(original, metadata, body, restoration):
+    try:
+        updated, changes = apply_changes(
+            original,
+            metadata["sheets"],
+            body.edits,
+            body.duplicates,
+            body.daily_columns,
+            restoration,
+        )
+        from .workbook_calculation import recalculate
+
+        updated = recalculate(
+            updated, tables.extract(updated, metadata["sheets"])["positions"], metadata["sheets"]
+        )
+    except ValueError as error:
+        raise HTTPException(422, str(error))
+    return updated, changes
+
+
 @router.post("/api/imports/edit")
 async def edit_table(request: Request, body: TableChanges):
     metadata, original = read_pending(body.token, request.state.project["id"])
@@ -241,38 +260,20 @@ async def edit_table(request: Request, body: TableChanges):
             }
     remote = metadata["source"] == "bitrix"
     remote_id = (metadata.get("remote") or {}).get("file_id", file_id)
-    if remote and (body.token != pending or file_id != int(remote_id)):
-        raise HTTPException(409, "Подключение изменилось. Откройте таблицу заново.")
-    if remote and not webhook:
+    if remote and (body.token != pending or file_id != int(remote_id or 0)):
         raise HTTPException(
-            400,
-            "Чтение таблицы подключено. Для изменения оригинала добавьте вебхук с правом «Диск» в настройках объекта.",
+            409, {"code": "workbook_changed", "message": "Открыта текущая проверка таблицы."}
         )
-    try:
-        updated, changes = apply_changes(
-            original,
-            metadata["sheets"],
-            body.edits,
-            body.duplicates,
-            body.daily_columns,
-            restoration,
-        )
-        from .workbook_calculation import recalculate
-
-        updated = recalculate(
-            updated, tables.extract(updated, metadata["sheets"])["positions"], metadata["sheets"]
-        )
-    except ValueError as error:
-        raise HTTPException(422, str(error))
+    if remote and not webhook:
+        raise HTTPException(400, "Для записи добавьте вебхук с правом «Диск».")
     async with table_lock(request.state.project):
         if remote:
             try:
                 latest, file_info = await bitrix.download_rest(webhook, file_id)
-                if hashlib.sha256(latest).digest() != hashlib.sha256(original).digest():
-                    raise HTTPException(
-                        409,
-                        "Оригинал изменился после чтения. Загрузите актуальную таблицу перед исправлением.",
-                    )
+                check_latest(original, latest, metadata)
+                updated, changes = prepare_corrections(latest, metadata, body, restoration)
+                before_write, _ = await bitrix.download_rest(webhook, file_id)
+                check_latest(latest, before_write, metadata)
                 await bitrix.rest(
                     webhook,
                     "disk.file.uploadVersion",
@@ -298,6 +299,8 @@ async def edit_table(request: Request, body: TableChanges):
                     502,
                     "Не удалось подтвердить изменения. Повторите чтение таблицы в приложении и проверьте выделенные ячейки.",
                 )
+        else:
+            updated, changes = prepare_corrections(original, metadata, body, restoration)
         analysis = tables.extract(updated, metadata["sheets"])
         structural_warnings = [
             warning
@@ -307,6 +310,7 @@ async def edit_table(request: Request, body: TableChanges):
             )
         ]
         metadata["warnings"] = structural_warnings + analysis["warnings"]
+        metadata.pop("source_change", None)
         (directory() / f"{body.token}.xlsx").write_bytes(updated)
         (directory() / f"{body.token}.json").write_text(
             json.dumps(metadata, ensure_ascii=False), encoding="utf-8"

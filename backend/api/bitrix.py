@@ -4,13 +4,13 @@ from urllib.parse import urlparse
 import httpx
 from fastapi import APIRouter, HTTPException, Request
 
-from .. import bitrix, bitrix_review, store, tables
+from .. import bitrix, bitrix_review, store, tables, workbook_revision
 from ..clock import now
 from ..bitrix_refresh import freshness, refresh_project, review_issues
 from ..reporting import ai_settings, safe_config
 from ..report_conflicts import ConflictResolution, conflict_state, resolve
 from ..schemas import Connection
-from ..synchronization import write_journal
+from ..synchronization import table_lock, write_journal
 from .objects import owned_object
 
 router = APIRouter()
@@ -49,6 +49,29 @@ async def consult(request: Request, explain: bool = False):
 @router.post("/api/bitrix/reconcile")
 async def reconcile(request: Request, body: ConflictResolution):
     return await resolve(owned_object(request), request.state.user, body)
+
+
+@router.post("/api/bitrix/accept-appearance")
+async def accept_appearance(request: Request, version: str):
+    async with table_lock(owned_object(request)):
+        with store.connect() as db:
+            observed = json.loads(store.setting(db, "bitrix_appearance_observed", "null"))
+            if (
+                not isinstance(observed, dict)
+                or workbook_revision.appearance_version(observed) != version
+            ):
+                raise HTTPException(409, "Оформление изменилось. Обновите проверку.")
+            store.set_setting(db, "bitrix_appearance", json.dumps(observed, ensure_ascii=False))
+            issues = [
+                issue for issue in review_issues(db) or [] if issue.get("kind") != "appearance"
+            ]
+            store.set_setting(db, "bitrix_read_issues", json.dumps(issues, ensure_ascii=False))
+            status = freshness(db)
+            if status and status["status"] == "review" and not issues:
+                store.set_setting(
+                    db, "bitrix_read_status", json.dumps({**status, "status": "current"})
+                )
+    return {"ok": True}
 
 
 @router.post("/api/bitrix/check")

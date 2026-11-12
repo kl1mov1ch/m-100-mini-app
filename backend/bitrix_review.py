@@ -31,7 +31,7 @@ def layout_issue(position, added):
     return {
         **location(position),
         "kind": "layout",
-        "title": "Новая или перемещённая строка" if added else "Строка сметы изменилась",
+        "title": "Новая или перемещённая строка" if added else "Строка очищена или перемещена",
         "advice": "Сопоставьте строку с работой в смете по названию и единице измерения.",
     }
 

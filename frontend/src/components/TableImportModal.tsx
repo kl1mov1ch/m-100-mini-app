@@ -609,6 +609,20 @@ export function TableImportModal({ workspace }: { workspace: WorkspaceView }) {
 					</Button>
 				)}
 			</div>
+			{preview.source_change && (
+				<Alert
+					type="warning"
+					showIcon
+					message={
+						preview.source_change.kind === 'appearance'
+							? 'Оформление обновилось'
+							: 'Данные изменились в Битрикс24'
+					}
+					description={
+						preview.source_change.locations.join(', ') || 'Открыта текущая версия таблицы.'
+					}
+				/>
+			)}
 			<Tabs
 				activeKey={tab}
 				onChange={setTab}
