@@ -26,7 +26,7 @@ export function WorkEstimate({ balance, unit }: { balance: WorkBalance; unit: st
 				<div className="work-estimate-warning">
 					<TriangleAlert size={16} aria-hidden />
 					<span>
-						Выполнено всего <b>{formatWorkVolume(balance.completed, unit)}</b> · сверх сметы{' '}
+						Выполнено всего <b>{formatWorkVolume(balance.completed, unit)}</b> · перерасход на{' '}
 						<b>{formatWorkVolume(balance.excess, unit)}</b>
 					</span>
 				</div>
@@ -56,7 +56,7 @@ export function WorkOverruns({
 						<span>{position.name}</span>
 						<small>
 							План {formatWorkVolume(balance.planned, position.unit)} · факт{' '}
-							<b>{formatWorkVolume(balance.completed, position.unit)}</b> · сверх{' '}
+							<b>{formatWorkVolume(balance.completed, position.unit)}</b> · перерасход на{' '}
 							<b>{formatWorkVolume(balance.excess, position.unit)}</b>
 						</small>
 					</li>

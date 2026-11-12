@@ -4,25 +4,32 @@
 	--app-safe-left: env(safe-area-inset-left, 0px);
 	--app-safe-right: env(safe-area-inset-right, 0px);
 }
-html[data-telegram] .application {
+.application {
 	min-height: var(--app-height, 100dvh);
 	padding-top: var(--app-safe-top);
 	padding-left: var(--app-safe-left);
 	padding-right: var(--app-safe-right);
 }
-html[data-telegram] .bottom-nav {
-	padding-bottom: calc(11px + var(--app-safe-bottom));
-}
-html[data-telegram] .content {
-	padding-bottom: calc(140px + var(--app-safe-bottom));
-}
-html[data-telegram] .ant-drawer-content-wrapper {
+.ant-drawer-content-wrapper {
 	max-height: calc(var(--app-height, 100dvh) - var(--app-safe-top));
 }
-html[data-telegram] .ant-drawer-body {
+.ant-drawer-body {
 	padding-bottom: calc(20px + var(--app-safe-bottom));
 }
 @media (max-width: 600px) {
+	.application {
+		padding-bottom: calc(92px + var(--app-safe-bottom));
+	}
+	.bottom-nav {
+		padding: 11px max(10px, var(--app-safe-right)) calc(11px + var(--app-safe-bottom))
+			max(10px, var(--app-safe-left));
+	}
+	.bottom-nav > button {
+		flex: 1 1 0;
+		min-width: 0;
+		min-height: 44px;
+		padding-inline: 4px;
+	}
 	input,
 	textarea,
 	.ant-select-selection-search-input {

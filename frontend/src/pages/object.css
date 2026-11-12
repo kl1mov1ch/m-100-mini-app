@@ -134,8 +134,10 @@
 	margin: 6px 0 0;
 }
 .object-catalogue .catalogue-overrun {
-	background: #fff5ed;
-	border-color: #f0d3b8;
+	background: #fffbeb;
+	border: 1px solid #d9a625;
+	border-radius: 10px;
+	margin-block: 4px;
 	padding-inline: 9px;
 }
 .catalogue-overrun-label {
@@ -143,7 +145,7 @@
 	align-items: center;
 	gap: 5px;
 	margin-top: 6px;
-	color: #a33e20;
+	color: #b42318;
 	font-size: 12px;
 	font-weight: 700;
 }

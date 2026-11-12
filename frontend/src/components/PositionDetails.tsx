@@ -5,7 +5,7 @@ import type { WorkspaceView } from '../App';
 import { request } from '../lib/api';
 import dayjs from '../lib/date';
 import { Money } from '../lib/format';
-import { formatVolume, positionOverrun } from '../lib/position-volume';
+import { estimateStatus, formatVolume, positionOverrun } from '../lib/position-volume';
 import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
 import type { CatalogueAction, Position, PositionHistory } from '../types';
 
@@ -108,7 +108,7 @@ export function PositionDetails({
 						Выполнено <b>{quantity(position.completed)}</b>
 					</span>
 					<span>
-						Остаток <b>{quantity(position.remaining)}</b>
+						<b>{estimateStatus(position, position.unit)}</b>
 					</span>
 				</div>
 				{source && (
@@ -116,8 +116,8 @@ export function PositionDetails({
 						{data?.config.bitrix_read?.status === 'unavailable'
 							? 'Последнее чтение Битрикс24'
 							: 'Битрикс24'}{' '}
-						· план {quantity(source.planned)} · выполнено {quantity(source.completed)} · остаток{' '}
-						<b>{quantity(source.remaining)}</b>
+						· план {quantity(source.planned)} · выполнено {quantity(source.completed)} ·{' '}
+						<b>{estimateStatus(source, position.unit)}</b>
 					</p>
 				)}
 				{overrun && (
@@ -125,7 +125,11 @@ export function PositionDetails({
 						type="warning"
 						showIcon
 						icon={<TriangleAlert size={18} />}
-						message={`Остаток ${quantity(overrun.remaining)} · перерасход`}
+						message={
+							overrun.completed > overrun.planned
+								? estimateStatus(overrun, position.unit)
+								: 'Проверьте остаток'
+						}
 						description={
 							<>
 								<p>
@@ -133,13 +137,8 @@ export function PositionDetails({
 									{quantity(overrun.planned)} · выполнено {quantity(overrun.completed)}.
 								</p>
 								{inconsistent ? (
-									<p>
-										По плану и факту остаток должен быть {quantity(recalculated)}. Проверьте формулу
-										остатка.
-									</p>
-								) : (
-									<p>Выполнено сверх плана на {quantity(-overrun.remaining)}.</p>
-								)}
+									<p>Значение остатка в таблице расходится с планом и фактом. Проверьте формулу.</p>
+								) : null}
 							</>
 						}
 					/>
