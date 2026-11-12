@@ -3,6 +3,7 @@ import { ArrowRight, CloudUpload, Minus, Plus, Users } from 'lucide-react';
 import type { ReactNode } from 'react';
 import './confirmation.css';
 import dayjs from './lib/date';
+import { unit } from './lib/format';
 
 type ConfirmationPosition = {
 	id: string;
@@ -72,11 +73,11 @@ export function ReportConfirmation(props: ConfirmationProps) {
 								<div className="confirmation-values">
 									<span>Объём</span>
 									<del>
-										{numberFormat.format(previous)} {position.unit}
+										{numberFormat.format(previous)} {unit(position.unit)}
 									</del>
 									<ArrowRight size={13} />
 									<strong>
-										{numberFormat.format(next)} {position.unit}
+										{numberFormat.format(next)} {unit(position.unit)}
 									</strong>
 								</div>
 								<div className="confirmation-values amount-values">
