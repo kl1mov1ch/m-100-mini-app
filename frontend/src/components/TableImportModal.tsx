@@ -488,8 +488,8 @@ export function TableImportModal({ workspace }: { workspace: WorkspaceView }) {
 	const columns = (
 		<div className="import-mapping-list">
 			{mapping.map((sheet, index) => (
-				<section className="import-mapping-card" key={sheet.name}>
-					<h3>{sheet.name}</h3>
+				<section className="import-mapping-card" key={sheet.group || sheet.name}>
+					<h3>{sheet.group || sheet.name}</h3>
 					<label>
 						Строка заголовков
 						<InputNumber
@@ -498,7 +498,9 @@ export function TableImportModal({ workspace }: { workspace: WorkspaceView }) {
 							onChange={(value) =>
 								setMapping((current) =>
 									current.map((item, otherIndex) =>
-										otherIndex === index ? { ...item, header_row: value || 1 } : item,
+										otherIndex === index
+											? { ...item, header_row: value || 1, detail_row: undefined }
+											: item,
 									),
 								)
 							}

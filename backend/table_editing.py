@@ -258,7 +258,7 @@ async def edit_table(request: Request, body: TableChanges):
                 for column in body.daily_columns
                 if column.strategy == "restore"
             }
-    remote = metadata["source"] == "bitrix"
+    remote = metadata["source"] == "bitrix" and not metadata.get("original")
     remote_id = (metadata.get("remote") or {}).get("file_id", file_id)
     if remote and (body.token != pending or file_id != int(remote_id or 0)):
         raise HTTPException(
@@ -310,7 +310,8 @@ async def edit_table(request: Request, body: TableChanges):
             )
         ]
         metadata["warnings"] = structural_warnings + analysis["warnings"]
-        metadata.pop("source_change", None)
+        if not metadata.get("original"):
+            metadata.pop("source_change", None)
         (directory() / f"{body.token}.xlsx").write_bytes(updated)
         (directory() / f"{body.token}.json").write_text(
             json.dumps(metadata, ensure_ascii=False), encoding="utf-8"
@@ -339,6 +340,7 @@ async def edit_table(request: Request, body: TableChanges):
         "token": body.token,
         "name": metadata["name"],
         "source": metadata["source"],
+        "source_change": metadata.get("source_change"),
         "saved_to_source": remote,
         **analysis,
         "warnings": metadata["warnings"],

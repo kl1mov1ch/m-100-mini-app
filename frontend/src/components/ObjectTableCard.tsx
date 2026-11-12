@@ -1,5 +1,5 @@
 import { Button, Tag } from 'antd';
-import { ExternalLink, RefreshCw } from 'lucide-react';
+import { ExternalLink, FileSearch, RefreshCw } from 'lucide-react';
 import type { WorkspaceView } from '../App';
 import dayjs from '../lib/date';
 import { openExternalLink } from '../lib/telegram';
@@ -12,6 +12,7 @@ export function ObjectTableCard({ workspace }: { workspace: WorkspaceView }) {
 		checkingConnection,
 		checkConnection,
 		reviewBitrixChanges,
+		reviewOriginalTable,
 		busy,
 	} = workspace;
 	if (!data || !active || data.project?.id !== active.id || data.config.source !== 'bitrix')
@@ -62,6 +63,9 @@ export function ObjectTableCard({ workspace }: { workspace: WorkspaceView }) {
 				</div>
 			)}
 			<div className="object-table-card-actions">
+				<Button loading={busy} icon={<FileSearch size={15} />} onClick={reviewOriginalTable}>
+					Проверить исходные листы
+				</Button>
 				<Button
 					loading={checkingConnection}
 					icon={<RefreshCw size={15} />}

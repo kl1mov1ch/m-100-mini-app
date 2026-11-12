@@ -418,6 +418,38 @@ export function useWorkspace() {
 		};
 	}, [project, isAdmin]);
 	useEffect(() => {
+		if (isAdmin || data?.project?.id !== project || data?.config.journal_status !== 'pending')
+			return;
+		const controller = new AbortController();
+		let checking = false;
+		const timer = window.setInterval(async () => {
+			if (document.hidden || checking) return;
+			checking = true;
+			try {
+				const status = await request<{ journal_status: string; journal_note: string }>(
+					'/imports/journal-status',
+					undefined,
+					project,
+					controller.signal,
+				);
+				if (!controller.signal.aborted)
+					setData((current) =>
+						current?.project?.id === project
+							? { ...current, config: { ...current.config, ...status } }
+							: current,
+					);
+			} catch {
+				return;
+			} finally {
+				checking = false;
+			}
+		}, 5000);
+		return () => {
+			controller.abort();
+			window.clearInterval(timer);
+		};
+	}, [project, isAdmin, data?.project?.id, data?.config.journal_status]);
+	useEffect(() => {
 		if (page === 'today' || page === 'object' || page === 'objects') void refreshBitrix();
 	}, [
 		project,
@@ -790,7 +822,7 @@ export function useWorkspace() {
 			setCheckingConnection(false);
 		}
 	};
-	const loadRemoteImport = async (reviewOnly: boolean) => {
+	const loadRemoteImport = async (reviewOnly: boolean, original = false) => {
 		if (data?.project?.id !== project) {
 			message.info('Дождитесь загрузки выбранного объекта');
 			return;
@@ -802,8 +834,13 @@ export function useWorkspace() {
 				await request('/bitrix/connection', { public_url: url, webhook }, project);
 				setWebhook('');
 			}
-			const r = await request<ImportPreview>('/imports/bitrix', {}, project);
+			const endpoint = original ? '/imports/bitrix?original=true' : '/imports/bitrix';
+			const r = await request<ImportPreview | null>(endpoint, {}, project);
 			if (selection !== selectionVersion.current) return;
+			if (!r) {
+				message.success('В исходных листах изменений нет');
+				return;
+			}
 			if (
 				!reviewOnly &&
 				!r.warnings.some((warning) => warning.severity !== 'info') &&
@@ -879,7 +916,9 @@ export function useWorkspace() {
 			);
 			setPreview(null);
 			await refresh();
-			if (result.journal && result.journal.status !== 'ready')
+			if (result.journal?.status === 'pending')
+				message.info('Смета сохранена. Рабочие листы готовятся.');
+			else if (result.journal && result.journal.status !== 'ready')
 				message.warning(result.journal.message);
 			else message.success('Таблица готова к работе');
 		} catch (e) {
@@ -1090,6 +1129,7 @@ export function useWorkspace() {
 		createObject,
 		grant,
 		importRemote,
+		reviewOriginalTable: () => loadRemoteImport(true, true),
 		reviewBitrixChanges: () =>
 			data?.config.pending_import ? resumeImport() : loadRemoteImport(true),
 		upload,

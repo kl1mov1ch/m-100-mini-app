@@ -279,6 +279,8 @@ async def refresh_project(project, max_age=90):
     lock = READ_LOCKS.setdefault(ident, asyncio.Lock())
     async with lock:
         with store.connect(project["db_path"]) as db:
+            if store.setting(db, "journal_rebuild"):
+                return freshness(db)
             expected = connection(db)
             source, webhook, file_id, url, _, raw_mappings, _ = expected
             previous = freshness(db)
@@ -317,7 +319,7 @@ async def refresh_project(project, max_age=90):
                 return None
             with store.connect(project["db_path"]) as db:
                 db.execute("BEGIN IMMEDIATE")
-                if connection(db) != expected:
+                if connection(db) != expected or store.setting(db, "journal_rebuild"):
                     return freshness(db)
                 checked_at = now()
                 if workbook_issue:

@@ -1,5 +1,6 @@
 """Bitrix Drive workbook adapter. Public link reads; REST webhook writes a new version."""
 
+import asyncio
 import base64
 import hashlib
 import io
@@ -15,8 +16,8 @@ import httpx
 import openpyxl
 from openpyxl.workbook.properties import CalcProperties
 
-from .workbook_journal import is_journal, journal_mapping
 from . import workbook_revision
+from .workbook_journal import is_journal, journal_mapping
 
 PUBLIC_URL = ""
 READ_TIMEOUT = httpx.Timeout(25, connect=7)
@@ -106,12 +107,12 @@ def read_workbook(content, mappings=None):
     from .tables import extract, grid
 
     w = grid(content)
-    canonical = next((mapping for sheet in w if (mapping := journal_mapping(sheet))), None)
+    canonical = [mapping for sheet in w if (mapping := journal_mapping(sheet))]
     if canonical or mappings:
-        if canonical:
-            saved = next((item for item in mappings or [] if item["name"] == canonical["name"]), {})
-            canonical["position_ids"] = saved.get("position_ids", {})
-        return extract(content, [canonical] if canonical else mappings, w)
+        for journal in canonical:
+            saved = next((item for item in mappings or [] if item["name"] == journal["name"]), {})
+            journal["position_ids"] = saved.get("position_ids", {})
+        return extract(content, canonical or mappings, w)
     result = {"positions": [], "entries": [], "sheet": None}
     for sheet in w:
         if is_journal(sheet):
@@ -451,8 +452,9 @@ async def upload_days(
     from .workbook_calculation import verify_calculations
 
     parsed = read_workbook(verified, mappings)
-    sheet_name = parsed["sheets"][0]["name"]
-    verify_calculations(patched, verified, sheet_name)
+    sheet_names = [sheet["name"] for sheet in parsed["sheets"]]
+    for sheet_name in sheet_names:
+        verify_calculations(patched, verified, sheet_name)
     verified_fields = {position["id"]: position for position in parsed["positions"]}
     for ident, names in (fields or {}).items():
         if any(verified_fields.get(ident, {}).get(field) != local[ident][field] for field in names):
@@ -465,7 +467,7 @@ async def upload_days(
         "ok": True,
         "file_id": file_id,
         "issues": list(
-            {issue["id"]: issue for issue in issues if issue.get("sheet") == sheet_name}.values()
+            {issue["id"]: issue for issue in issues if issue.get("sheet") in sheet_names}.values()
         ),
     }
 
@@ -511,19 +513,35 @@ def verify_report_totals(content, reports, count):
             verify_day_totals(content, day, report["payroll"], count)
 
 
-async def upload_journal(webhook, file_id, mappings, crew_by_day):
+async def upload_journal(webhook, file_id, mappings, crew_by_day, *, rebuild=None):
     from .workbook_calculation import verify_calculations
     from .workbook_journal import format_journal
 
     content, meta = await download_rest(webhook, file_id)
-    book = openpyxl.load_workbook(io.BytesIO(content), data_only=True)
-    if any(journal_mapping(sheet) for sheet in book):
+    book = await asyncio.to_thread(openpyxl.load_workbook, io.BytesIO(content), data_only=True)
+    if not rebuild and any(journal_mapping(sheet) for sheet in book):
         return []
-    parsed = read_workbook(content, mappings)
+    if rebuild and await asyncio.to_thread(
+        workbook_revision.changes, rebuild["original"], content, original_only=True
+    ):
+        raise ValueError("Исходные листы снова изменились. Проверьте оригинал перед обновлением.")
+    parsed = (
+        rebuild
+        if rebuild is not None
+        else await asyncio.to_thread(read_workbook, content, mappings)
+    )
     issues = []
-    patched = format_journal(content, parsed["positions"], parsed["entries"], crew_by_day, issues)
+    patched = await asyncio.to_thread(
+        format_journal,
+        content,
+        parsed["positions"],
+        parsed["entries"],
+        crew_by_day,
+        issues,
+        mappings,
+    )
     latest, _ = await download_rest(webhook, file_id)
-    if workbook_revision.changes(content, latest):
+    if await asyncio.to_thread(workbook_revision.changes, content, latest):
         raise ValueError("Таблица обновилась во время оформления. Повторите чтение.")
     result = await rest(
         webhook,
@@ -533,9 +551,17 @@ async def upload_journal(webhook, file_id, mappings, crew_by_day):
     if not result:
         raise ValueError("Битрикс24 не подтвердил создание листа «Журнал работ».")
     verified, _ = await download_rest(webhook, file_id)
-    verified_book = openpyxl.load_workbook(io.BytesIO(verified), data_only=True)
-    sheet_name = next((sheet.title for sheet in verified_book if journal_mapping(sheet)), None)
-    if not sheet_name:
+    verified_book = await asyncio.to_thread(
+        openpyxl.load_workbook, io.BytesIO(verified), data_only=True
+    )
+    sheet_names = [sheet.title for sheet in verified_book if journal_mapping(sheet)]
+    if not sheet_names:
         raise ValueError("Лист «Журнал работ» пока не появился в Битрикс24.")
-    verify_calculations(patched, verified, sheet_name)
+    expected_ids = {position["id"] for position in parsed["positions"]}
+    verified_data = await asyncio.to_thread(read_workbook, verified)
+    verified_ids = {position["id"] for position in verified_data["positions"]}
+    if expected_ids != verified_ids:
+        raise ValueError("Битрикс24 не подтвердил запись всех рабочих позиций.")
+    for sheet_name in sheet_names:
+        await asyncio.to_thread(verify_calculations, patched, verified, sheet_name)
     return issues

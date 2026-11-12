@@ -1,10 +1,11 @@
+import asyncio
 import json
 import logging
 import uuid
 from pathlib import Path
 
 import httpx
-from fastapi import HTTPException, Request
+from fastapi import BackgroundTasks, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from . import (
@@ -56,6 +57,7 @@ def remove_project_imports(project_id):
             if isinstance(saved, dict) and saved.get("project_id") == project_id:
                 metadata.with_suffix(".xlsx").unlink(missing_ok=True)
                 metadata.with_suffix(".journal.xlsx").unlink(missing_ok=True)
+                metadata.with_suffix(".source.xlsx").unlink(missing_ok=True)
                 metadata.unlink(missing_ok=True)
         except (OSError, ValueError):
             logging.getLogger(__name__).warning("Could not remove an object import")
@@ -74,12 +76,18 @@ def read_pending(token, project):
 def save_pending(meta, content):
     token = uuid.uuid4().hex
     (directory() / f"{token}.xlsx").write_bytes(content)
+    if meta.get("original"):
+        original_snapshot(token).write_bytes(content)
     (directory() / f"{token}.json").write_text(
         json.dumps(meta, ensure_ascii=False), encoding="utf-8"
     )
     with store.connect() as db:
         store.set_setting(db, "pending_import_token", token)
     return token
+
+
+def original_snapshot(token):
+    return directory() / f"{token}.source.xlsx"
 
 
 def check_latest(original, latest, metadata):
@@ -90,7 +98,7 @@ def check_latest(original, latest, metadata):
         if difference["kind"] == "appearance":
             sheets, warnings = metadata["sheets"], []
         else:
-            sheets, warnings = tables.discover(latest)
+            sheets, warnings = tables.discover(latest, original=metadata.get("original", False))
         analysis = tables.extract(latest, sheets)
     except ValueError as error:
         raise HTTPException(409, str(error)) from error
@@ -115,6 +123,10 @@ async def verify_pending_remote(token, meta, content):
         file_id = int(store.setting(db, "file_id", "0"))
         webhook = store.setting(db, "webhook")
         url = store.setting(db, "public_url")
+    if meta.get("original") and (not webhook or not file_id):
+        raise HTTPException(
+            422, "Для обновления рабочих листов нужен вебхук Битрикс24 с правом «Диск»."
+        )
     if token != pending or (
         file_id and file_id != int((meta.get("remote") or {}).get("file_id") or 0)
     ):
@@ -129,10 +141,25 @@ async def verify_pending_remote(token, meta, content):
         )
     except (httpx.HTTPError, ValueError, KeyError, TypeError) as error:
         raise HTTPException(502, "Битрикс24 не отдал текущую книгу. Повторите проверку.") from error
+    if meta.get("original"):
+        content = original_snapshot(token).read_bytes()
+        difference = await asyncio.to_thread(
+            workbook_revision.changes, content, latest, original_only=True
+        )
+        if not difference:
+            return
     check_latest(content, latest, meta)
 
 
 def register(app, settings, now):
+    @app.get("/api/imports/journal-status")
+    def journal_status(request: Request):
+        with store.connect(request.state.project["db_path"]) as db:
+            return {
+                "journal_status": store.setting(db, "journal_status"),
+                "journal_note": store.setting(db, "journal_note"),
+            }
+
     @app.get("/api/imports/workbook.xlsx")
     def normalized_workbook(request: Request, prepare: bool = False):
         if request.state.user["role"] != "master":
@@ -153,7 +180,8 @@ def register(app, settings, now):
                     raise HTTPException(404, "Загрузите Excel для этого объекта")
                 positions, entries, crew = journal_data(db)
                 content = file.read_bytes()
-            return format_journal(content, positions, entries, crew, [])
+                mappings = json.loads(store.setting(db, "sheet_mappings", "null"))
+            return format_journal(content, positions, entries, crew, [], mappings)
 
         return report_export(
             request.state.user,
@@ -163,11 +191,13 @@ def register(app, settings, now):
             prepare,
         )
 
-    async def prepare(request, content, name, source, remote=None):
+    async def prepare(
+        request, content, name, source, remote=None, *, original=False, source_change=None
+    ):
         with store.connect() as db:
             cfg = settings(db)
         try:
-            analysis = await tables.analyze(content, cfg)
+            analysis = await tables.analyze(content, cfg, original=original)
         except ValueError as e:
             raise HTTPException(422, str(e))
         meta = {
@@ -176,6 +206,8 @@ def register(app, settings, now):
             "name": name,
             "source": source,
             "remote": remote,
+            "original": original,
+            "source_change": source_change,
             "warnings": analysis["warnings"],
             "sheets": analysis["sheets"],
             "created_at": now(),
@@ -186,6 +218,7 @@ def register(app, settings, now):
             "name": name,
             "source": source,
             **analysis,
+            "source_change": source_change,
             "reconciliation": current_reconciliation(analysis),
         }
 
@@ -240,11 +273,12 @@ def register(app, settings, now):
         return await prepare(request, content, filename, "file")
 
     @app.post("/api/imports/bitrix")
-    async def remote(request: Request):
+    async def remote(request: Request, original: bool = False):
         with store.connect() as db:
             webhook = store.setting(db, "webhook")
             file_id = int(store.setting(db, "file_id", "0"))
             url = store.setting(db, "public_url")
+            previous_file = store.setting(db, "import_file_path")
         if not webhook and not url:
             raise HTTPException(422, "Сначала укажите ссылку на таблицу Битрикс24")
         try:
@@ -254,7 +288,27 @@ def register(app, settings, now):
             else:
                 content, meta = await bitrix.fetch_public(url)
                 remote = meta
-            return await prepare(request, content, remote["name"], "bitrix", remote)
+            difference = None
+            if original and previous_file:
+                previous = Path(previous_file)
+                if previous.parent == directory() and previous.is_file():
+                    difference = await asyncio.to_thread(
+                        workbook_revision.changes,
+                        previous.read_bytes(),
+                        content,
+                        original_only=True,
+                    )
+                    if not difference:
+                        return None
+            return await prepare(
+                request,
+                content,
+                remote["name"],
+                "bitrix",
+                remote,
+                original=original,
+                source_change=difference,
+            )
         except HTTPException:
             raise
         except Exception:
@@ -283,6 +337,7 @@ def register(app, settings, now):
             "name": meta["name"],
             "source": meta["source"],
             **data,
+            "source_change": meta.get("source_change"),
             "warnings": with_tips(warnings, await explain_issues(warnings, cfg)),
             "reconciliation": current_reconciliation(data),
         }
@@ -344,7 +399,7 @@ def register(app, settings, now):
         return plan
 
     @app.post("/api/imports/confirm")
-    async def confirm(request: Request, body: ConfirmImport):
+    async def confirm(request: Request, body: ConfirmImport, background: BackgroundTasks):
         meta, content = read_pending(body.token, request.state.project["id"])
         try:
             data = tables.extract(content, import_sheets(body.sheets))
@@ -474,7 +529,11 @@ def register(app, settings, now):
                     "last_import": now(),
                     "sheet_mappings": json.dumps(data["sheets"]),
                     "remote_days": json.dumps(remote_days),
-                    "import_file_path": str(directory() / f"{body.token}.xlsx"),
+                    "import_file_path": str(
+                        original_snapshot(body.token)
+                        if meta.get("original")
+                        else directory() / f"{body.token}.xlsx"
+                    ),
                     "bitrix_read_status": "null",
                     "bitrix_read_positions": "{}",
                     "bitrix_read_days": "{}",
@@ -483,12 +542,18 @@ def register(app, settings, now):
                     "bitrix_appearance_observed": "null",
                     "journal_status": "pending" if meta["source"] == "bitrix" else "",
                     "journal_note": JOURNAL_PENDING_NOTE if meta["source"] == "bitrix" else "",
+                    "journal_retry_at": "",
+                    "journal_rebuild": "1"
+                    if meta["source"] == "bitrix" and meta.get("original")
+                    else "",
                 }
                 if meta["source"] == "file":
                     positions, entries, crew = journal_data(db)
                     path = directory() / f"{body.token}.journal.xlsx"
                     temporary = path.with_suffix(".tmp")
-                    temporary.write_bytes(format_journal(content, positions, entries, crew, []))
+                    temporary.write_bytes(
+                        format_journal(content, positions, entries, crew, [], data["sheets"])
+                    )
                     temporary.replace(path)
                     values["import_file_path"] = str(path)
                 if meta.get("remote", {}):
@@ -507,7 +572,10 @@ def register(app, settings, now):
                     ),
                 )
                 store.set_setting(db, "pending_import_token", "")
-        journal = await write_journal(request.state.project) if meta["source"] == "bitrix" else None
+        journal = None
+        if meta["source"] == "bitrix":
+            background.add_task(write_journal, request.state.project)
+            journal = {"status": "pending", "message": JOURNAL_PENDING_NOTE}
         return {
             "ok": True,
             "positions": len(data["positions"]),

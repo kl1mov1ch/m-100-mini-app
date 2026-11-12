@@ -49,10 +49,12 @@ def cell_value(cell):
     return (cell.data_type, value)
 
 
-def snapshot(content):
+def snapshot(content, *, original_only=False):
     styles = {}
     result = {}
     for sheet in load(content):
+        if original_only and is_journal(sheet):
+            continue
         values, formats = {}, {}
         for row in sheet.iter_rows():
             for cell in row:
@@ -74,10 +76,13 @@ def snapshot(content):
     return result
 
 
-def changes(before, after):
+def changes(before, after, *, original_only=False):
     if before == after or package_parts(before) == package_parts(after):
         return None
-    first, second = snapshot(before), snapshot(after)
+    first, second = (
+        snapshot(before, original_only=original_only),
+        snapshot(after, original_only=original_only),
+    )
     content_changed = tuple(first) != tuple(second)
     format_changed = False
     locations = []

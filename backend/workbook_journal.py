@@ -2,14 +2,15 @@ import io
 import json
 from copy import copy
 from datetime import date
+from decimal import ROUND_HALF_UP, Decimal
 
 import openpyxl
 from openpyxl.comments import Comment
 from openpyxl.formatting.rule import CellIsRule
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
-from openpyxl.workbook.views import BookView
 from openpyxl.workbook.properties import CalcProperties
+from openpyxl.workbook.views import BookView
 
 JOURNAL_MARKER = "M100 • Журнал работ"
 JOURNAL_SOURCE = "M100 • рабочий лист"
@@ -76,24 +77,81 @@ def journal_row(cell):
     return None
 
 
-def journal_sheet(book):
-    existing = next((sheet for sheet in book if is_journal(sheet)), None)
+def journal_sheet(book, existing, group, multiple):
     if existing:
         title = existing.title
         index = book.index(existing)
         book.remove(existing)
         return book.create_sheet(title, index)
-    title = "Журнал работ"
+    title = f"Работы · {group}"[:31] if multiple else "Журнал работ"
     if title in book:
-        title = "Журнал работ · М100"
+        title = title[:24] + " · М100"
     return book.create_sheet(title)
 
 
-def format_journal(content, catalogue, entries, crew_by_day, issues):
+def format_journal(content, catalogue, entries, crew_by_day, issues, mappings=None):
     from .workbook_calculation import cache_formulas
 
     book = openpyxl.load_workbook(io.BytesIO(content))
-    previous = next((sheet for sheet in book if is_journal(sheet)), None)
+    journals = [sheet for sheet in book if is_journal(sheet)]
+    source_by_title = {sheet.title: sheet["C2"].value or sheet.title for sheet in journals}
+    source_ranges = {}
+    for mapping in mappings or ():
+        if mapping.get("group"):
+            source_ranges.setdefault(mapping["name"], []).append(mapping)
+    groups = {}
+    for position in catalogue:
+        source = position.get("source_sheet") or ""
+        group = source_by_title.get(source)
+        if group is None:
+            group = next(
+                (
+                    mapping["group"]
+                    for mapping in source_ranges.get(source, ())
+                    if mapping["header_row"] < position["source_row"] <= mapping["end_row"]
+                ),
+                source,
+            )
+        groups.setdefault(group, []).append(position)
+    if not groups:
+        groups[""] = []
+    previous = {sheet["C2"].value or sheet.title: sheet for sheet in journals}
+    if len(journals) == len(groups) == 1 and not journals[0]["C2"].value:
+        previous = {next(iter(groups)): journals[0]}
+    for sheet in journals:
+        if sheet not in [previous.get(group) for group in groups]:
+            book.remove(sheet)
+    if not book.views:
+        book.views = [BookView()]
+    if book.calculation is None:
+        book.calculation = CalcProperties()
+    book.calculation.fullCalcOnLoad = True
+    days = {entry["date"] for entry in entries} | set(crew_by_day)
+    quantities = {}
+    for entry in entries:
+        key = entry["item_id"], entry["date"]
+        quantities[key] = quantities.get(key, 0) + entry["quantity"]
+    for index, (group, positions) in enumerate(groups.items()):
+        sheet = write_journal_sheet(
+            book,
+            previous.get(group),
+            group,
+            len(groups) > 1,
+            positions,
+            quantities,
+            days,
+            crew_by_day,
+        )
+        if index == 0:
+            book.active = sheet
+    output = io.BytesIO()
+    book.save(output)
+    return cache_formulas(output.getvalue(), issues, original=content)
+
+
+def write_journal_sheet(
+    book, previous, group, multiple, catalogue, quantities, work_days, crew_by_day
+):
     fills = saved_fills(previous) if previous else {}
     previous_days = []
     if previous:
@@ -102,20 +160,8 @@ def format_journal(content, catalogue, entries, crew_by_day, issues):
             for cell in previous[3][9:]
             if isinstance((value := cell.value), date)
         ]
-    sheet = journal_sheet(book)
-    book.active = sheet
-    if not book.views:
-        book.views = [BookView()]
-    if book.calculation is None:
-        book.calculation = CalcProperties()
-    book.calculation.fullCalcOnLoad = True
-    quantities = {}
-    for entry in entries:
-        key = entry["item_id"], entry["date"]
-        quantities[key] = quantities.get(key, 0) + entry["quantity"]
-    days = previous_days + sorted(
-        ({day for _, day in quantities} | set(crew_by_day)) - set(previous_days)
-    )
+    sheet = journal_sheet(book, previous, group, multiple)
+    days = previous_days + sorted(work_days - set(previous_days))
     sheet.append(
         [
             "№",
@@ -131,6 +177,8 @@ def format_journal(content, catalogue, entries, crew_by_day, issues):
     )
     sheet["A2"] = JOURNAL_MARKER
     sheet["B2"] = JOURNAL_SOURCE
+    sheet["C2"] = group
+    sheet["C2"].data_type = "s"
     sheet.row_dimensions[2].hidden = True
     sheet.row_dimensions[1].height = 36
     sheet.row_dimensions[3].height = 25
@@ -242,7 +290,7 @@ def format_journal(content, catalogue, entries, crew_by_day, issues):
                     cell.number_format = AMOUNT_FORMAT
                 elif cell.column in (4, 7) or cell.column >= 9:
                     cell.number_format = VOLUME_FORMAT
-    for column, width in enumerate((6, 61, 12, 16, 16, 17, 17, 18, 18), 1):
+    for column, width in enumerate((5, 39, 9, 12, 12, 13, 12, 13, 13), 1):
         sheet.column_dimensions[get_column_letter(column)].width = width
     if catalogue:
         sheet.conditional_formatting.add(
@@ -251,17 +299,16 @@ def format_journal(content, catalogue, entries, crew_by_day, issues):
                 operator="lessThan", formula=["0"], fill=PatternFill("solid", fgColor="FFE0D9")
             ),
         )
-    sheet.freeze_panes = "D5"
+    sheet.freeze_panes = "J5"
     sheet.sheet_view.showGridLines = False
-    output = io.BytesIO()
-    book.save(output)
-    return cache_formulas(output.getvalue(), issues)
+    return sheet
 
 
 def verify_day_totals(content, day, payroll, positions):
     book = openpyxl.load_workbook(io.BytesIO(content), data_only=True)
-    sheet = next((sheet for sheet in book if is_journal(sheet)), None)
-    if sheet is not None:
+    journals = [sheet for sheet in book if is_journal(sheet)]
+    if len(journals) == 1:
+        sheet = journals[0]
         column = next((cell.column for cell in sheet[3] if str(cell.value)[:10] == day), None)
         if column:
             expected = [
@@ -273,5 +320,25 @@ def verify_day_totals(content, day, payroll, positions):
             ]
             actual = [sheet.cell(row, column).value for row in range(positions + 6, positions + 11)]
             if actual == expected:
+                return
+    if len(journals) > 1:
+        total, row_count = Decimal(0), 0
+        for sheet in journals:
+            column = next((cell.column for cell in sheet[3] if str(cell.value)[:10] == day), None)
+            count = sum(isinstance(cell.value, int) for cell in sheet["A"])
+            row_count += count
+            if not column or sheet.cell(count + 7, column).value != payroll["crew_count"]:
+                break
+            total += sum(
+                Decimal(str(sheet.cell(row, column).value or 0))
+                * Decimal(str(sheet.cell(row, 5).value or 0))
+                for row in range(5, count + 5)
+            )
+        else:
+            if (
+                row_count == positions
+                and float(total.quantize(Decimal(".01"), rounding=ROUND_HALF_UP))
+                == payroll["amount"]
+            ):
                 return
     raise ValueError("Битрикс24 не подтвердил дневной расчёт на листе «Журнал работ».")
