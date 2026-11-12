@@ -1,5 +1,5 @@
 import { Button, Drawer, Input, Upload } from 'antd';
-import { LoaderCircle, Mic, Sparkles, Square, X } from 'lucide-react';
+import { Mic, Sparkles, Square, Upload as UploadIcon } from 'lucide-react';
 import type { WorkspaceView } from '../App';
 import './voice-report.css';
 
@@ -21,88 +21,87 @@ export function VoiceReportDrawer({ workspace }: { workspace: WorkspaceView }) {
 		setTextOpen(false);
 		audioInput.cancel();
 	};
+	const audioBusy = audioInput.recording || audioInput.pending;
+	const status = audioInput.pending
+		? 'Обрабатываем аудио…'
+		: audioInput.recording
+			? audioInput.live
+				? 'Запись идёт. Текст появляется в поле.'
+				: 'Запись идёт. Текст появится после остановки.'
+			: 'Запишите голосом или загрузите аудио';
+
 	return (
 		<Drawer
 			placement="bottom"
 			height="auto"
 			open={textOpen}
 			onClose={close}
-			closable={false}
 			className="voice-report-drawer"
+			title={
+				<div className="voice-sheet-heading">
+					<span>Голосовой ввод</span>
+					{active && <small>{active.name}</small>}
+				</div>
+			}
 			destroyOnHidden
+			footer={
+				<Button
+					block
+					type="primary"
+					disabled={!freeText.trim() || audioBusy}
+					loading={parsing}
+					onClick={() => {
+						setTextOpen(false);
+						void matchReportText();
+					}}
+				>
+					Подобрать работы
+				</Button>
+			}
 		>
-			<div className="voice-sheet-handle" />
-			<div className="voice-sheet-heading">
-				<span>{active?.name || 'Отчёт с объекта'}</span>
-				<button aria-label="Закрыть голосовой ввод" onClick={close}>
-					<X size={18} />
-				</button>
-			</div>
 			<Input.TextArea
 				className="voice-sheet-text"
 				aria-label="Текст отчёта"
 				value={freeText}
 				onChange={(event) => setFreeText(event.target.value)}
-				autoSize={{ minRows: 3, maxRows: 6 }}
+				rows={4}
 				maxLength={8000}
-				readOnly={audioInput.recording || audioInput.pending}
-				placeholder="Что сделали на объекте? Вставьте сообщение работника или надиктуйте отчёт."
+				readOnly={audioBusy}
+				placeholder="Что сделали на объекте? Напишите или надиктуйте."
 			/>
-			{!freeText && !audioInput.recording && !audioInput.pending && (
-				<button className="voice-example-link" onClick={() => setFreeText(exampleReport)}>
-					<Sparkles size={12} />
-					Пример сообщения
-				</button>
-			)}
-			<div
-				className={'voice-microphone-area' + (freeText && !audioInput.recording ? ' compact' : '')}
+			<Button
+				type="text"
+				className="voice-example-link"
+				icon={<Sparkles size={15} />}
+				disabled={!!freeText.trim() || audioBusy}
+				onClick={() => setFreeText(exampleReport)}
 			>
-				<button
-					className={'voice-microphone ' + (audioInput.recording ? 'recording' : '')}
+				Пример сообщения
+			</Button>
+			<div className="voice-sheet-actions">
+				<Button
+					danger={audioInput.recording}
+					aria-pressed={audioInput.recording}
 					disabled={audioInput.pending}
-					aria-label={audioInput.recording ? 'Остановить запись' : 'Начать запись'}
+					icon={audioInput.recording ? <Square size={17} /> : <Mic size={18} />}
 					onClick={audioInput.toggleRecording}
 				>
-					{audioInput.pending ? (
-						<LoaderCircle size={28} className="spinning" />
-					) : audioInput.recording ? (
-						<Square size={23} fill="currentColor" />
-					) : (
-						<Mic size={30} strokeWidth={1.8} />
-					)}
-				</button>
-				<span>
-					{audioInput.pending
-						? 'Подождите…'
-						: audioInput.recording
-							? audioInput.live
-								? 'Говорите, текст появится в поле'
-								: 'Записываем. Текст появится после остановки'
-							: 'Нажмите, чтобы говорить'}
-				</span>
+					{audioInput.recording ? 'Остановить' : 'Записать'}
+				</Button>
 				<Upload
 					accept=".ogg,.opus,.mp3,.m4a,.wav,.webm"
 					showUploadList={false}
 					beforeUpload={audioInput.uploadAudio}
+					disabled={audioBusy}
 				>
-					<Button type="text" disabled={audioInput.pending || audioInput.recording}>
-						Добавить голосовое сообщение
+					<Button icon={<UploadIcon size={17} />} disabled={audioBusy}>
+						Загрузить аудио
 					</Button>
 				</Upload>
 			</div>
-			<Button
-				block
-				type="primary"
-				size="large"
-				disabled={!freeText.trim() || audioInput.recording || audioInput.pending}
-				loading={parsing}
-				onClick={() => {
-					setTextOpen(false);
-					void matchReportText();
-				}}
-			>
-				Подобрать работы
-			</Button>
+			<p className="voice-sheet-status" role="status">
+				{status}
+			</p>
 		</Drawer>
 	);
 }

@@ -24,6 +24,13 @@
 	line-height: 1.55;
 	padding: 12px;
 }
+.quick-report-project {
+	display: grid;
+	gap: 6px;
+	margin-bottom: 10px;
+	font-size: 13px;
+	font-weight: 600;
+}
 .quick-report-actions,
 .draft-status,
 .draft-crew,

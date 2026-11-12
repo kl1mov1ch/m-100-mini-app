@@ -44,7 +44,7 @@ export function ObjectsPage({ workspace }: { workspace: WorkspaceView }) {
 				</div>
 			)}
 			{isAdmin && <AdminOverview workspace={workspace} />}
-			{!isAdmin && workspace.positions.length > 0 && <QuickReportComposer workspace={workspace} />}
+			{!isAdmin && session.projects.length > 0 && <QuickReportComposer workspace={workspace} />}
 			<div className="object-grid">
 				{projects.map((p) => (
 					<button
