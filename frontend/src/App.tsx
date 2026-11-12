@@ -51,6 +51,7 @@ import './keyboard.css';
 import './select-controls.css';
 import { useInputVisibility } from './hooks/useInputVisibility';
 import { useStartupScreen } from './hooks/useStartupScreen';
+import { useAppRelease } from './hooks/useAppRelease';
 import type { HistoryRow, Project, Session } from './types';
 export type WorkspaceView = ReturnType<typeof useWorkspace> & {
 	session: Session;
@@ -102,6 +103,26 @@ export function WorkspaceApp() {
 		grant,
 	} = controller;
 	useStartupScreen(Boolean(failure || (session && (!session.projects.length || data))));
+	useAppRelease(
+		!session ||
+			busy ||
+			controller.switchingRole ||
+			controller.page === 'more' ||
+			Boolean(
+				(controller.report && controller.dirty) ||
+				controller.freeText.trim() ||
+				controller.preview ||
+				controller.textOpen ||
+				workPicker ||
+				objectForm ||
+				projectOpen ||
+				userForm ||
+				controller.parsing ||
+				controller.audioInput.recording ||
+				controller.audioInput.pending,
+			),
+		{ page, project, day: controller.day, objectSection: controller.objectSection },
+	);
 	if (failure && !session)
 		return (
 			<div className="launch-state">

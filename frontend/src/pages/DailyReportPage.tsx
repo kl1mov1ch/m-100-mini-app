@@ -13,6 +13,8 @@ import { Money, nf, shortName, unit } from '../lib/format';
 import { AdminDailyReport } from '../components/AdminDailyReport';
 import { QuickReportComposer } from '../components/QuickReportComposer';
 import { ReportDraftFields } from '../components/ReportDraftFields';
+import { WorkEstimate, WorkOverruns } from '../components/WorkEstimate';
+import { estimateBalance } from '../lib/position-volume';
 export function DailyReportPage({ workspace }: { workspace: WorkspaceView }) {
 	if (workspace.isAdmin) return <AdminDailyReport workspace={workspace} />;
 	return <MasterDailyReport workspace={workspace} />;
@@ -44,6 +46,7 @@ function MasterDailyReport({ workspace }: { workspace: WorkspaceView }) {
 		each,
 		extra,
 		oldLines,
+		estimateLines,
 		nextLines,
 		deltaIds,
 		dirty,
@@ -53,6 +56,15 @@ function MasterDailyReport({ workspace }: { workspace: WorkspaceView }) {
 		openObjectSection,
 		restoreDay,
 	} = workspace;
+	const workBalances = Object.entries(nextLines).flatMap(([id, quantity]) => {
+		const position = byId[id];
+		return position
+			? [{ position, balance: estimateBalance(position, estimateLines[id], quantity) }]
+			: [];
+	});
+	const balances = Object.fromEntries(
+		workBalances.map(({ position, balance }) => [position.id, balance]),
+	);
 	return !data ? (
 		<div className="empty-panel">
 			{active ? <Spin /> : <Empty description="Сначала добавьте объект" />}
@@ -138,12 +150,19 @@ function MasterDailyReport({ workspace }: { workspace: WorkspaceView }) {
 			</div>
 			{textVisible && <QuickReportComposer workspace={workspace} inline />}
 			<ReportDraftFields workspace={workspace} />
+			<WorkOverruns items={workBalances} confirmed={!!report?.revision && !dirty} />
 			<div className="work-list">
 				{lines.map((l, i) => {
 					const p = l.item_id ? byId[l.item_id] : null;
 					const changed = p && oldLines[p.id] !== l.quantity;
+					const balance = p ? balances[p.id] : null;
 					return (
-						<section className={'work-card ' + (!p ? 'needs-review' : '')} key={i}>
+						<section
+							className={
+								'work-card ' + (!p ? 'needs-review' : balance?.excess ? 'work-overrun' : '')
+							}
+							key={i}
+						>
 							<div className="work-card-heading">
 								<button
 									className="work-name"
@@ -198,12 +217,12 @@ function MasterDailyReport({ workspace }: { workspace: WorkspaceView }) {
 									</strong>
 								</div>
 							</div>
+							{p && balance && <WorkEstimate balance={balance} unit={p.unit} />}
 							<div className="work-card-foot">
 								<span>
 									{p ? (
 										<>
-											<Money value={p.rate} /> / {unit(p.unit)} <i />
-											Остаток {nf.format(p.remaining)} {unit(p.unit)}
+											<Money value={p.rate} /> / {unit(p.unit)}
 										</>
 									) : (
 										'Уточните позицию'

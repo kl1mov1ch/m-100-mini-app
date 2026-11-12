@@ -1,6 +1,6 @@
 import { App as AntApp } from 'antd';
 import 'dayjs/locale/ru';
-import { createRef, useEffect, useRef, useState } from 'react';
+import { createRef, useEffect, useEffectEvent, useRef, useState } from 'react';
 import dayjs from '../lib/date';
 
 import { previewUser, request, RequestError } from '../lib/api';
@@ -9,6 +9,8 @@ import { ReportReviewEditor, type ReportReviewHandle } from '../components/Repor
 import { Money } from '../lib/format';
 import { downloadReport } from '../lib/report-download';
 import { ReportConfirmation } from '../ReportConfirmation';
+import { estimateBalance } from '../lib/position-volume';
+import { takeReleaseNavigation } from './useAppRelease';
 import type {
 	Change,
 	BitrixRead,
@@ -31,26 +33,32 @@ import { useAudioInput } from './useAudioInput';
 import { useTelegramNavigation } from './useTelegramNavigation';
 export function useWorkspace() {
 	const { message, modal } = AntApp.useApp();
+	const [releaseNavigation] = useState(takeReleaseNavigation);
 	const [session, setSession] = useState<Session | null>(null),
 		[data, setData] = useState<Data | null>(null),
 		[failure, setFailure] = useState('');
 	const [page, setPage] = useState(
-			new URLSearchParams(location.search).has('object') ? 'today' : 'objects',
+			releaseNavigation?.page ||
+				(new URLSearchParams(location.search).has('object') ? 'today' : 'objects'),
 		),
 		[project, setProject] = useState(
-			new URLSearchParams(location.search).get('object') ||
+			releaseNavigation?.project ||
+				new URLSearchParams(location.search).get('object') ||
 				localStorage.getItem('selected-object' + (previewUser || '')) ||
 				'default',
 		),
 		[busy, setBusy] = useState(false);
-	const [objectSection, setObjectSection] = useState<ObjectSection>('reports');
+	const [objectSection, setObjectSection] = useState<ObjectSection>(
+		releaseNavigation?.objectSection || 'reports',
+	);
 	const [switchingRole, setSwitchingRole] = useState(false);
 	const [readingBitrix, setReadingBitrix] = useState(false);
 	const bitrixRead = useRef<AbortController | null>(null);
 	const editorState = useRef({ project, day: '', dirty: false });
 	const roleSwitch = useRef(false);
-	const [day, setDay] = useState(dayjs().format('YYYY-MM-DD')),
+	const [day, setDay] = useState(releaseNavigation?.day || dayjs().format('YYYY-MM-DD')),
 		[report, setReport] = useState<Report | null>(null),
+		[estimateReport, setEstimateReport] = useState<Report | null>(null),
 		[lines, setLines] = useState<Line[]>([]),
 		[crew, setCrew] = useState(1),
 		[reportText, setReportText] = useState('');
@@ -156,15 +164,21 @@ export function useWorkspace() {
 	const loadData = async (id = project, keepEditor = false, onlyIfClean = false) => {
 		const version = ++selectionVersion.current;
 		const d = await request<Data>('/bootstrap', undefined, id);
-		const r = keepEditor
-			? null
-			: day === d.config.today
+		const r =
+			day === d.config.today
 				? d.report
-				: await request<Report>('/report/' + day, undefined, id);
+				: keepEditor && !onlyIfClean
+					? null
+					: await request<Report>('/report/' + day, undefined, id);
 		if (version !== selectionVersion.current) return;
 		setData(d);
-		setUrl(d.config.public_url);
-		if (r && (!onlyIfClean || (!editorState.current.dirty && editorState.current.day === day))) {
+		if (!onlyIfClean) setUrl(d.config.public_url);
+		if (r) setEstimateReport(r);
+		if (
+			!keepEditor &&
+			r &&
+			(!onlyIfClean || (!editorState.current.dirty && editorState.current.day === day))
+		) {
 			setReport(r);
 			setLines(r.lines);
 			setCrew(r.crew_count);
@@ -194,6 +208,7 @@ export function useWorkspace() {
 			return;
 		}
 		setData(null);
+		setEstimateReport(null);
 		localStorage.setItem('selected-object' + (previewUser || ''), project);
 		loadData().catch((e) => setFailure(e.message));
 	}, [project, session?.user.role]);
@@ -273,6 +288,7 @@ export function useWorkspace() {
 			if (version !== selectionVersion.current) return;
 			setDay(value);
 			setReport(r);
+			setEstimateReport(r);
 			setLines(r.lines);
 			setCrew(r.crew_count);
 			setReportText(r.text || '');
@@ -322,8 +338,16 @@ export function useWorkspace() {
 	const cents = Math.round(amount * 100),
 		each = Math.floor(cents / crew) / 100,
 		extra = cents % crew;
-	const oldLines = Object.fromEntries((report?.lines || []).map((l) => [l.item_id, l.quantity]));
-	const nextLines = Object.fromEntries(lines.map((l) => [l.item_id, l.quantity]));
+	const oldLines: Record<string, number | null> = Object.fromEntries(
+		(report?.lines || []).map((l) => [l.item_id, l.quantity]),
+	);
+	const estimateLines: Record<string, number | null> =
+		estimateReport?.date === day && estimateReport.revision >= (report?.revision || 0)
+			? Object.fromEntries(estimateReport.lines.map((line) => [line.item_id, line.quantity]))
+			: oldLines;
+	const nextLines: Record<string, number | null> = Object.fromEntries(
+		lines.map((l) => [l.item_id, l.quantity]),
+	);
 	const deltaIds = [...new Set([...Object.keys(oldLines), ...Object.keys(nextLines)])].filter(
 		(id) => oldLines[id] !== nextLines[id],
 	);
@@ -366,6 +390,26 @@ export function useWorkspace() {
 			}
 		}
 	};
+	const refreshVisibleTable = useEffectEvent(() => {
+		if (
+			!document.hidden &&
+			!busy &&
+			!preview &&
+			!document.querySelector('.report-confirmation-modal')
+		)
+			void refreshBitrix();
+	});
+	useEffect(() => {
+		const refreshOnReturn = () => refreshVisibleTable();
+		const timer = window.setInterval(refreshOnReturn, 45000);
+		document.addEventListener('visibilitychange', refreshOnReturn);
+		window.addEventListener('online', refreshOnReturn);
+		return () => {
+			window.clearInterval(timer);
+			document.removeEventListener('visibilitychange', refreshOnReturn);
+			window.removeEventListener('online', refreshOnReturn);
+		};
+	}, []);
 	useEffect(() => {
 		setReadingBitrix(false);
 		return () => {
@@ -464,8 +508,14 @@ export function useWorkspace() {
 					positions={byId}
 					lines={next}
 					crew={nextCrew}
+					estimateLines={estimateLines}
 					connected={!!data?.config.has_webhook && data?.config.source === 'bitrix'}
-					onValidityChange={(valid) => reviewModal.update({ okButtonProps: { disabled: !valid } })}
+					onValidityChange={(valid, exceeds) =>
+						reviewModal.update({
+							okText: exceeds ? 'Подтвердить перерасход' : 'Подтвердить и отправить',
+							okButtonProps: { disabled: !valid },
+						})
+					}
 				/>
 			),
 			okText: 'Подтвердить и отправить',
@@ -476,7 +526,9 @@ export function useWorkspace() {
 				const values = editor.current?.getValues();
 				if (!values) throw new Error('Дождитесь открытия отчёта');
 				const exceeds = values.lines.some(
-					(line) => line.quantity > byId[line.item_id].remaining + (oldLines[line.item_id] || 0),
+					(line) =>
+						estimateBalance(byId[line.item_id], estimateLines[line.item_id], line.quantity).excess >
+						0,
 				);
 				setBusy(true);
 				parsedEditVersion.current++;
@@ -1024,6 +1076,7 @@ export function useWorkspace() {
 		each,
 		extra,
 		oldLines,
+		estimateLines,
 		nextLines,
 		deltaIds,
 		dirty,

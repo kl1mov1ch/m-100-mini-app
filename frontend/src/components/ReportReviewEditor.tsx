@@ -6,6 +6,8 @@ import { useConfirmWorkRemoval } from '../hooks/useConfirmWorkRemoval';
 import { calculateAmount, mergeWorkQuantities } from '../lib/calculation';
 import { countLabel, Money, nf, unit } from '../lib/format';
 import type { Position, Report } from '../types';
+import { estimateBalance } from '../lib/position-volume';
+import { WorkEstimate, WorkOverruns } from './WorkEstimate';
 import './review-editor.css';
 
 export type ReportReviewValues = {
@@ -19,7 +21,8 @@ type ReviewProps = {
 	lines: { item_id: string; quantity: number }[];
 	crew: number;
 	connected: boolean;
-	onValidityChange: (valid: boolean) => void;
+	estimateLines: Record<string, number | null>;
+	onValidityChange: (valid: boolean, exceeds: boolean) => void;
 };
 
 export const ReportReviewEditor = forwardRef<ReportReviewHandle, ReviewProps>(
@@ -44,7 +47,6 @@ export const ReportReviewEditor = forwardRef<ReportReviewHandle, ReviewProps>(
 			Object.values(quantities).every(
 				(value) => value !== null && Number.isFinite(value) && value >= 0 && value <= 1e8,
 			);
-		useEffect(() => props.onValidityChange(valid), [valid]);
 		useImperativeHandle(ref, () => ({
 			getValues: () => {
 				if (!valid) throw new Error('Проверьте объёмы и количество работников');
@@ -81,15 +83,25 @@ export const ReportReviewEditor = forwardRef<ReportReviewHandle, ReviewProps>(
 				rate: props.positions[id]?.rate || 0,
 			})),
 		);
-		const exceeds = Object.entries(quantities).some(
-			([id, quantity]) => quantity! > (props.positions[id]?.remaining || 0) + (before[id] || 0),
-		);
 		const rows = [...new Set([...Object.keys(before), ...Object.keys(quantities)])];
+		const balances = Object.fromEntries(
+			rows.flatMap((id) => {
+				const position = props.positions[id];
+				return position
+					? [[id, estimateBalance(position, props.estimateLines[id], quantities[id])] as const]
+					: [];
+			}),
+		);
+		const overrunItems = rows
+			.filter((id) => quantities[id] && balances[id]?.excess)
+			.map((id) => ({ position: props.positions[id], balance: balances[id] }));
+		useEffect(
+			() => props.onValidityChange(valid, !!overrunItems.length),
+			[valid, !!overrunItems.length],
+		);
 		const workContent = (
 			<div className="review-editor">
-				<p className="review-editor-hint">
-					Все работы объединены. Здесь можно изменить объёмы, состав работ и бригаду.
-				</p>
+				<WorkOverruns items={overrunItems} />
 				<label className="review-editor-crew">
 					<span>
 						<Users size={16} /> Работников
@@ -109,7 +121,13 @@ export const ReportReviewEditor = forwardRef<ReportReviewHandle, ReviewProps>(
 					const previous = before[id] || 0;
 					const next = quantities[id] ?? (id in quantities ? null : 0);
 					return (
-						<section className={'review-editor-work ' + (next === 0 ? 'removed' : '')} key={id}>
+						<section
+							className={
+								'review-editor-work ' +
+								(next === 0 ? 'removed' : balances[id]?.excess ? 'work-overrun' : '')
+							}
+							key={id}
+						>
 							<div className="review-editor-heading">
 								<b>{position.name}</b>
 								<Button
@@ -166,6 +184,7 @@ export const ReportReviewEditor = forwardRef<ReportReviewHandle, ReviewProps>(
 									</strong>
 								</div>
 							</div>
+							<WorkEstimate balance={balances[id]} unit={position.unit} />
 							{editing === id ? (
 								<Select<string>
 									autoFocus
@@ -215,7 +234,7 @@ export const ReportReviewEditor = forwardRef<ReportReviewHandle, ReviewProps>(
 				amountBefore={props.report.payroll.amount}
 				amountAfter={amount}
 				connected={props.connected}
-				exceeds={exceeds}
+				exceeds={false}
 				renderMoney={(value) => <Money value={value} />}
 				workContent={workContent}
 				crewContent={null}
