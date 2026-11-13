@@ -15,7 +15,7 @@ validation provide these steps.
 Conversion starts at the end of the PDF and checkpoints every page. One initial
 page, then batches of three, alternate with AI extraction. The first results are
 read-only until the entire document has been processed. Every page is eventually
-included in the downloadable text archive; drawings and general information are
+included in the internal text archive; drawings and general information are
 excluded from work extraction. Unknown page types require scope review. Unruled
 or poorly recognized tables may require manual review; no accuracy percentage is
 guaranteed.
@@ -24,7 +24,7 @@ Each file supplies its own literal section/subsection headings. Context carries
 only across consecutive pages in the same file. Confirming a row stores its name,
 section, subsection and unit in an owner-specific ORM table. This starts empty,
 survives removal of source jobs, and never stores quantities or rates. BM25 selects
-relevant confirmed examples and powers text search without additional LLM calls.
+relevant confirmed examples without additional LLM calls.
 This is a confirmed-example memory, not automatic model fine-tuning.
 
 Source hashes and parser revisions protect conversion caches. Deleting a job

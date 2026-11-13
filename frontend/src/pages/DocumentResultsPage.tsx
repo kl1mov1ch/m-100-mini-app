@@ -8,7 +8,7 @@ import type { DocumentJob, DocumentGroup, DocumentSource } from './document-type
 import { DocumentPublishPanel } from './DocumentPublishPanel';
 import { CompactRow } from '../components/CompactRow';
 
-export function SourcePreview({
+function SourcePreview({
 	jobId,
 	page,
 	highlights,

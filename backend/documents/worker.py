@@ -236,9 +236,22 @@ def process_docling(ident, payload, path, total):
             continue
         from .selection import classify_page
 
-        kind = classify_page(record["text"])
+        kind = classify_page(record.get("raw_text", record["text"]))
+        if kind == "uncertain":
+            kind = classify_page(record["text"])
         digest = text_digest(record["text"])
-        duplicate = next((row["page"] for row in results if row.get("digest") == digest), None)
+        duplicate = (
+            next(
+                (
+                    row["page"]
+                    for row in results
+                    if row.get("digest") == digest and row["kind"] == "specification"
+                ),
+                None,
+            )
+            if kind == "specification"
+            else None
+        )
         if kind == "specification":
             selected.append(number)
             new_selected = True

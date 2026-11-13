@@ -1,6 +1,5 @@
 """Local BM25 ranking. Queries never change source quantities or section names."""
 
-import json
 import math
 import re
 from collections import Counter
@@ -30,21 +29,6 @@ def rank(query, records):
         if score > 0:
             result.append({**record, "score": round(score, 5)})
     return sorted(result, key=lambda row: (-row["score"], row.get("page", 0)))
-
-
-def search(path, query, signature, limit=12):
-    records = []
-    # Page JSON is already OCR'd and source-bound; searching performs no OCR or LLM call.
-    for page in sorted((path / "docling").glob("page-*.json")):
-        value = json.loads(page.read_text(encoding="utf-8"))
-        if value.get("source") != signature:
-            continue
-        number = int(page.stem.split("-")[-1])
-        lines = value.get("analysis_text", value["text"]).splitlines()
-        for index, line in enumerate(lines):
-            if len(line.strip()) > 5:
-                records.append({"page": number, "line": index + 1, "text": line[:1600]})
-    return rank(query, records)[:limit]
 
 
 def relevant_examples(query, examples):

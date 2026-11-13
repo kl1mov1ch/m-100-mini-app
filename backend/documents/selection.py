@@ -13,7 +13,7 @@ def classify_page(text):
     value = re.sub(r"\s+", " ", text.casefold().replace("ё", "е"))
     value = value.translate(str.maketrans("acekmoptx", "асекмортх"))
     value = re.sub(r"[-–]\s+", "", value)
-    if re.search(r"ведомость\s+(?:чертежей|ссылочных)|общие\s+(?:данные|указания)", value):
+    if re.search(r"ведомость\s+(?:чертежей|ссылочных)|об[щш]ие\s+(?:данные|указания)", value):
         return "drawing"
     if re.search(
         r"спецификаци[яи]\s+(?:оборудован|издел|материал)|ведомость\s+(?:объем|объём|работ|материал|оборудован)",

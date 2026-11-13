@@ -16,6 +16,7 @@ def converted_page(path, number, signature):
         return None
     return {
         "text": result.get("analysis_text", result["text"]),
+        "raw_text": result["text"],
         "layout": result.get("analysis_layout", result["layout"]),
         "confidence": result["confidence"],
     }

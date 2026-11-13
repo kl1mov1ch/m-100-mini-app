@@ -763,30 +763,3 @@
 .document-compose-toggle[aria-expanded='true'] svg {
 	transform: rotate(180deg);
 }
-.document-text-search > .ant-input-search {
-	margin: 12px 0;
-}
-.document-search-hit {
-	display: flex;
-	align-items: baseline;
-	gap: 10px;
-	width: 100%;
-	padding: 12px 0;
-	border: 0;
-	border-bottom: 1px solid var(--ios-separator);
-	color: var(--ios-label);
-	background: transparent;
-	text-align: left;
-}
-.document-search-hit strong {
-	flex: none;
-	font-size: 12px;
-	color: var(--ios-blue);
-}
-.document-search-hit span {
-	min-width: 0;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-	font-size: 13px;
-}

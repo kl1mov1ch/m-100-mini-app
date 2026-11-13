@@ -11,7 +11,6 @@ import {
 import { useEffect, useRef, useState } from 'react';
 import type { WorkspaceView } from '../App';
 import { request } from '../lib/api';
-import { DocumentTextSearch } from './DocumentTextSearch';
 import { DocumentResultsPage } from './DocumentResultsPage';
 import { DocumentProgress, documentActive } from './DocumentProgress';
 import type { DocumentJob } from './document-types';
@@ -402,9 +401,6 @@ export function DocumentsPage({ workspace }: { workspace: WorkspaceView }) {
 						selected.status,
 					)) && <DocumentProgress job={selected} resume={() => void resume()} />}
 
-			{selected && selected.payload.engine === 'docling' && (
-				<DocumentTextSearch key={selected.id} job={selected} />
-			)}
 			{selected && !!selected.payload.groups?.length && (
 				<DocumentResultsPage
 					key={selected.id}

@@ -1,7 +1,6 @@
 import json
 
 from test_workspaces import client as client
-from test_workspaces import grant
 
 from backend.documents import conversion, repository, retrieval, worker
 from backend.documents.docling_runner import ENGINE, native_lines
@@ -61,40 +60,6 @@ def test_source_coordinates_and_cached_conversion_are_not_recomputed(tmp_path, m
     assert steps[-1]["done"] == 2
 
 
-def test_search_is_owner_scoped_and_text_download_revoked_after_deletion(
-    client, monkeypatch, tmp_path
-):
-    monkeypatch.setattr(repository.store, "ROOT", tmp_path)
-    grant(client, "9101")
-    job = repository.create("local-admin", "Вентиляция.pdf")
-    job.status = "needs_review"
-    job.payload = {"file_hash": "abc", "text_complete": True}
-    with repository.session() as database:
-        database.add(job)
-    folder = repository.folder(job.id) / "docling"
-    folder.mkdir(parents=True)
-    (folder / "document.md").write_text("Воздуховоды — 12 м", encoding="utf-8")
-    (folder / "page-3.json").write_text(
-        json.dumps(
-            {"source": "abc", "text": "Объект\nВоздуховоды стальные — 12 м\nОборудование — 4 шт."}
-        ),
-        encoding="utf-8",
-    )
-    response = client.get(f"/api/documents/{job.id}/search?q=воздуховод")
-    assert response.status_code == 200 and response.json()["results"][0]["page"] == 3
-    assert "12 м" in response.json()["results"][0]["text"]
-    assert (
-        client.get(
-            f"/api/documents/{job.id}/search?q=воздуховод", headers={"X-Preview-User": "9101"}
-        ).status_code
-        == 404
-    )
-    ticket = client.get(f"/api/documents/{job.id}/text.md?prepare=true").json()
-    assert client.get(ticket["url"]).text == "Воздуховоды — 12 м"
-    assert client.post(f"/api/documents/{job.id}/delete", json={}).status_code == 200
-    assert client.get(ticket["url"]).status_code == 404
-
-
 def test_bm25_prioritises_matching_structure_without_inventing_numbers():
     rows = [
         {"text": "Воздуховоды стальные — 12 м", "page": 5},
@@ -139,6 +104,16 @@ def test_docling_streams_first_specification_to_ai_before_whole_file(client, mon
             "confidence": 85,
         }
         (target / "page-3.json").write_text(json.dumps(value), encoding="utf-8")
+        (target / "page-1.json").write_text(
+            json.dumps(
+                {
+                    **value,
+                    "text": "Обшие данные. Ведомость чертежей.",
+                    "analysis_text": value["text"],
+                }
+            ),
+            encoding="utf-8",
+        )
         report({"done": 1, "total": 3, "page": 3})
         return False
 
@@ -146,8 +121,9 @@ def test_docling_streams_first_specification_to_ai_before_whole_file(client, mon
     worker.process_docling(job.id, payload, path, 3)
     with repository.session() as database:
         saved = database.get(repository.DocumentJob, job.id)
-        assert saved.status == "ai_queued" and saved.processed == 1
+        assert saved.status == "ai_queued" and saved.processed == 2
         assert saved.payload["selected_specifications"] == [3]
+        assert saved.payload["page_results"][0]["kind"] == "excluded_drawing"
         assert saved.payload["selection_streaming"] and not saved.payload["text_complete"]
         streaming_payload = saved.payload
     monkeypatch.setattr(worker.matcher, "provider", lambda *a: {"key": "test"})

@@ -6,7 +6,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from typing import Literal
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -366,37 +366,6 @@ def preview_page(ident: str, page: int, request: Request):
         media_type="image/jpeg",
         headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"},
     )
-
-
-@router.get("/{ident}/text.md")
-def document_text(ident: str, request: Request, prepare: bool = False):
-    with session() as database:
-        job = owned(database, ident, request.state.user["telegram_id"])
-        if not job.payload.get("text_complete"):
-            raise HTTPException(409, "Преобразование текста ещё продолжается")
-        filename = Path(job.name).stem + ".md"
-
-    def render(user):
-        with session() as database:
-            owned(database, ident, user["telegram_id"])
-        path = folder(ident) / "docling" / "document.md"
-        if not path.is_file():
-            raise HTTPException(404, "Текст документа не найден")
-        return path.read_bytes()
-
-    return report_export(
-        request.state.user, filename, "text/markdown; charset=utf-8", render, prepare
-    )
-
-
-@router.get("/{ident}/search")
-def search_text(ident: str, request: Request, q: str = Query(min_length=2, max_length=300)):
-    from .retrieval import search
-
-    with session() as database:
-        job = owned(database, ident, request.state.user["telegram_id"])
-        signature = job.payload.get("file_hash", "")
-    return {"results": search(folder(ident), q, signature)}
 
 
 @router.get("/{ident}/marked.pdf")
