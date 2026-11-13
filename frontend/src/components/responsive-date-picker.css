@@ -113,3 +113,19 @@
 	background: var(--ios-accent);
 	color: var(--ios-surface);
 }
+
+.date-control-cell[data-work='true']::after {
+	content: '';
+	position: absolute;
+	bottom: 3px;
+	width: 4px;
+	height: 4px;
+	border-radius: 50%;
+	background: var(--ios-success);
+}
+.date-control-cell[data-in-range='true']:not([aria-pressed='true']) {
+	background: var(--ios-accent-fill);
+}
+.date-control-cell[aria-pressed='true']::after {
+	background: white;
+}

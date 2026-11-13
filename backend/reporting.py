@@ -124,6 +124,7 @@ def project_summary(p, selected_date=None, include_table_review=True):
             "today_crew": current["crew_count"] if current else None,
             "today_per_person": current["per_person"] if current else 0,
             "today_positions": current["positions"] if current else 0,
+            "today_sync_status": current["sync_status"] if current else None,
             "today_confirmed": bool(
                 current and current["revision"] > 0 and current["positions"] > 0
             ),

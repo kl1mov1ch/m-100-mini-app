@@ -15,7 +15,7 @@ export const telegramLightTheme: ThemeConfig = {
 		colorBgElevated: '#ffffff',
 		colorBgLayout: telegramLightBackground,
 		colorSuccess: '#187943',
-		colorWarning: '#654388',
+		colorWarning: '#9a701b',
 		colorError: '#bd252d',
 		borderRadius: 10,
 		borderRadiusLG: 14,

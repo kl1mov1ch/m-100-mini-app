@@ -9,6 +9,7 @@ export type CompactRowProps = {
 	meta?: ReactNode;
 	leading?: ReactNode;
 	attention?: boolean;
+	status?: 'pending' | 'sent';
 	className?: string;
 	dialog?: boolean;
 	onClick: () => void;
@@ -21,6 +22,7 @@ export function CompactRow({
 	meta,
 	leading,
 	attention,
+	status,
 	className = '',
 	dialog = true,
 	onClick,
@@ -28,7 +30,7 @@ export function CompactRow({
 	return (
 		<button
 			type="button"
-			className={`compact-row ${attention ? 'compact-row-attention' : ''} ${className}`}
+			className={`compact-row ${attention ? 'compact-row-attention' : ''} ${status ? 'compact-row-' + status : ''} ${className}`}
 			onClick={onClick}
 			title={title}
 			aria-haspopup={dialog ? 'dialog' : undefined}
@@ -52,8 +54,9 @@ export function CompactRow({
 export function CompactWorkEditor({
 	children,
 	hint,
+	footer,
 	...props
-}: Omit<CompactRowProps, 'onClick'> & { children: ReactNode; hint?: string }) {
+}: Omit<CompactRowProps, 'onClick'> & { children: ReactNode; hint?: string; footer?: ReactNode }) {
 	const [open, setOpen] = useState(false);
 	const [present, setPresent] = useState(false);
 	return (
@@ -74,9 +77,13 @@ export function CompactWorkEditor({
 					afterClose={() => setPresent(false)}
 					onCancel={() => setOpen(false)}
 					footer={
-						<Button type="primary" onClick={() => setOpen(false)}>
-							Готово
-						</Button>
+						footer === undefined ? (
+							<Button type="primary" onClick={() => setOpen(false)}>
+								Готово
+							</Button>
+						) : (
+							footer
+						)
 					}
 				>
 					<div className="compact-work-content">{children}</div>

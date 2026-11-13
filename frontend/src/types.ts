@@ -18,6 +18,7 @@ export type Project = {
 	today_per_person: number;
 	today_positions: number;
 	today_confirmed: boolean;
+	today_sync_status?: string | null;
 	total_amount: number;
 	pending: number;
 	connected: boolean;

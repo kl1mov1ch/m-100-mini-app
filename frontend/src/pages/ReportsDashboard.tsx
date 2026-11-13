@@ -2,6 +2,7 @@ import { App, Button, Empty, Select, Spin, Modal } from 'antd';
 import { useEffect, useState } from 'react';
 import { ArrowDownToLine, History, RefreshCw, SlidersHorizontal } from 'lucide-react';
 import { DatePicker } from '../components/ResponsiveDatePicker';
+import { HistoryReportDetails } from '../components/HistoryReportDetails';
 import { Status } from '../components/SyncStatus';
 import { CompactWorkEditor } from '../components/CompactRow';
 import { request } from '../lib/api';
@@ -12,6 +13,7 @@ import type { HistoryRow } from '../types';
 import type { WorkspaceView } from '../App';
 
 type Analytics = {
+	work_dates?: string[];
 	rows: (HistoryRow & { project_id: string; project_name: string; owner_name: string })[];
 	summary: {
 		amount: number;
@@ -132,13 +134,22 @@ export function ReportsPage({ workspace }: { workspace: WorkspaceView }) {
 							placeholder="С даты"
 							value={start ? dayjs(start) : null}
 							format="DD.MM.YYYY"
-							onChange={(date) => setStart(date?.format('YYYY-MM-DD') || '')}
+							workDates={data?.work_dates || []}
+							range={{ start, end }}
+							onChange={(date) => {
+								const next = date?.format('YYYY-MM-DD') || '';
+								setStart(next);
+								if (end && next > end) setEnd('');
+							}}
 						/>
 						<DatePicker
 							aria-label="Конец периода"
 							placeholder="По дату"
 							value={end ? dayjs(end) : null}
 							format="DD.MM.YYYY"
+							workDates={data?.work_dates || []}
+							range={{ start, end }}
+							disabledDate={(date) => !!start && date.format('YYYY-MM-DD') < start}
 							onChange={(date) => setEnd(date?.format('YYYY-MM-DD') || '')}
 						/>
 					</div>
@@ -226,10 +237,28 @@ export function ReportsPage({ workspace }: { workspace: WorkspaceView }) {
 				</section>
 			)}
 			<Spin spinning={loading}>
+				<div className="status-legend">
+					<span>
+						<i />
+						Не отправлен
+					</span>
+					<span className="sent">
+						<i />В Битрикс24
+					</span>
+				</div>
 				<div className="history-list compact-list">
 					{data?.rows.map((row) => (
 						<CompactWorkEditor
 							key={row.project_id + row.date}
+							footer={
+								<Button
+									type="primary"
+									block
+									onClick={() => openHistoryReport(row.project_id, row.date)}
+								>
+									{isAdmin ? 'Посмотреть работы' : 'Открыть и изменить отчёт'}
+								</Button>
+							}
 							title={row.project_name}
 							description={
 								<>
@@ -240,7 +269,7 @@ export function ReportsPage({ workspace }: { workspace: WorkspaceView }) {
 							}
 							value={<Money value={row.amount} />}
 							meta={<Status status={row.sync_status} />}
-							attention={row.sync_status === 'error'}
+							status={['synced', 'imported'].includes(row.sync_status) ? 'sent' : 'pending'}
 							leading={
 								<span className="compact-date">
 									<b>{dayjs(row.date).format('DD')}</b>
@@ -252,34 +281,24 @@ export function ReportsPage({ workspace }: { workspace: WorkspaceView }) {
 								{dayjs(row.date).format('D MMMM YYYY')} · {row.owner_name}
 							</p>
 
-							<div className="history-finance">
-								<span>
-									За день
-									<strong>
+							<dl className="report-detail-summary">
+								<div>
+									<dt>За день</dt>
+									<dd>
 										<Money value={row.amount} />
-									</strong>
-								</span>
-								<span>
-									{row.crew_count ? 'На человека' : 'Бригада'}
-									<strong>
-										{row.crew_count ? <Money value={row.per_person} /> : <small>Не указана</small>}
-									</strong>
-								</span>
-							</div>
-							<div className="history-bottom">
-								<span>
-									{countLabel(row.positions, 'работа', 'работы', 'работ')}
-									{row.crew_count ? ` · ${row.crew_count} чел.` : ''}
-								</span>
-								<Status status={row.sync_status} />
-							</div>
-							<Button
-								type="primary"
-								block
-								onClick={() => openHistoryReport(row.project_id, row.date)}
-							>
-								{isAdmin ? 'Посмотреть работы' : 'Открыть и изменить отчёт'}
-							</Button>
+									</dd>
+								</div>
+								<div>
+									<dt>Бригада</dt>
+									<dd>{row.crew_count ? row.crew_count + ' чел.' : 'Не указана'}</dd>
+								</div>
+								<div>
+									<dt>На человека</dt>
+									<dd>{row.crew_count ? <Money value={row.per_person} /> : '—'}</dd>
+								</div>
+							</dl>
+							<Status status={row.sync_status} />
+							<HistoryReportDetails project={row.project_id} date={row.date} />
 						</CompactWorkEditor>
 					))}
 				</div>

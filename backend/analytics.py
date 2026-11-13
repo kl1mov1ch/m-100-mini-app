@@ -26,9 +26,12 @@ def collect(user, start=None, end=None, project_id=None, owner_id=None, sort="da
     if owner_id:
         projects = [project for project in projects if project["owner_id"] == owner_id]
     rows = []
+    work_dates = set()
     for project in projects:
         with store.connect(project["db_path"]) as database:
             for row in history(database):
+                if row["positions"] > 0:
+                    work_dates.add(row["date"])
                 if (
                     start
                     and row["date"] < start.isoformat()
@@ -77,6 +80,7 @@ def collect(user, start=None, end=None, project_id=None, owner_id=None, sort="da
     }
     return {
         "rows": rows,
+        "work_dates": sorted(work_dates),
         "summary": summary,
         "project_ids": [project["id"] for project in projects],
         "period_start": start.isoformat() if start else None,

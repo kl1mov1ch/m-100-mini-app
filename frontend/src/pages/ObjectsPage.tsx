@@ -40,6 +40,15 @@ export function ObjectsPage({ workspace }: { workspace: WorkspaceView }) {
 			</div>
 			{isAdmin && <AdminOverview workspace={workspace} />}
 			{!isAdmin && session.projects.length > 0 && <QuickReportComposer workspace={workspace} />}
+			<div className="status-legend">
+				<span>
+					<i />
+					Не отправлен
+				</span>
+				<span className="sent">
+					<i />В Битрикс24
+				</span>
+			</div>
 			<div className="object-grid compact-list">
 				{projects.map((p) => (
 					<CompactRow
@@ -65,16 +74,21 @@ export function ObjectsPage({ workspace }: { workspace: WorkspaceView }) {
 						meta={
 							<>
 								{summaryDate === session.today ? 'Сегодня' : dayjs(summaryDate).format('D MMM')}
-								{p.pending && p.table?.write_connected
+								{p.pending
 									? ' · ' + p.pending + ' не отправл.'
-									: p.today_crew
-										? ' · ' + p.today_crew + ' чел.'
+									: ['synced', 'imported'].includes(p.today_sync_status || '')
+										? ' · в Битрикс24'
 										: p.today_confirmed
-											? ' · сдан'
+											? ' · в приложении'
 											: ' · нет отчёта'}
 							</>
 						}
 						attention={!!p.table?.pending_review || (!!p.pending && !!p.table?.write_connected)}
+						status={
+							p.pending > 0 || !['synced', 'imported'].includes(p.today_sync_status || '')
+								? 'pending'
+								: 'sent'
+						}
 						onClick={() => selectObject(p.id)}
 					/>
 				))}

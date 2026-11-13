@@ -13,6 +13,7 @@ type DatePickerProps = {
 	placeholder?: string;
 	allowClear?: boolean;
 	workDates?: string[];
+	range?: { start: string; end: string };
 	disabledDate?: (date: Dayjs) => boolean;
 	onChange: (date: Dayjs | null) => void;
 };
@@ -24,6 +25,7 @@ export function DatePicker({
 	placeholder = 'Выбрать дату',
 	allowClear = true,
 	workDates = [],
+	range,
 	disabledDate,
 	onChange,
 }: DatePickerProps) {
@@ -123,6 +125,14 @@ export function DatePicker({
 									aria-current={isDay && date.isSame(today, 'day') ? 'date' : undefined}
 									aria-pressed={selected}
 									data-work={marked || undefined}
+									data-in-range={
+										(isDay &&
+											!!range?.start &&
+											!!range.end &&
+											date.format('YYYY-MM-DD') >= range.start &&
+											date.format('YYYY-MM-DD') <= range.end) ||
+										undefined
+									}
 									disabled={disabled}
 								>
 									{date.format(isDay ? 'D' : 'MMM')}
