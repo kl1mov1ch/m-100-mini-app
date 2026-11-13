@@ -99,6 +99,7 @@ def make_workbook(content, rows):
             ]
         )
     style_sheet(notes, 1, [55, 25, 75, 18])
+    book.active = next(sheet for sheet in book if is_journal(sheet))
     output = io.BytesIO()
     book.save(output)
     from ..workbook_calculation import cache_formulas

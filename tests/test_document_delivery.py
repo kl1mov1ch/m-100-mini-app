@@ -220,6 +220,7 @@ def test_publish_requires_empty_unchanged_file_and_is_idempotent(
     assert result.status_code == 200, result.text
     published = result.json()
     assert published["status"] == "published" and remote["writes"] == 1
+    assert openpyxl.load_workbook(io.BytesIO(remote["content"])).active["A2"].value == "M100 • Журнал работ"
     project_id = published["payload"]["publication"]["project_id"]
     parsed = client.get("/api/bootstrap", headers={"X-Project-Id": project_id}).json()
     assert parsed["positions"][0]["planned"] == 12
