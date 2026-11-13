@@ -1,5 +1,8 @@
+import hashlib
 import io
 import json
+import os
+import time
 
 import pytest
 from pypdf import PdfWriter
@@ -7,7 +10,7 @@ from sqlalchemy import create_engine
 from test_document_jobs import sample_pdf
 from test_workspaces import client as client
 
-from backend.documents import page_cache, progress, repository, worker
+from backend.documents import metadata, page_cache, progress, repository, worker
 
 
 def test_postgres_session_persists_changes_without_manual_flush(monkeypatch, tmp_path):
@@ -136,3 +139,19 @@ def test_restart_recovers_interrupted_job_and_metadata(client, monkeypatch, tmp_
     stamp = result["updated_at"]
     assert progress.heartbeat(job.id)
     assert client.get(f"/api/documents/{job.id}").json()["updated_at"] > stamp
+
+
+def test_complete_upload_survives_crash_before_database_transition(client, monkeypatch, tmp_path):
+    monkeypatch.setattr(repository.store, "ROOT", tmp_path)
+    job = client.post("/api/documents/reserve", json={"name": "project.pdf"}).json()
+    path = repository.folder(job["id"])
+    content = sample_pdf()
+    (path / "source.pdf").write_bytes(content)
+    progress.recover_interrupted()
+    assert client.get(f"/api/documents/{job['id']}").json()["status"] == "uploading"
+    metadata.mark_uploaded(path, len(content), hashlib.sha256(content).hexdigest())
+    os.utime(path / "upload-complete.json", (time.time() - 6, time.time() - 6))
+    progress.recover_interrupted()
+    saved = client.get(f"/api/documents/{job['id']}").json()
+    assert saved["status"] == "queued" and saved["pages"] == 1
+    assert saved["payload"]["file_hash"] == hashlib.sha256(content).hexdigest()

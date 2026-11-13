@@ -15,7 +15,7 @@ from starlette.concurrency import run_in_threadpool
 from .. import profile_webhooks
 from ..analytics import style_sheet
 from ..report_downloads import report_export
-from .metadata import page_count
+from .metadata import mark_uploaded, page_count
 from .normalization import build_groups, canonical, financial_summary, unit_value
 from .progress import notify_queue
 from .repository import DocumentJob, create, folder, owned, public, session, version
@@ -89,6 +89,7 @@ async def upload_reserved(ident: str, request: Request, background: BackgroundTa
                 digest.update(block)
         if not size:
             raise HTTPException(422, "Файл пустой")
+        mark_uploaded(path, size, digest.hexdigest())
         try:
             pages = await run_in_threadpool(page_count, path / "source.pdf")
         except ValueError as error:
@@ -234,6 +235,7 @@ async def upload(request: Request, background: BackgroundTasks):
                 digest.update(block)
         if not size:
             raise HTTPException(422, "Файл пустой")
+        mark_uploaded(destination, size, digest.hexdigest())
         try:
             job.pages = await run_in_threadpool(page_count, destination / "source.pdf")
         except ValueError as error:

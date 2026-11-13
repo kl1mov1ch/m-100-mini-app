@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 
 from .. import store
-from .metadata import page_count
+from .metadata import completed_upload, page_count
 from .repository import DocumentJob, folder, session
 
 
@@ -28,9 +28,28 @@ def recover_interrupted():
     with session() as database:
         for job in database.scalars(
             select(DocumentJob)
-            .where(DocumentJob.status.in_(["queued", "ai_queued", "extracting", "analysing"]))
+            .where(
+                DocumentJob.status.in_(
+                    ["uploading", "queued", "ai_queued", "extracting", "analysing"]
+                )
+            )
             .with_for_update()
         ):
+            if job.status == "uploading":
+                try:
+                    uploaded = completed_upload(folder(job.id))
+                    if uploaded is None:
+                        continue
+                    job.payload = {
+                        **job.payload,
+                        "file_bytes": uploaded["bytes"],
+                        "file_hash": uploaded["hash"],
+                    }
+                except ValueError as error:
+                    job.status = "failed"
+                    job.payload = {**job.payload, "notice": str(error)}
+                    job.updated_at = datetime.now(UTC)
+                    continue
             job.status = "ai_queued" if job.status in {"analysing", "ai_queued"} else "queued"
             if not job.pages:
                 try:
