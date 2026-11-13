@@ -6,7 +6,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from typing import Literal
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -15,6 +15,7 @@ from starlette.concurrency import run_in_threadpool
 from .. import profile_webhooks
 from ..analytics import style_sheet
 from ..report_downloads import report_export
+from .examples import remember
 from .metadata import mark_uploaded, page_count
 from .normalization import build_groups, canonical, financial_summary, unit_value
 from .progress import notify_queue
@@ -31,6 +32,8 @@ def document_webhooks(request: Request):
 class UploadReservation(BaseModel):
     name: str = Field(min_length=1, max_length=180)
     query: str = Field(default="", max_length=2000)
+    selection_policy: Literal["all", "specifications"] = "all"
+    engine: Literal["legacy", "docling"] = "legacy"
 
 
 @router.post("/reserve")
@@ -47,6 +50,8 @@ def reserve_upload(request: Request, body: UploadReservation):
         "automatic": True,
         "groups": [],
         "reviews": [],
+        "selection_policy": body.selection_policy,
+        "engine": body.engine,
     }
     path = folder(job.id)
     path.mkdir(parents=True, exist_ok=False)
@@ -218,7 +223,14 @@ async def upload(request: Request, background: BackgroundTasks):
     query = str(form.get("query") or "Подготовить перечень монтажных работ по проекту").strip()
     if len(query) > 2000:
         raise HTTPException(422, "Сократите запрос до 2000 символов")
-    job.payload = {**job.payload, "query": query, "automatic": True, "groups": [], "reviews": []}
+    job.payload = {
+        **job.payload,
+        "query": query,
+        "automatic": True,
+        "groups": [],
+        "reviews": [],
+        "selection_policy": "all",
+    }
     destination = folder(job.id)
     destination.mkdir(parents=True, exist_ok=False)
     try:
@@ -278,6 +290,66 @@ def get_job(ident: str, request: Request):
         return public(owned(database, ident, request.state.user["telegram_id"]))
 
 
+class RebuildInput(BaseModel):
+    version: str
+
+
+@router.post("/{ident}/rebuild")
+def rebuild(ident: str, body: RebuildInput, request: Request, background: BackgroundTasks):
+    with session() as database:
+        job = database.scalar(
+            select(DocumentJob)
+            .where(
+                DocumentJob.id == ident, DocumentJob.owner_id == request.state.user["telegram_id"]
+            )
+            .with_for_update()
+        )
+        if job is None:
+            raise HTTPException(404, "Документ не найден")
+        if job.status not in {
+            "needs_review",
+            "ready",
+            "draft",
+            "failed",
+            "needs_ai",
+            "needs_budget",
+            "text_ready",
+        }:
+            raise HTTPException(409, "Дождитесь завершения текущей обработки")
+        if version(job.updated_at) != body.version:
+            raise HTTPException(409, "Данные обновились. Откройте выборку повторно.")
+        learned = list(job.payload.get("learned_examples", []))
+        learned.extend(
+            {key: row.get(key) for key in ("name", "section", "subsection", "unit", "confirmed")}
+            for row in job.payload.get("groups", [])
+            if row.get("confirmed") and not row.get("issues")
+        )
+        remember(database, job.owner_id, job.payload.get("groups", []))
+        payload = {
+            key: value
+            for key, value in job.payload.items()
+            if key in {"file_hash", "file_bytes", "query", "query_key"}
+        }
+        job.payload = {
+            **payload,
+            "automatic": True,
+            "selection_policy": "specifications",
+            "engine": "docling",
+            "groups": [],
+            "works": [],
+            "reviews": [],
+            "learned_examples": learned,
+            "page_results": [],
+            "questions": [],
+        }
+        job.status = "queued"
+        job.processed = 0
+        job.updated_at = datetime.now(UTC)
+        (folder(ident) / "selection.json").unlink(missing_ok=True)
+        background.add_task(notify_queue)
+        return public(job)
+
+
 @router.get("/{ident}/pages/{page}/preview")
 def preview_page(ident: str, page: int, request: Request):
     with session() as database:
@@ -286,12 +358,45 @@ def preview_page(ident: str, page: int, request: Request):
             raise HTTPException(404, "Страница не найдена")
     path = folder(ident) / f"page-{page}.jpg"
     if not path.is_file():
+        path = folder(ident) / "docling" / f"page-{page}.jpg"
+    if not path.is_file():
         raise HTTPException(404, "Для этой страницы доступны текстовые источники")
     return FileResponse(
         path,
         media_type="image/jpeg",
         headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"},
     )
+
+
+@router.get("/{ident}/text.md")
+def document_text(ident: str, request: Request, prepare: bool = False):
+    with session() as database:
+        job = owned(database, ident, request.state.user["telegram_id"])
+        if not job.payload.get("text_complete"):
+            raise HTTPException(409, "Преобразование текста ещё продолжается")
+        filename = Path(job.name).stem + ".md"
+
+    def render(user):
+        with session() as database:
+            owned(database, ident, user["telegram_id"])
+        path = folder(ident) / "docling" / "document.md"
+        if not path.is_file():
+            raise HTTPException(404, "Текст документа не найден")
+        return path.read_bytes()
+
+    return report_export(
+        request.state.user, filename, "text/markdown; charset=utf-8", render, prepare
+    )
+
+
+@router.get("/{ident}/search")
+def search_text(ident: str, request: Request, q: str = Query(min_length=2, max_length=300)):
+    from .retrieval import search
+
+    with session() as database:
+        job = owned(database, ident, request.state.user["telegram_id"])
+        signature = job.payload.get("file_hash", "")
+    return {"results": search(folder(ident), q, signature)}
 
 
 @router.get("/{ident}/marked.pdf")
@@ -308,7 +413,12 @@ def marked_pdf(ident: str, request: Request, prepare: bool = False):
         with session() as database:
             current = owned(database, ident, user["telegram_id"])
             groups = current.payload.get("groups", [])
-        return annotated_pdf(folder(ident) / "source.pdf", groups)
+            allowed = (
+                set(current.payload.get("selected_specifications", []))
+                if current.payload.get("selection_policy") == "specifications"
+                else None
+            )
+        return annotated_pdf(folder(ident) / "source.pdf", groups, allowed)
 
     return report_export(request.state.user, filename, "application/pdf", render, prepare)
 
@@ -326,7 +436,7 @@ def analyse(ident: str, request: Request, body: AnalysisInput, background: Backg
         available = {
             page["page"]
             for page in job.payload.get("page_results", [])
-            if page["kind"] != "needs_ocr"
+            if page["kind"] != "needs_ocr" and not page["kind"].startswith("excluded_")
         }
         pages = sorted(set(body.pages)) if body.pages else sorted(available)
         if not pages or not set(pages) <= available:
@@ -358,6 +468,8 @@ def retry(ident: str, request: Request, background: BackgroundTasks):
 
 
 class ReviewValues(BaseModel):
+    section: str | None = Field(default=None, max_length=160)
+    subsection: str | None = Field(default=None, max_length=160)
     name: str | None = Field(default=None, min_length=1, max_length=300)
     category: str | None = Field(default=None, min_length=1, max_length=80)
     quantity: Decimal = Field(ge=0, le=1000000000, decimal_places=8)
@@ -411,12 +523,26 @@ def apply_review(row, body):
         )
     before = {
         key: row.get(key)
-        for key in ("name", "category", "quantity", "unit", "rate", "notes", "confirmed")
+        for key in (
+            "name",
+            "category",
+            "section",
+            "subsection",
+            "quantity",
+            "unit",
+            "rate",
+            "notes",
+            "confirmed",
+        )
     }
     if body.name is not None:
         row["name"] = body.name.strip()
         if not row["name"]:
             raise HTTPException(422, "Укажите название работы")
+    if body.section is not None:
+        row["section"] = body.section.strip() or "Без раздела"
+    if body.subsection is not None:
+        row["subsection"] = body.subsection.strip()
     if body.category is not None:
         row["category"] = body.category.strip()
         if not row["category"]:
@@ -496,6 +622,11 @@ def save_reviews(ident, request, expected_version, items, acknowledge_scope):
             "acknowledge_scope": acknowledge,
         }
         job.status = "ready" if ready else "needs_review"
+        remember(
+            database,
+            job.owner_id,
+            [row for row in groups if row["id"] in {item[0] for item in items}],
+        )
         job.updated_at = datetime.now(UTC)
         return public(job)
 
@@ -543,6 +674,8 @@ def export(ident: str, request: Request, prepare: bool = False, final: bool = Fa
                     "Примечания",
                     "Страница PDF",
                     "Что уточнить",
+                    "Раздел",
+                    "Подраздел",
                 ]
             )
             for index, work in enumerate(rows, 1):
@@ -561,9 +694,11 @@ def export(ident: str, request: Request, prepare: bool = False, final: bool = Fa
                         if work.get("confirmed")
                         else "; ".join(work.get("issues", []))
                         or "Проверьте объём и введите расценку",
+                        work.get("section", "Без раздела"),
+                        work.get("subsection", ""),
                     ]
                 )
-            style_sheet(sheet, 1, [7, 24, 55, 10, 14, 19, 19, 45, 16, 45], (6, 7))
+            style_sheet(sheet, 1, [7, 24, 55, 10, 14, 19, 19, 45, 16, 45, 30, 30], (6, 7))
             sheet.freeze_panes = "D2"
             sheet.append(
                 [

@@ -35,13 +35,22 @@ async def propose(
     text, page, settings, query="Подготовить перечень монтажных работ", complete=None
 ):
     from .normalization import unit_value
+    from .retrieval import relevant_examples
 
     complete = complete or matcher.complete
     settings = {**settings, "response_token_limit": 6000}
+    context = settings.get("document_section", {})
     result = await complete(
         PROMPT
         + "\nВыполни запрос пользователя: "
         + query
+        + "\nОбрабатываются только ведомости и спецификации. Не извлекай перечень работ из общих данных, легенд, планов и схем. Не создавай позиции из заголовков, подписей и реквизитов чертёжной рамки. Сохрани дословные section (раздел), subsection (подраздел/система) и item_code (позиция/артикул) каждой строки в объекте works. Если раздел начался на предыдущей странице, используй контекст: "
+        + json.dumps(context, ensure_ascii=False)
+        + "\nЗаголовки section и subsection определяй заново по ЭТОМУ файлу, дословно. Фиксированного набора разделов нет. Подтверждённые примеры пользователя служат только образцом структуры; не переноси их названия и данные в документ без источника: "
+        + json.dumps(
+            relevant_examples(query + " " + text[:1500], settings.get("document_examples", [])),
+            ensure_ascii=False,
+        )
         + "\nНазвание работы пиши по единому шаблону: вид монтажа + материал/оборудование + размер/тип. Сохраняй размеры и модели дословно, не исправляй искажённые OCR марки догадкой. Перечисли все относящиеся к запросу строки. Для структурированной таблицы обязательно укажи source_row: целый номер строки после слова Строка; цитату этой строки сервер подставит сам. Колонки Cn–Cm обозначают геометрию ячеек, они не являются объёмами. Заголовки и единицы бери из ячеек того же диапазона колонок. В quote до 1200 символов включи количество вместе с единицей. Для таблицы с отдельной колонкой количества верни quantity_cell, quantity_header и unit_evidence дословно. Не используй одну и ту же позицию из характеристики как дополнительную к спецификации. Не добавляй общие замечания об отсутствии высоты или демонтажа, если пользователь их не запрашивал.",
         json.dumps({"page": page, "text": text}, ensure_ascii=False),
         settings,
@@ -183,6 +192,20 @@ async def propose(
         if requested and "кроме" not in query_value and item.get("category") not in requested:
             continue
         work_index = len(works)
+
+        def heading(field):
+            value = str(item.get(field) or context.get(field) or "").strip()[:160]
+            normalized = re.sub(r"\s+", " ", value.casefold())
+            available = re.sub(r"\s+", " ", text.casefold())
+            return (
+                value
+                if normalized and (normalized in available or value == context.get(field))
+                else ""
+            )
+
+        item_code = str(item.get("item_code") or "").strip()[:100]
+        if item_code.casefold() not in quote.casefold():
+            item_code = ""
         works.append(
             {
                 "name": name[:300],
@@ -193,6 +216,9 @@ async def propose(
                 "quantity": quantity,
                 "quote": quote,
                 "page": page,
+                "section": heading("section") or "Без раздела",
+                "subsection": heading("subsection"),
+                "item_code": item_code,
                 "notes": str(item.get("notes") or "")[:1000],
                 "question": str(item.get("question") or "Подтвердите позицию и объём по проекту")[
                     :500

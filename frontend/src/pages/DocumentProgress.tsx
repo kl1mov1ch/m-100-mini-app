@@ -14,27 +14,31 @@ export function DocumentProgress({ job, resume }: { job: DocumentJob; resume: ()
 		job.status,
 	);
 	const title =
-		job.status === 'uploading'
-			? 'Получаем файл'
-			: job.status === 'queued'
-				? job.processed
-					? 'Продолжаем чтение'
-					: 'Файл готов к обработке'
-				: job.status === 'ai_queued'
-					? 'Передаём страницы ИИ'
-					: job.status === 'analysing'
-						? `ИИ обрабатывает страницу ${page || '…'}`
-						: job.status === 'extracting'
-							? `${stage === 'rendering' ? 'Готовим' : stage === 'ocr' ? 'Распознаём' : stage === 'table_ocr' ? 'Читаем таблицы на' : 'Читаем'} страницу ${page || job.processed + 1}`
-							: job.status === 'needs_ai'
-								? 'Нужно подключить ИИ'
-								: job.status === 'needs_budget'
-									? 'Достигнут лимит обработки'
-									: job.status === 'needs_ocr'
-										? 'Нужно распознавание текста'
-										: job.status === 'failed'
-											? 'Обработка остановлена'
-											: 'Страницы прочитаны';
+		stage === 'converting' && active
+			? `Преобразуем в текст · страница ${page || '…'}`
+			: stage === 'indexing' && active
+				? 'Ищем ведомости и спецификации'
+				: job.status === 'uploading'
+					? 'Получаем файл'
+					: job.status === 'queued'
+						? job.processed
+							? 'Продолжаем чтение'
+							: 'Файл готов к обработке'
+						: job.status === 'ai_queued'
+							? 'Передаём страницы ИИ'
+							: job.status === 'analysing'
+								? `ИИ обрабатывает страницу ${page || '…'}`
+								: job.status === 'extracting'
+									? `${stage === 'rendering' ? 'Готовим' : stage === 'ocr' ? 'Распознаём' : stage === 'table_ocr' ? 'Читаем таблицы на' : 'Читаем'} страницу ${page || job.processed + 1}`
+									: job.status === 'needs_ai'
+										? 'Нужно подключить ИИ'
+										: job.status === 'needs_budget'
+											? 'Достигнут лимит обработки'
+											: job.status === 'needs_ocr'
+												? 'Нужно распознавание текста'
+												: job.status === 'failed'
+													? 'Обработка остановлена'
+													: 'Страницы прочитаны';
 	const size = job.payload.file_bytes
 		? `${(job.payload.file_bytes / 1048576).toLocaleString('ru', { maximumFractionDigits: 1 })} МБ`
 		: '';
@@ -60,15 +64,34 @@ export function DocumentProgress({ job, resume }: { job: DocumentJob; resume: ()
 				{size && ` · ${size}`}
 			</div>
 			<div className="document-progress-counts">
-				<span>Прочитано страниц</span>
+				<span>
+					{stage === 'converting'
+						? 'Преобразовано страниц'
+						: stage === 'indexing'
+							? 'Проверено страниц'
+							: job.payload.selection_complete
+								? 'Обработано страниц файла'
+								: 'Прочитано страниц'}
+				</span>
 				<strong>
-					{job.processed} / {job.pages || '…'}
+					{stage === 'converting'
+						? job.payload.conversion_done || 0
+						: stage === 'indexing'
+							? job.payload.index_done || 0
+							: job.processed}{' '}
+					/ {job.pages || '…'}
 				</strong>
 			</div>
 			{job.pages > 0 && (
 				<Progress
 					size="small"
-					percent={percent}
+					percent={
+						stage === 'converting'
+							? Math.round(((job.payload.conversion_done || 0) / Math.max(1, job.pages)) * 100)
+							: stage === 'indexing'
+								? Math.round(((job.payload.index_done || 0) / job.pages) * 100)
+								: percent
+					}
 					showInfo={false}
 					status={active && job.processed < job.pages ? 'active' : 'normal'}
 				/>
@@ -81,19 +104,28 @@ export function DocumentProgress({ job, resume }: { job: DocumentJob; resume: ()
 					</strong>
 				</div>
 			)}
+			{job.payload.selection_complete && (
+				<small className="document-progress-metadata">
+					Отобрано листов с данными: {job.payload.selected_specifications?.length || 0} · чертежи не
+					разбираются
+				</small>
+			)}
 			{job.payload.groups?.length ? (
 				<div className="document-progress-counts">
 					<span>Найдено позиций</span>
 					<strong>{job.payload.groups.length}</strong>
 				</div>
 			) : null}
-			{paused && job.payload.notice && (
+			{!active && job.payload.notice && (
 				<p className="document-progress-notice">{job.payload.notice}</p>
 			)}
 			{paused && (
 				<Button onClick={resume}>
 					{job.status === 'failed' ? 'Повторить обработку' : 'Продолжить обработку'}
 				</Button>
+			)}
+			{job.status === 'needs_review' && !job.payload.groups?.length && (
+				<Button onClick={resume}>Пересобрать выборку</Button>
 			)}
 		</section>
 	);

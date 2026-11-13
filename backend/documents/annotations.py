@@ -30,13 +30,15 @@ def bands(boxes):
     return rows
 
 
-def annotated_pdf(source, groups):
+def annotated_pdf(source, groups, allowed_pages=None):
     reader = PdfReader(source)
     writer = PdfWriter()
     writer.clone_document_from_reader(reader)
     marked = {}
     for group in groups:
         for item in group.get("sources", []):
+            if allowed_pages is not None and item["page"] not in allowed_pages:
+                continue
             marked.setdefault(item["page"], []).extend(item.get("highlights", []))
     for number, boxes in marked.items():
         if not 1 <= number <= len(writer.pages):

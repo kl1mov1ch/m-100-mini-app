@@ -76,6 +76,8 @@ def build_groups(works, previous=None):
         key = "|".join(
             [
                 canonical(work.get("category")),
+                canonical(work.get("section")),
+                canonical(work.get("subsection")),
                 canonical(work.get("name")),
                 canonical(work.get("unit")),
                 canonical(work.get("notes")),
@@ -90,6 +92,22 @@ def build_groups(works, previous=None):
             fingerprint = (work.get("page"), canonical(work.get("quote")), work.get("quantity"))
             unique.setdefault(fingerprint, work)
         items = list(unique.values())
+        copies = []
+        identities = {}
+        for work in items:
+            identity = (
+                canonical(work.get("item_code")),
+                canonical(work.get("quote")),
+                work.get("quantity"),
+                work.get("unit"),
+            )
+            if not identity[0]:
+                identity = (*identity, work.get("page"))
+            if identity[0] and identity in identities:
+                copies.append({**work, "duplicate_of_page": identities[identity]["page"]})
+            else:
+                identities[identity] = work
+        items = list(identities.values())
         quote_pages = defaultdict(set)
         for work in items:
             quote_pages[canonical(work.get("quote"))].add(work.get("page"))
@@ -123,12 +141,15 @@ def build_groups(works, previous=None):
             "id": ident,
             "name": items[0]["name"],
             "category": items[0]["category"],
+            "section": items[0].get("section", "Без раздела"),
+            "subsection": items[0].get("subsection", ""),
             "unit": items[0]["unit"],
             "quantity": None if missing or duplicate else str(total),
             "proposed_quantity": None if missing else str(total),
             "rate": None,
             "notes": items[0].get("notes", ""),
             "sources": items,
+            "duplicate_sources": copies,
             "issues": (
                 ["Возможный повтор: подтвердите, это те же работы или дополнительные"]
                 if duplicate
@@ -157,7 +178,9 @@ def build_groups(works, previous=None):
                 if field in old:
                     row[field] = old[field]
         result.append(row)
-    return sorted(result, key=lambda row: (row["category"], row["name"]))
+    return sorted(
+        result, key=lambda row: (row["category"], row["section"], row["subsection"], row["name"])
+    )
 
 
 def financial_summary(groups):

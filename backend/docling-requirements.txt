@@ -1,0 +1,6 @@
+# Isolated, CPU-only PDF parser. No model weights or LLM calls are needed here.
+docling-slim[convert-core,format-pdf]==2.150.0
+# Keep wheels compatible with older VPS CPUs (new NumPy requires x86-64-v2).
+numpy==2.2.6
+scipy==1.15.3
+pandas==2.2.3

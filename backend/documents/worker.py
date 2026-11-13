@@ -20,12 +20,15 @@ from sqlalchemy import case, or_, select
 
 from .. import matcher, store, workspaces
 from ..runtime import configure_runtime
+from .conversion import convert_document, converted_page
+from .examples import confirmed_examples
 from .execution import JobDeleted, cancellable, check_active, current_job, run
 from .extraction import classify, propose
 from .normalization import build_groups, financial_summary
 from .page_cache import cache_page, cached_page, text_digest
 from .progress import recover_interrupted, worker_lock
 from .repository import DocumentJob, folder, session
+from .selection import page_index
 
 
 def update(ident, **values):
@@ -207,6 +210,87 @@ def text_page(source, number):
     }
 
 
+def process_docling(ident, payload, path, total):
+    def report(progress):
+        nonlocal payload
+        phase("converting", progress["page"])
+        payload = {**payload, "conversion_done": progress["done"], "conversion_total": total}
+        update(ident, pages=total, payload=payload)
+
+    complete = convert_document(
+        path,
+        payload.get("file_hash", ""),
+        total,
+        report,
+        batch_size=3 if payload.get("groups") else 1,
+    )
+    results = list(payload.get("page_results", []))
+    known = {row["page"] for row in results}
+    selected = list(payload.get("selected_specifications", []))
+    new_selected = False
+    for number in range(1, total + 1):
+        if number in known:
+            continue
+        record = converted_page(path, number, payload.get("file_hash", ""))
+        if record is None:
+            continue
+        from .selection import classify_page
+
+        kind = classify_page(record["text"])
+        digest = text_digest(record["text"])
+        duplicate = next((row["page"] for row in results if row.get("digest") == digest), None)
+        if kind == "specification":
+            selected.append(number)
+            new_selected = True
+            cache_page(
+                path,
+                number,
+                record["text"],
+                record["confidence"],
+                record["layout"],
+                payload.get("file_hash"),
+            )
+        results.append(
+            {
+                "page": number,
+                "kind": kind if kind == "specification" else "excluded_" + kind,
+                "digest": digest,
+                "characters": len(record["text"]),
+                "excerpt": record["text"][:120],
+                "duplicate_of": duplicate,
+                "ocr_confidence": record["confidence"] if kind == "specification" else None,
+            }
+        )
+    questions = list(payload.get("questions", []))
+    unknown = [row["page"] for row in results if row["kind"] == "excluded_uncertain"]
+    if complete and unknown:
+        questions.append(
+            "Проверьте отбор: не определён тип страниц "
+            + ", ".join(map(str, sorted(unknown)))
+            + ". Они исключены из автоматической выборки."
+        )
+    payload = {
+        **payload,
+        "page_results": sorted(results, key=lambda row: row["page"]),
+        "text_complete": complete,
+        "selection_streaming": True,
+        "selection_complete": complete,
+        "extraction_complete": complete,
+        "selected_specifications": sorted(selected),
+        "page_index": [
+            {"page": row["page"], "kind": row["kind"].removeprefix("excluded_")} for row in results
+        ],
+        "questions": list(dict.fromkeys(questions)),
+    }
+    update(
+        ident,
+        pages=total,
+        processed=len(results),
+        payload=payload,
+        status="ai_queued" if new_selected or complete else "queued",
+    )
+
+
 def process(ident, payload):
     path = folder(ident)
     with PdfReader(path / "source.pdf") as reader:
@@ -215,14 +299,101 @@ def process(ident, payload):
         total = len(reader.pages)
         if not 1 <= total <= 2000:
             raise ValueError("Поддерживается от 1 до 2000 страниц. Разделите проект на тома.")
+        if payload.get("engine") == "docling":
+            process_docling(ident, payload, path, total)
+            return
+        strict = payload.get("selection_policy", "specifications") == "specifications"
+        if strict and not payload.get("selection_complete"):
+            if any(row.get("confirmed") for row in payload.get("groups", [])):
+                raise ValueError(
+                    "Есть подтверждённые строки. Создайте новую выборку по спецификациям."
+                )
+            saved = payload.get("page_index", [])
+            if (path / "selection.json").exists():
+                saved = json.loads((path / "selection.json").read_text(encoding="utf-8"))
+
+            def report(number, indexed):
+                nonlocal payload
+                phase("indexing", number)
+                payload = {
+                    **payload,
+                    "page_index": indexed,
+                    "index_done": len(indexed),
+                    "index_total": total,
+                }
+                update(ident, pages=total, payload=payload)
+
+            def native(number):
+                if payload.get("engine") == "docling":
+                    return converted_page(path, number, payload.get("file_hash", ""))
+                cached = cached_page(path, number, payload.get("file_hash"))
+                return cached or text_page(path / "source.pdf", number)
+
+            indexed = page_index(path / "source.pdf", total, path, native, saved, report)
+            uncertain = [row["page"] for row in indexed if row["kind"] == "uncertain"]
+            selected = [row["page"] for row in indexed if row["kind"] == "specification"]
+            payload = {
+                **payload,
+                "page_index": indexed,
+                "selection_complete": True,
+                "selection_policy": "specifications",
+                "selected_specifications": selected,
+                "page_results": [],
+                "works": [],
+                "groups": [],
+                "analysed_chunks": [],
+                "analysis_done": 0,
+                "analysis_total": 0,
+                "section_context": {},
+                "questions": [
+                    f"Проверьте отбор: не определён тип страниц {', '.join(map(str, uncertain))}. Они исключены из автоматической выборки."
+                ]
+                if uncertain
+                else [],
+                "summary": financial_summary([]),
+            }
+            update(ident, processed=0, payload=payload)
         results = list(payload.get("page_results", []))
-        batch = 1 if not results else 3
-        stop = min(total, len(results) + batch) if payload.get("automatic") else total
+        selected_pages = (
+            set(payload.get("selected_specifications", [])) if strict else set(range(1, total + 1))
+        )
+        batch = 1 if not any(row["kind"] == "specification" for row in results) else 3
+        extracted = 0
         update(ident, pages=total)
-        for index in range(len(results), stop):
+        for index in range(len(results), total):
+            if payload.get("automatic") and extracted >= batch:
+                break
+            if index + 1 not in selected_pages:
+                kind = next(
+                    (
+                        row["kind"]
+                        for row in payload.get("page_index", [])
+                        if row["page"] == index + 1
+                    ),
+                    "uncertain",
+                )
+                results.append(
+                    {
+                        "page": index + 1,
+                        "kind": "excluded_" + kind,
+                        "characters": 0,
+                        "excerpt": "",
+                        "digest": f"excluded-{index + 1}",
+                        "duplicate_of": None,
+                        "ocr_confidence": None,
+                    }
+                )
+                payload = {**payload, "page_results": results}
+                update(ident, processed=index + 1, payload=payload)
+                continue
+            extracted += 1
             check_active()
             phase("reading", index + 1)
-            cached = cached_page(path, index + 1, payload.get("file_hash"))
+            cached = (
+                converted_page(path, index + 1, payload.get("file_hash", ""))
+                if payload.get("engine") == "docling"
+                else cached_page(path, index + 1, payload.get("file_hash"))
+            )
             text = cached
             if text is None:
                 native = text_page(path / "source.pdf", index + 1)
@@ -261,7 +432,7 @@ def process(ident, payload):
             results.append(
                 {
                     "page": index + 1,
-                    "kind": classify(text),
+                    "kind": "specification" if strict else classify(text),
                     "characters": len(text),
                     "excerpt": text[:120],
                     "digest": digest,
@@ -330,7 +501,31 @@ def extract_part(text, page, settings, query, depth=0, complete=None):
 
 
 def analyse(ident, payload):
+    if (
+        not payload.get("selection_streaming")
+        and payload.get("selection_policy", "specifications") != "all"
+        and not payload.get("selection_complete")
+    ):
+        update(ident, status="queued")
+        return
+    if payload.get("selection_complete") and not payload.get("selected_specifications"):
+        update(
+            ident,
+            status="needs_review",
+            payload={
+                **payload,
+                "notice": "Таблицы с объёмами не найдены уверенно. Автоматическая выборка пуста; проверьте исходный документ.",
+                "coverage": {"complete": False, "questions": len(payload.get("questions", []))},
+            },
+        )
+        return
     settings = workspaces.shared()
+    with session() as database:
+        owner = database.get(DocumentJob, ident)
+        if owner is None:
+            raise JobDeleted()
+        owner = owner.owner_id
+    settings = {**settings, "document_examples": confirmed_examples(owner)}
     if not matcher.provider(settings)["key"]:
         update(
             ident,
@@ -345,7 +540,9 @@ def analyse(ident, payload):
     questions = list(payload.get("questions", []))
     done = set(payload.get("analysed_chunks", []))
     pages = payload.get("selected_pages") or [
-        page["page"] for page in payload.get("page_results", []) if not page.get("duplicate_of")
+        page["page"]
+        for page in payload.get("page_results", [])
+        if not page.get("duplicate_of") and not page["kind"].startswith("excluded_")
     ]
     ledger = []
     for page in pages:
@@ -376,7 +573,12 @@ def analyse(ident, payload):
             suggested, clarifications = extract_part(
                 text,
                 page,
-                settings,
+                {
+                    **settings,
+                    "document_section": payload.get("section_context", {})
+                    if page in {payload.get("section_page"), payload.get("section_page", -2) + 1}
+                    else {},
+                },
                 payload.get("query", "Подготовить перечень монтажных работ"),
                 complete=budgeted_complete,
             )
@@ -391,6 +593,16 @@ def analyse(ident, payload):
             )
             return
         works.extend(suggested)
+        for item in suggested:
+            if item.get("section") and item["section"] != "Без раздела":
+                payload = {
+                    **payload,
+                    "section_context": {
+                        "section": item["section"],
+                        "subsection": item.get("subsection", ""),
+                    },
+                    "section_page": page,
+                }
         layout_path = folder(ident) / f"page-{page}.layout.json"
         if layout_path.is_file():
             layout = json.loads(layout_path.read_text(encoding="utf-8"))
@@ -445,7 +657,9 @@ def analyse(ident, payload):
         "complete": complete_extraction
         and all(key in done for _, key, _ in ledger)
         and {
-            page["page"] for page in payload.get("page_results", []) if not page.get("duplicate_of")
+            page["page"]
+            for page in payload.get("page_results", [])
+            if not page.get("duplicate_of") and not page["kind"].startswith("excluded_")
         }
         <= {page for page, key, _ in ledger if key in done}
         and not unresolved_pages,
@@ -462,7 +676,11 @@ def analyse(ident, payload):
         payload={
             **payload,
             "coverage": coverage,
-            "notice": "Выборка собрана. Проверьте отмеченные строки и введите расценки. Геометрия чертежей автоматически не измерялась.",
+            "notice": (
+                f"Отобрано листов с данными: {len(payload.get('selected_specifications', []))}. Чертежи и общие данные исключены."
+                if payload.get("selection_policy") == "specifications"
+                else "Выборка собрана. Проверьте отмеченные строки и введите расценки."
+            ),
         },
     )
 

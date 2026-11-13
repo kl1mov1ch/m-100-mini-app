@@ -8,7 +8,7 @@ import type { DocumentJob, DocumentGroup, DocumentSource } from './document-type
 import { DocumentPublishPanel } from './DocumentPublishPanel';
 import { CompactRow } from '../components/CompactRow';
 
-function SourcePreview({
+export function SourcePreview({
 	jobId,
 	page,
 	highlights,
@@ -99,11 +99,13 @@ export function DocumentResultsPage({
 		[unit, setUnit] = useState('м'),
 		[name, setName] = useState(''),
 		[editCategory, setEditCategory] = useState(''),
+		[section, setSection] = useState(''),
+		[subsection, setSubsection] = useState(''),
 		[notes, setNotes] = useState(''),
 		[resolution, setResolution] = useState<string>(),
 		[acknowledge, setAcknowledge] = useState(false),
 		[saving, setSaving] = useState(false);
-	const { message } = App.useApp();
+	const { message, modal } = App.useApp();
 	const groups = job.payload.groups || [];
 	const categories = ['Все', ...new Set(groups.map((row) => row.category))];
 	const rows = groups.filter(
@@ -112,6 +114,13 @@ export function DocumentResultsPage({
 			(status === 'all' || (status === 'pending' ? !row.confirmed : row.confirmed)) &&
 			row.name.toLowerCase().includes(query.toLowerCase()),
 	);
+	const sections = new Map<string, DocumentGroup[]>();
+	for (const row of rows) {
+		const label = [row.category, row.section || 'Без раздела', row.subsection]
+			.filter(Boolean)
+			.join(' · ');
+		sections.set(label, [...(sections.get(label) || []), row]);
+	}
 	const summary = job.payload.summary;
 	const readOnly = !['ready', 'needs_review', 'draft'].includes(job.status);
 	useEffect(() => {
@@ -162,6 +171,8 @@ export function DocumentResultsPage({
 		setUnit(row.unit || 'м');
 		setName(row.name);
 		setEditCategory(row.category);
+		setSection(row.section || '');
+		setSubsection(row.subsection || '');
 		setNotes(row.notes || '');
 		setResolution(undefined);
 		setAcknowledge(false);
@@ -177,6 +188,8 @@ export function DocumentResultsPage({
 				unit,
 				name,
 				category: editCategory,
+				section,
+				subsection,
 				notes,
 				resolution,
 				acknowledge_scope: acknowledge,
@@ -199,6 +212,20 @@ export function DocumentResultsPage({
 			message.error((error as Error).message);
 		}
 	};
+	const rebuild = () =>
+		modal.confirm({
+			title: 'Пересобрать выборку?',
+			icon: null,
+			content:
+				'Будут заново отобраны спецификации и разделы этого файла. Текущая выборка заменится. Подтверждённые примеры названий сохранятся.',
+			okText: 'Пересобрать',
+			cancelText: 'Отмена',
+			onOk: async () => {
+				refresh(
+					await request<DocumentJob>(`/documents/${job.id}/rebuild`, { version: job.updated_at }),
+				);
+			},
+		});
 	return (
 		<div className="document-page document-results-page">
 			{!embedded && (
@@ -215,6 +242,11 @@ export function DocumentResultsPage({
 					)}
 					{!embedded && <small className="page-context document-filename">{job.name}</small>}
 				</div>
+				{!readOnly && (
+					<Button type="text" onClick={rebuild}>
+						Пересобрать
+					</Button>
+				)}
 			</div>
 			<section className="document-result-summary">
 				<div>
@@ -242,6 +274,12 @@ export function DocumentResultsPage({
 				</summary>
 				<p>{job.payload.query}</p>
 				<p>В сумме — только проверенные строки с расценками.</p>
+				{job.payload.selection_complete && (
+					<p>
+						Отобраны страницы: {job.payload.selected_specifications?.join(', ') || 'не найдены'}.
+						Остальные листы не используются для подсчёта и выделения.
+					</p>
+				)}
 				{!job.payload.coverage?.complete && (
 					<p>Обработка неполная — итоговый отчёт пока недоступен.</p>
 				)}
@@ -290,33 +328,44 @@ export function DocumentResultsPage({
 					/>
 				</div>
 			</div>
-			<div className="document-works compact-list" aria-label="Работы из документа">
-				{rows.map((row) => (
-					<CompactRow
-						key={row.id}
-						className="document-review-row"
-						title={row.name}
-						description={
-							<>
-								{row.category} ·{' '}
-								{row.quantity === null
-									? 'Уточните объём'
-									: nf.format(Number(row.quantity)) + ' ' + row.unit}
-							</>
-						}
-						value={
-							row.rate !== null ? (
-								<>
-									<Money value={Number(row.rate)} /> / {row.unit}
-								</>
-							) : (
-								'Нет расценки'
-							)
-						}
-						meta={row.confirmed ? 'Проверено' : row.issues.length ? 'Нужна проверка' : 'Черновик'}
-						attention={!row.confirmed && !!row.issues.length}
-						onClick={() => choose(row)}
-					/>
+			<div className="document-works document-section-list" aria-label="Работы из документа">
+				{[...sections].map(([label, sectionRows]) => (
+					<section className="document-section" key={label}>
+						<h3>
+							{label} <small>{sectionRows.length}</small>
+						</h3>
+						<div className="compact-list">
+							{sectionRows.map((row) => (
+								<CompactRow
+									key={row.id}
+									className="document-review-row"
+									title={row.name}
+									description={
+										<>
+											{row.category} ·{' '}
+											{row.quantity === null
+												? 'Уточните объём'
+												: nf.format(Number(row.quantity)) + ' ' + row.unit}
+										</>
+									}
+									value={
+										row.rate !== null ? (
+											<>
+												<Money value={Number(row.rate)} /> / {row.unit}
+											</>
+										) : (
+											'Нет расценки'
+										)
+									}
+									meta={
+										row.confirmed ? 'Проверено' : row.issues.length ? 'Нужна проверка' : 'Черновик'
+									}
+									attention={!row.confirmed && !!row.issues.length}
+									onClick={() => choose(row)}
+								/>
+							))}
+						</div>
+					</section>
 				))}
 				{!rows.length && <p className="compact-empty">Работ по этим фильтрам нет</p>}
 			</div>
@@ -394,7 +443,11 @@ export function DocumentResultsPage({
 								</dd>
 							</div>
 						</dl>
-						<p>{editing?.category}</p>
+						<p>
+							{[editing?.category, editing?.section, editing?.subsection]
+								.filter(Boolean)
+								.join(' · ')}
+						</p>
 						{editing?.notes && <p>{editing.notes}</p>}
 						<Button icon={<FileSearch size={16} />} onClick={() => setSources(editing)}>
 							Источники · {editing?.sources.length}
@@ -413,7 +466,7 @@ export function DocumentResultsPage({
 							</strong>
 						</div>
 						<details className="document-details document-edit-details">
-							<summary>Название и категория</summary>
+							<summary>Название и раздел</summary>
 							<label>
 								Название работы
 								<Input
@@ -437,6 +490,23 @@ export function DocumentResultsPage({
 										'Автоматика',
 										'Прочее',
 									].map((value) => ({ value, label: value }))}
+								/>
+							</label>
+							<label>
+								Раздел в этом файле
+								<Input
+									value={section}
+									onChange={(e) => setSection(e.target.value)}
+									maxLength={160}
+									placeholder="Дословный заголовок из файла"
+								/>
+							</label>
+							<label>
+								Подраздел
+								<Input
+									value={subsection}
+									onChange={(e) => setSubsection(e.target.value)}
+									maxLength={160}
 								/>
 							</label>
 						</details>

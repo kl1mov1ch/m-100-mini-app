@@ -1,4 +1,6 @@
 import asyncio
+import os
+import signal
 import subprocess
 import time
 from contextvars import ContextVar
@@ -30,7 +32,8 @@ def check_active():
 
 
 def run(command, **kwargs):
-    if current_job.get() is None:
+    on_tick = kwargs.pop("on_tick", None)
+    if current_job.get() is None and on_tick is None:
         return subprocess.run(command, **kwargs)
     check_active()
     timeout = kwargs.pop("timeout", None)
@@ -42,6 +45,8 @@ def run(command, **kwargs):
     if data is not None:
         kwargs["stdin"] = subprocess.PIPE
     start = time.monotonic()
+    if os.name == "posix":
+        kwargs["start_new_session"] = True
     with subprocess.Popen(command, **kwargs) as process:
         first = True
         try:
@@ -52,10 +57,18 @@ def run(command, **kwargs):
                 except subprocess.TimeoutExpired:
                     first = False
                     check_active()
+                    if on_tick:
+                        on_tick()
                     if timeout and time.monotonic() - start >= timeout:
                         raise subprocess.TimeoutExpired(command, timeout)
         except BaseException:
-            process.kill()
+            if os.name == "posix":
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+            else:
+                process.kill()
             process.communicate()
             raise
         if check and process.returncode:

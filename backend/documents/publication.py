@@ -54,7 +54,9 @@ def make_workbook(content, rows):
         {
             "id": "pdf-" + row["id"],
             "name": row["name"],
-            "section": row["category"],
+            "section": " · ".join(
+                filter(None, [row["category"], row.get("section"), row.get("subsection")])
+            ),
             "source_sheet": row["category"],
             "source_row": index + 1,
             "unit": row["unit"],

@@ -14,10 +14,11 @@ Environment=OPENBLAS_NUM_THREADS=1
 Environment=PYTHONDONTWRITEBYTECODE=1
 ExecStart=/var/miniApp/m-100/.venv/bin/python -m backend.documents.worker --drain
 TimeoutStartSec=infinity
-MemoryMax=384M
+MemoryHigh=448M
+MemoryMax=512M
 CPUWeight=20
 Nice=10
-TasksMax=32
+TasksMax=64
 UMask=0077
 NoNewPrivileges=true
 PrivateTmp=true

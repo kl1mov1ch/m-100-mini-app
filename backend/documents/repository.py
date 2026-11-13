@@ -29,6 +29,18 @@ class DocumentJob(Base):
     updated_at = mapped_column(DateTime(timezone=True), nullable=False)
 
 
+class RecognitionExample(Base):
+    __tablename__ = "document_recognition_examples"
+    __table_args__: ClassVar[dict] = {"schema": "registry"}
+    id = mapped_column(Text, primary_key=True)
+    owner_id = mapped_column(
+        Text, ForeignKey("registry.users.telegram_id"), nullable=False, index=True
+    )
+    payload = mapped_column(JSON, nullable=False)
+    confirmations = mapped_column(Integer, nullable=False, default=1)
+    updated_at = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 @contextmanager
 def session():
     if postgres.enabled():
@@ -45,6 +57,7 @@ def session():
     )
     try:
         DocumentJob.__table__.create(engine, checkfirst=True)
+        RecognitionExample.__table__.create(engine, checkfirst=True)
         with Session(engine, expire_on_commit=False) as database, database.begin():
             yield database
     finally:

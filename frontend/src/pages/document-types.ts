@@ -13,6 +13,9 @@ export type DocumentSource = {
 	highlights?: { left: number; top: number; width: number; height: number }[];
 };
 export type DocumentGroup = {
+	section?: string;
+	subsection?: string;
+	duplicate_sources?: DocumentSource[];
 	id: string;
 	name: string;
 	category: string;
@@ -34,6 +37,17 @@ export type DocumentJob = {
 	processed: number;
 	updated_at: string;
 	payload: {
+		selection_policy?: string;
+		selection_streaming?: boolean;
+		engine?: 'legacy' | 'docling';
+		conversion_done?: number;
+		conversion_total?: number;
+		text_complete?: boolean;
+		index_done?: number;
+		index_total?: number;
+		selection_complete?: boolean;
+		selected_specifications?: number[];
+		page_index?: { page: number; kind: string; method: string }[];
 		file_bytes?: number;
 		progress?: {
 			stage: string;

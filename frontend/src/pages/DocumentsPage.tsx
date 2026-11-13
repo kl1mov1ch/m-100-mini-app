@@ -11,6 +11,7 @@ import {
 import { useEffect, useRef, useState } from 'react';
 import type { WorkspaceView } from '../App';
 import { request } from '../lib/api';
+import { DocumentTextSearch } from './DocumentTextSearch';
 import { DocumentResultsPage } from './DocumentResultsPage';
 import { DocumentProgress, documentActive } from './DocumentProgress';
 import type { DocumentJob } from './document-types';
@@ -152,6 +153,8 @@ export function DocumentsPage({ workspace }: { workspace: WorkspaceView }) {
 				const reserved = await request<DocumentJob>('/documents/reserve', {
 					name: item.file.name,
 					query: query.trim(),
+					selection_policy: 'specifications',
+					engine: 'docling',
 				});
 				transfer.job = reserved.id;
 				if (transfer.cancelled) {
@@ -207,10 +210,6 @@ export function DocumentsPage({ workspace }: { workspace: WorkspaceView }) {
 		}
 	};
 	const askRemove = (job: DocumentJob) => {
-		if (['uploading', 'queued', 'extracting', 'ai_queued', 'analysing'].includes(job.status)) {
-			void remove(job);
-			return;
-		}
 		modal.confirm({
 			className: 'action-confirm-sheet',
 			icon: null,
@@ -232,13 +231,37 @@ export function DocumentsPage({ workspace }: { workspace: WorkspaceView }) {
 			onOk: () => remove(job),
 		});
 	};
+	const askCancel = (file: PendingFile) =>
+		modal.confirm({
+			className: 'action-confirm-sheet',
+			icon: null,
+			title: 'Убрать файл?',
+			content: (
+				<div className="action-confirm-content">
+					<strong>{file.file.name}</strong>
+					<p>Загрузка и обработка будут отменены. Файл и извлечённые данные удалятся.</p>
+				</div>
+			),
+			okText: 'Убрать файл',
+			cancelText: 'Оставить',
+			okButtonProps: { danger: true },
+			onOk: () => cancel(file),
+		});
 	const resume = async () => {
 		if (!selected) return;
 		try {
-			const action = ['needs_ai', 'needs_budget', 'text_ready'].includes(selected.status)
-				? 'analyse'
-				: 'retry';
-			setSelected(await request<DocumentJob>('/documents/' + selected.id + '/' + action, {}));
+			const action =
+				selected.status === 'needs_review' && !selected.payload.groups?.length
+					? 'rebuild'
+					: ['needs_ai', 'needs_budget', 'text_ready'].includes(selected.status)
+						? 'analyse'
+						: 'retry';
+			setSelected(
+				await request<DocumentJob>(
+					'/documents/' + selected.id + '/' + action,
+					action === 'rebuild' ? { version: selected.updated_at } : {},
+				),
+			);
 			await load();
 		} catch (failure) {
 			message.error((failure as Error).message);
@@ -306,7 +329,7 @@ export function DocumentsPage({ workspace }: { workspace: WorkspaceView }) {
 										aria-label={'Убрать ' + file.file.name}
 										loading={file.state === 'cancelling'}
 										icon={<X size={17} />}
-										onClick={() => void cancel(file)}
+										onClick={() => askCancel(file)}
 									/>
 								</div>
 							))}
@@ -379,6 +402,9 @@ export function DocumentsPage({ workspace }: { workspace: WorkspaceView }) {
 						selected.status,
 					)) && <DocumentProgress job={selected} resume={() => void resume()} />}
 
+			{selected && selected.payload.engine === 'docling' && (
+				<DocumentTextSearch key={selected.id} job={selected} />
+			)}
 			{selected && !!selected.payload.groups?.length && (
 				<DocumentResultsPage
 					key={selected.id}
