@@ -59,9 +59,13 @@ def version(value):
 
 
 def public(job):
-    return {
+    result = {
         key: getattr(job, key) for key in ("id", "name", "status", "pages", "processed", "payload")
     } | {"created_at": version(job.created_at), "updated_at": version(job.updated_at)}
+    result["payload"] = {
+        key: value for key, value in job.payload.items() if not key.startswith("_")
+    }
+    return result
 
 
 def owned(database, ident, owner):

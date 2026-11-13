@@ -43,5 +43,14 @@ export type DocumentJob = {
 		analysis_done?: number;
 		analysis_total?: number;
 		acknowledge_scope?: boolean;
+		publication?: {
+			phase: string;
+			name: string;
+			token: string;
+			public_url: string;
+			project_id: string;
+			object_name: string;
+			webhook_id: string;
+		};
 	};
 };

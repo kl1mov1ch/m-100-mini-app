@@ -11,12 +11,143 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
+from .. import profile_webhooks
 from ..analytics import style_sheet
 from ..report_downloads import report_export
 from .normalization import build_groups, canonical, financial_summary, unit_value
 from .repository import DocumentJob, create, folder, owned, public, session, version
 
 router = APIRouter(prefix="/api/documents")
+
+
+@router.get("/webhooks")
+def document_webhooks(request: Request):
+    return profile_webhooks.list_webhooks(request.state.user["telegram_id"])
+
+
+class UploadReservation(BaseModel):
+    name: str = Field(min_length=1, max_length=180)
+    query: str = Field(default="", max_length=2000)
+
+
+@router.post("/reserve")
+def reserve_upload(request: Request, body: UploadReservation):
+    if not body.name.lower().endswith(".pdf"):
+        raise HTTPException(422, "Выберите PDF-файл")
+    job = create(request.state.user["telegram_id"], Path(body.name.replace("\\", "/")).name)
+    job.status = "uploading"
+    query = body.query.strip() or "Собрать все монтажные работы по проекту"
+    job.payload = {
+        **job.payload,
+        "query": query,
+        "query_key": canonical(query),
+        "automatic": True,
+        "groups": [],
+        "reviews": [],
+    }
+    path = folder(job.id)
+    path.mkdir(parents=True, exist_ok=False)
+    try:
+        with session() as database:
+            database.add(job)
+            database.flush()
+            return public(job)
+    except BaseException:
+        shutil.rmtree(path, ignore_errors=True)
+        raise
+
+
+@router.post("/{ident}/file")
+async def upload_reserved(ident: str, request: Request):
+    with session() as database:
+        job = owned(database, ident, request.state.user["telegram_id"])
+        if job.status != "uploading":
+            raise HTTPException(409, "Этот файл уже отправлен на обработку")
+    form = await request.form(max_files=1, max_fields=0, max_part_size=52 * 1024 * 1024)
+    file = form.get("file")
+    if not file or not hasattr(file, "read"):
+        raise HTTPException(422, "Выберите PDF-файл")
+    path = folder(ident)
+    try:
+        with session() as database:
+            owned(database, ident, request.state.user["telegram_id"])
+        digest = hashlib.sha256()
+        size = 0
+        with (path / "source.pdf").open("wb") as output:
+            while block := await file.read(1024 * 1024):
+                if size == 0 and not block.startswith(b"%PDF-"):
+                    raise HTTPException(422, "Файл не является PDF")
+                size += len(block)
+                if size > 50 * 1024 * 1024:
+                    raise HTTPException(413, "Один PDF должен быть не больше 50 МБ")
+                with session() as database:
+                    owned(database, ident, request.state.user["telegram_id"])
+                output.write(block)
+                digest.update(block)
+        if not size:
+            raise HTTPException(422, "Файл пустой")
+        with session() as database:
+            job = database.scalar(
+                select(DocumentJob)
+                .where(
+                    DocumentJob.id == ident,
+                    DocumentJob.owner_id == request.state.user["telegram_id"],
+                )
+                .with_for_update()
+            )
+            if job is None:
+                raise HTTPException(404, "Загрузка отменена")
+            existing = database.scalar(
+                select(DocumentJob)
+                .where(
+                    DocumentJob.owner_id == job.owner_id,
+                    DocumentJob.id != ident,
+                    DocumentJob.status.not_in(["failed", "uploading"]),
+                    DocumentJob.payload["file_hash"].as_string() == digest.hexdigest(),
+                    DocumentJob.payload["query_key"].as_string() == job.payload["query_key"],
+                )
+                .limit(1)
+            )
+            if existing:
+                database.delete(job)
+                shutil.rmtree(path, ignore_errors=True)
+                return public(existing)
+            job.payload = {**job.payload, "file_hash": digest.hexdigest()}
+            job.status = "queued"
+            job.updated_at = datetime.now(UTC)
+            return public(job)
+    except BaseException:
+        with session() as database:
+            job = database.get(DocumentJob, ident)
+            if (
+                job
+                and job.owner_id == request.state.user["telegram_id"]
+                and job.status == "uploading"
+            ):
+                database.delete(job)
+        shutil.rmtree(path, ignore_errors=True)
+        raise
+    finally:
+        await file.close()
+
+
+@router.post("/{ident}/delete")
+def delete_document(ident: str, request: Request):
+    with session() as database:
+        job = database.scalar(
+            select(DocumentJob)
+            .where(
+                DocumentJob.id == ident, DocumentJob.owner_id == request.state.user["telegram_id"]
+            )
+            .with_for_update()
+        )
+        if job is None:
+            raise HTTPException(404, "Документ уже удалён или недоступен")
+        if job.status == "publishing":
+            raise HTTPException(409, "Дождитесь завершения записи в Битрикс24")
+        database.delete(job)
+    shutil.rmtree(folder(ident), ignore_errors=True)
+    return {"deleted": True}
 
 
 @router.get("")
@@ -129,6 +260,25 @@ def preview_page(ident: str, page: int, request: Request):
         media_type="image/jpeg",
         headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"},
     )
+
+
+@router.get("/{ident}/marked.pdf")
+def marked_pdf(ident: str, request: Request, prepare: bool = False):
+    from .annotations import annotated_pdf
+
+    with session() as database:
+        job = owned(database, ident, request.state.user["telegram_id"])
+        if not job.payload.get("groups"):
+            raise HTTPException(409, "Дождитесь появления выборки")
+        filename = "Размечено_" + Path(job.name).stem[:90] + ".pdf"
+
+    def render(user):
+        with session() as database:
+            current = owned(database, ident, user["telegram_id"])
+            groups = current.payload.get("groups", [])
+        return annotated_pdf(folder(ident) / "source.pdf", groups)
+
+    return report_export(request.state.user, filename, "application/pdf", render, prepare)
 
 
 class AnalysisInput(BaseModel):
@@ -305,6 +455,7 @@ def save_reviews(ident, request, expected_version, items, acknowledge_scope):
         )
         job.payload = {
             **job.payload,
+            "publication": None,
             "groups": groups,
             "summary": summary,
             "reviews": reviews,
@@ -338,7 +489,7 @@ def export(ident: str, request: Request, prepare: bool = False, final: bool = Fa
 
         with session() as database:
             job = owned(database, ident, user["telegram_id"])
-            if final and job.status != "ready":
+            if final and job.status not in {"ready", "published"}:
                 raise HTTPException(
                     409, "Для итогового отчёта подтвердите все объёмы, расценки и полноту выборки"
                 )
@@ -437,7 +588,7 @@ def export(ident: str, request: Request, prepare: bool = False, final: bool = Fa
 
     with session() as database:
         job = owned(database, ident, request.state.user["telegram_id"])
-        if final and job.status != "ready":
+        if final and job.status not in {"ready", "published"}:
             raise HTTPException(409, "Подтвердите объёмы и расценки перед итоговой выгрузкой")
     return report_export(
         request.state.user,

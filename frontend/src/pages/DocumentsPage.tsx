@@ -1,39 +1,52 @@
 import { App, Button, Empty, Input, Progress, Spin, Upload } from 'antd';
-import { ArrowRight, ChevronRight, FileText, RefreshCw, UploadCloud } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { ChevronDown, ChevronRight, FilePlus2, FileText, RefreshCw, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import type { WorkspaceView } from '../App';
 import { request } from '../lib/api';
 import { DocumentResultsPage } from './DocumentResultsPage';
 import type { DocumentJob } from './document-types';
 import './documents.css';
 
+type PendingFile = { uid: string; file: File; state: 'pending' | 'uploading' | 'cancelling' };
+type Transfer = { job?: string; controller: AbortController; cancelled: boolean };
 const labels: Record<string, string> = {
+	uploading: 'Загрузка файла',
 	queued: 'В очереди',
-	extracting: 'Распознавание PDF',
-	needs_ocr: 'Нужен OCR',
+	extracting: 'Читаем страницы',
+	needs_ocr: 'Нужна проверка OCR',
 	ai_queued: 'В очереди ИИ',
-	analysing: 'Сбор выборки',
+	analysing: 'Собираем данные',
 	needs_ai: 'Подключите ИИ',
-	needs_budget: 'Нужно продолжить обработку',
-	needs_review: 'Выборка готова к проверке',
-	ready: 'Проверено и оценено',
+	needs_budget: 'Продолжите обработку',
+	needs_review: 'Можно проверить данные',
+	ready: 'Готово к созданию таблицы',
 	failed: 'Нужна проверка',
 	text_ready: 'Текст извлечён',
 	draft: 'Черновик',
+	publishing: 'Записываем таблицу',
+	publish_retry: 'Проверьте запись',
+	published: 'Объект создан',
 };
 export function DocumentsPage({ workspace }: { workspace: WorkspaceView }) {
+	const { message, modal } = App.useApp();
 	const [jobs, setJobs] = useState<DocumentJob[]>([]),
 		[selected, setSelected] = useState<DocumentJob | null>(null),
-		[results, setResults] = useState(false),
 		[query, setQuery] = useState(''),
+		[files, setFiles] = useState<PendingFile[]>([]),
 		[loading, setLoading] = useState(false),
 		[uploading, setUploading] = useState(false),
-		[error, setError] = useState('');
-	const { message } = App.useApp();
+		[composerOpen, setComposerOpen] = useState(true),
+		[error, setError] = useState(''),
+		[deleting, setDeleting] = useState<string[]>([]);
+	const transfers = useRef(new Map<string, Transfer>()),
+		removed = useRef(new Set<string>());
+	useEffect(() => {
+		setComposerOpen(!selected);
+	}, [selected?.id]);
 	const load = async () => {
 		try {
 			const data = await request<DocumentJob[]>('/documents');
-			setJobs(data);
+			setJobs(data.filter((job) => !removed.current.has(job.id)));
 			setError('');
 		} catch (failure) {
 			setError((failure as Error).message);
@@ -49,41 +62,145 @@ export function DocumentsPage({ workspace }: { workspace: WorkspaceView }) {
 	}, [workspace.session.user.telegram_id]);
 	useEffect(() => {
 		if (!selected) return;
-		const summary = jobs.find((job) => job.id === selected.id);
-		if (summary && summary.updated_at !== selected.updated_at)
-			void request<DocumentJob>('/documents/' + selected.id)
-				.then(setSelected)
-				.catch((error) => message.error(error.message));
-	}, [jobs, selected?.id]);
+		const brief = jobs.find((job) => job.id === selected.id);
+		if (!brief || brief.updated_at === selected.updated_at) return;
+		const controller = new AbortController();
+		void request<DocumentJob>('/documents/' + selected.id, undefined, undefined, controller.signal)
+			.then((job) => {
+				if (!removed.current.has(job.id)) setSelected(job);
+			})
+			.catch((failure) => {
+				if (!controller.signal.aborted && !removed.current.has(selected.id))
+					setError(failure.message);
+			});
+		return () => controller.abort();
+	}, [jobs, selected?.id, selected?.updated_at]);
+	const add = (file: File) => {
+		setComposerOpen(true);
+		if (!file.name.toLowerCase().endsWith('.pdf') || file.size > 50 * 1024 * 1024) {
+			message.error('Выберите PDF до 50 МБ');
+			return false;
+		}
+		const uid = crypto.randomUUID();
+		transfers.current.set(uid, { controller: new AbortController(), cancelled: false });
+		setFiles((current) => [...current, { uid, file, state: 'pending' }]);
+		return false;
+	};
+	const cancel = async (file: PendingFile) => {
+		const transfer = transfers.current.get(file.uid);
+		if (!transfer) return;
+		transfer.cancelled = true;
+		if (file.state === 'pending') {
+			setFiles((current) => current.filter((item) => item.uid !== file.uid));
+			return;
+		}
+		setFiles((current) =>
+			current.map((item) => (item.uid === file.uid ? { ...item, state: 'cancelling' } : item)),
+		);
+		if (transfer.job) {
+			try {
+				await request('/documents/' + transfer.job + '/delete', {});
+				removed.current.add(transfer.job);
+				transfer.controller.abort();
+				setFiles((current) => current.filter((item) => item.uid !== file.uid));
+				await load();
+			} catch (failure) {
+				setError('Не удалось отменить загрузку: ' + (failure as Error).message);
+			}
+		}
+	};
+	const start = async () => {
+		setUploading(true);
+		setError('');
+		for (const item of files.filter((file) => file.state === 'pending')) {
+			const transfer = transfers.current.get(item.uid);
+			if (!transfer || transfer.cancelled) continue;
+			setFiles((current) =>
+				current.map((file) => (file.uid === item.uid ? { ...file, state: 'uploading' } : file)),
+			);
+			try {
+				const reserved = await request<DocumentJob>('/documents/reserve', {
+					name: item.file.name,
+					query: query.trim(),
+				});
+				transfer.job = reserved.id;
+				if (transfer.cancelled) {
+					await request('/documents/' + reserved.id + '/delete', {});
+					removed.current.add(reserved.id);
+					continue;
+				}
+				const form = new FormData();
+				form.append('file', item.file);
+				const job = await request<DocumentJob>(
+					'/documents/' + reserved.id + '/file',
+					form,
+					undefined,
+					transfer.controller.signal,
+				);
+				if (!transfer.cancelled) setSelected(job);
+			} catch (failure) {
+				if (!transfer.cancelled) setError((failure as Error).message);
+				if (transfer.job) {
+					try {
+						await request('/documents/' + transfer.job + '/delete', {});
+						removed.current.add(transfer.job);
+					} catch {
+						if (!transfer.cancelled)
+							setError('Загрузка не завершена. Удалите её из списка документов.');
+					}
+				}
+			} finally {
+				setFiles((current) => current.filter((file) => file.uid !== item.uid));
+				await load();
+			}
+		}
+		setUploading(false);
+	};
 	const open = async (id: string) => {
 		try {
 			setSelected(await request<DocumentJob>('/documents/' + id));
-			setResults(false);
-		} catch (error) {
-			message.error((error as Error).message);
+		} catch (failure) {
+			message.error((failure as Error).message);
 		}
 	};
-	const upload = async (file: File) => {
-		if (query.trim().length < 3) {
-			message.info('Напишите, какую выборку собрать');
-			return false;
-		}
-		setUploading(true);
+	const remove = async (job: DocumentJob) => {
+		setDeleting((current) => [...current, job.id]);
 		try {
-			const form = new FormData();
-			form.append('file', file);
-			form.append('query', query.trim());
-			const job = await request<DocumentJob>('/documents', form);
-			setSelected(job);
-			setResults(false);
-			await load();
-			message.success('Проект принят. Обработка выполняется в фоне.');
-		} catch (error) {
-			message.error((error as Error).message);
+			await request('/documents/' + job.id + '/delete', {});
+			removed.current.add(job.id);
+			setJobs((current) => current.filter((item) => item.id !== job.id));
+			setSelected((current) => (current?.id === job.id ? null : current));
+		} catch (failure) {
+			message.error((failure as Error).message);
 		} finally {
-			setUploading(false);
+			setDeleting((current) => current.filter((id) => id !== job.id));
 		}
-		return false;
+	};
+	const askRemove = (job: DocumentJob) => {
+		if (['uploading', 'queued', 'extracting', 'ai_queued', 'analysing'].includes(job.status)) {
+			void remove(job);
+			return;
+		}
+		modal.confirm({
+			className: 'action-confirm-sheet',
+			icon: null,
+			title: 'Удалить документ?',
+			content: (
+				<div className="action-confirm-content">
+					<strong>{job.name}</strong>
+					<p>
+						Файл и выборка будут удалены.
+						{job.payload.publication?.phase === 'published'
+							? ' Созданный объект и таблица Битрикс24 останутся.'
+							: ''}
+					</p>
+				</div>
+			),
+			okText: 'Удалить',
+			cancelText: 'Оставить',
+			okButtonProps: { danger: true },
+			onOk: () => remove(job),
+		});
 	};
 	const resume = async () => {
 		if (!selected) return;
@@ -93,71 +210,86 @@ export function DocumentsPage({ workspace }: { workspace: WorkspaceView }) {
 				: 'retry';
 			setSelected(await request<DocumentJob>('/documents/' + selected.id + '/' + action, {}));
 			await load();
-		} catch (error) {
-			message.error((error as Error).message);
+		} catch (failure) {
+			message.error((failure as Error).message);
 		}
 	};
-	if (results && selected)
-		return (
-			<DocumentResultsPage
-				job={selected}
-				back={() => setResults(false)}
-				refresh={(job) => {
-					setSelected(job);
-					void load();
-				}}
-			/>
-		);
+	const visibleJobs = jobs.filter(
+		(job) => !files.some((file) => transfers.current.get(file.uid)?.job === job.id),
+	);
 	return (
-		<div className="document-page">
+		<div className="document-page document-workspace">
 			<div className="page-title">
 				<div>
 					<h1>Документы</h1>
-					<small className="page-context">Выборка работ из PDF-проекта</small>
+					<small className="page-context">PDF → данные → таблица объекта</small>
 				</div>
 				<Button
 					type="text"
 					aria-label="Обновить документы"
-					icon={<RefreshCw size={19} />}
-					loading={loading}
+					icon={<RefreshCw size={18} />}
 					onClick={() => void load()}
 				/>
 			</div>
 			<section className="document-upload">
 				<div className="document-upload-heading">
-					<div>
-						<strong>Новая выборка</strong>
-						<small>Какие работы нужны из проекта?</small>
-					</div>
-					<span className="document-file-icon">
-						<FileText size={21} />
-					</span>
-				</div>
-				<Input.TextArea
-					value={query}
-					onChange={(event) => setQuery(event.target.value)}
-					maxLength={2000}
-					autoSize={{ minRows: 2, maxRows: 5 }}
-					placeholder="Например: вентиляция — воздуховоды, оборудование и изоляция"
-					aria-label="Запрос на выборку из PDF"
-				/>
-				<div className="document-upload-actions">
-					<Upload
-						accept=".pdf"
-						showUploadList={false}
-						beforeUpload={upload}
-						disabled={uploading || query.trim().length < 3}
+					<button
+						className="document-compose-toggle"
+						aria-expanded={composerOpen}
+						onClick={() => setComposerOpen((current) => !current)}
 					>
-						<Button
-							type="primary"
-							icon={<UploadCloud size={17} />}
-							loading={uploading}
-							disabled={query.trim().length < 3}
-						>
-							Выбрать PDF
+						{composerOpen ? 'Что найти в проекте?' : 'Новая выборка'}
+						<ChevronDown size={14} />
+					</button>
+					<Upload accept=".pdf" multiple beforeUpload={add} showUploadList={false}>
+						<Button type="text" icon={<FilePlus2 size={17} />}>
+							Добавить PDF
 						</Button>
 					</Upload>
-					<small>До 50 МБ · все страницы</small>
+				</div>
+				<div hidden={!composerOpen && !files.length}>
+					<Input.TextArea
+						value={query}
+						onChange={(event) => setQuery(event.target.value)}
+						maxLength={2000}
+						autoSize={{ minRows: 2, maxRows: 4 }}
+						aria-label="Что найти в PDF"
+						placeholder="Например: только вентиляция. Пустое поле — все работы."
+					/>
+					{!!files.length && (
+						<div className="document-pending-files">
+							{files.map((file) => (
+								<div key={file.uid}>
+									<FileText size={17} />
+									<span>
+										<strong>{file.file.name}</strong>
+										<small>
+											{file.state === 'pending'
+												? (file.file.size / 1024 / 1024).toFixed(1) + ' МБ'
+												: file.state === 'cancelling'
+													? 'Отменяем…'
+													: 'Загружаем…'}
+										</small>
+									</span>
+									<Button
+										type="text"
+										aria-label={'Убрать ' + file.file.name}
+										loading={file.state === 'cancelling'}
+										icon={<X size={17} />}
+										onClick={() => void cancel(file)}
+									/>
+								</div>
+							))}
+						</div>
+					)}
+					<div className="document-upload-actions">
+						<small>PDF до 50 МБ · все страницы</small>
+						{!!files.some((file) => file.state === 'pending') && (
+							<Button type="primary" loading={uploading} onClick={() => void start()}>
+								Собрать данные
+							</Button>
+						)}
+					</div>
 				</div>
 			</section>
 			{error && (
@@ -166,77 +298,90 @@ export function DocumentsPage({ workspace }: { workspace: WorkspaceView }) {
 				</p>
 			)}
 			<Spin spinning={loading}>
-				{!!jobs.length && (
-					<span className="document-group-label">Мои документы · {jobs.length}</span>
-				)}
 				<div className="document-jobs">
-					{jobs.map((job) => (
-						<button
+					{visibleJobs.map((job) => (
+						<div
 							className={'document-job' + (selected?.id === job.id ? ' selected' : '')}
 							key={job.id}
-							onClick={() => void open(job.id)}
 						>
-							<span className="document-file-icon">
-								<FileText size={20} />
-							</span>
-							<span className="document-job-label">
-								<strong>{job.name}</strong>
-								<small>
-									{labels[job.status] || job.status}
-									{job.pages ? ` · ${job.processed}/${job.pages} стр.` : ''}
-								</small>
-							</span>
-							<ChevronRight size={17} />
-						</button>
+							<button
+								className="document-job-open"
+								onClick={() => (selected?.id === job.id ? setSelected(null) : void open(job.id))}
+							>
+								<span className="document-file-icon">
+									<FileText size={19} />
+								</span>
+								<span className="document-job-label">
+									<strong>{job.name}</strong>
+									<small>
+										{labels[job.status] || job.status}
+										{job.pages ? ` · ${job.processed}/${job.pages} стр.` : ''}
+									</small>
+								</span>
+								{selected?.id === job.id ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+							</button>
+							<Button
+								type="text"
+								aria-label={'Удалить ' + job.name}
+								loading={deleting.includes(job.id)}
+								disabled={job.status === 'publishing'}
+								icon={<X size={17} />}
+								onClick={() => askRemove(job)}
+							/>
+						</div>
 					))}
 				</div>
 			</Spin>
-			{!jobs.length && !loading && !error && (
+			{!jobs.length && !files.length && !loading && !error && (
 				<Empty
 					image={Empty.PRESENTED_IMAGE_SIMPLE}
-					description="Загрузите проект и укажите нужные работы"
+					description="Добавьте PDF — найденные работы появятся здесь"
 				/>
 			)}
-			{selected && (
+			{selected && !selected.payload.groups?.length && (
 				<section className="document-analysis">
 					<div className="document-section-title">
 						<h2>{labels[selected.status]}</h2>
-						<small>{selected.pages ? `${selected.processed}/${selected.pages} стр.` : ''}</small>
+						<small>
+							{selected.processed}/{selected.pages || '…'} стр.
+						</small>
 					</div>
-					<p className="page-context">{selected.payload.query}</p>
-					{!['needs_review', 'ready', 'draft'].includes(selected.status) && (
-						<Progress
-							size="small"
-							percent={
-								selected.status === 'extracting'
-									? Math.round((selected.processed / Math.max(1, selected.pages)) * 100)
-									: ['queued', 'needs_ocr'].includes(selected.status)
-										? 0
-										: Math.round(
-												((selected.payload.analysis_done || 0) /
-													Math.max(1, selected.payload.analysis_total || 1)) *
-													100,
-											)
-							}
-							status={['extracting', 'analysing'].includes(selected.status) ? 'active' : 'normal'}
-						/>
-					)}
+					<Progress
+						size="small"
+						percent={Math.round(
+							(selected.status === 'extracting'
+								? selected.processed / Math.max(1, selected.pages)
+								: (selected.payload.analysis_done || 0) /
+									Math.max(1, selected.payload.analysis_total || 1)) * 100,
+						)}
+						status={['extracting', 'analysing'].includes(selected.status) ? 'active' : 'normal'}
+					/>
 					{selected.payload.notice && (
 						<details className="document-details">
-							<summary>Подробнее об обработке</summary>
+							<summary>Подробнее</summary>
 							<p>{selected.payload.notice}</p>
 						</details>
 					)}
 					{['needs_ocr', 'failed', 'needs_ai', 'needs_budget', 'text_ready'].includes(
 						selected.status,
 					) && <Button onClick={() => void resume()}>Продолжить обработку</Button>}
-					{!!selected.payload.groups?.length && (
-						<Button type="primary" block onClick={() => setResults(true)}>
-							Открыть выборку
-							<ArrowRight size={17} />
-						</Button>
-					)}
 				</section>
+			)}
+			{selected && !!selected.payload.groups?.length && (
+				<DocumentResultsPage
+					key={selected.id}
+					embedded
+					job={selected}
+					back={() => setSelected(null)}
+					refresh={(job) => {
+						setSelected(job);
+						void load();
+					}}
+					openObject={async (id) => {
+						await workspace.loadSession();
+						workspace.selectObject(id);
+					}}
+				/>
 			)}
 		</div>
 	);

@@ -5,6 +5,7 @@ import { Money } from '../lib/format';
 import { headers, request } from '../lib/api';
 import { downloadReport } from '../lib/report-download';
 import type { DocumentJob, DocumentGroup, DocumentSource } from './document-types';
+import { DocumentPublishPanel } from './DocumentPublishPanel';
 
 function SourcePreview({
 	jobId,
@@ -78,10 +79,14 @@ export function DocumentResultsPage({
 	job,
 	back,
 	refresh,
+	embedded = false,
+	openObject,
 }: {
 	job: DocumentJob;
 	back: () => void;
 	refresh: (job: DocumentJob) => void;
+	embedded?: boolean;
+	openObject?: (id: string) => void;
 }) {
 	const [category, setCategory] = useState('Все'),
 		[status, setStatus] = useState('all'),
@@ -109,6 +114,7 @@ export function DocumentResultsPage({
 			row.name.toLowerCase().includes(query.toLowerCase()),
 	);
 	const summary = job.payload.summary;
+	const readOnly = !['ready', 'needs_review', 'draft'].includes(job.status);
 	const needsScope = !!(
 		job.payload.coverage?.drawings?.length ||
 		job.payload.coverage?.low_ocr?.length ||
@@ -117,7 +123,11 @@ export function DocumentResultsPage({
 	const eligible = rows
 		.filter(
 			(row) =>
-				!row.confirmed && !row.issues.length && row.quantity !== null && rates[row.id] != null,
+				!readOnly &&
+				!row.confirmed &&
+				!row.issues.length &&
+				row.quantity !== null &&
+				rates[row.id] != null,
 		)
 		.slice(0, 100);
 	const confirmBatch = async () => {
@@ -189,14 +199,16 @@ export function DocumentResultsPage({
 	};
 	return (
 		<div className="document-page document-results-page">
-			<button className="back-link" onClick={back}>
-				<ArrowLeft size={16} />
-				Документы
-			</button>
+			{!embedded && (
+				<button className="back-link" onClick={back}>
+					<ArrowLeft size={16} />
+					Документы
+				</button>
+			)}
 			<div className="page-title document-results-title">
 				<div>
-					<h1>Выборка работ</h1>
-					<small className="page-context document-filename">{job.name}</small>
+					{embedded ? <h2>Данные файла</h2> : <h1>Выборка работ</h1>}
+					{!embedded && <small className="page-context document-filename">{job.name}</small>}
 				</div>
 			</div>
 			<section className="document-result-summary">
@@ -306,6 +318,7 @@ export function DocumentResultsPage({
 									</b>
 								) : (
 									<InputNumber
+										disabled={readOnly}
 										stringMode
 										controls={false}
 										min="0"
@@ -330,7 +343,7 @@ export function DocumentResultsPage({
 							<Button type="text" icon={<FileSearch size={16} />} onClick={() => setSources(row)}>
 								Источники
 							</Button>
-							<Button type="text" onClick={() => choose(row)}>
+							<Button type="text" disabled={readOnly} onClick={() => choose(row)}>
 								{row.confirmed ? 'Изменить' : 'Проверить'}
 								<ChevronRight size={15} />
 							</Button>
@@ -370,18 +383,27 @@ export function DocumentResultsPage({
 				/>
 			)}
 			<div className="document-export-actions">
-				<Button icon={<Download size={16} />} onClick={() => void exportFile()}>
-					Excel-черновик
+				<Button
+					icon={<FileSearch size={16} />}
+					onClick={() =>
+						void downloadReport(`/documents/${job.id}/marked.pdf`).catch((error) =>
+							message.error(error.message),
+						)
+					}
+				>
+					PDF с выделением
 				</Button>
 				<Button
-					type="primary"
-					disabled={job.status !== 'ready'}
 					icon={<Download size={16} />}
-					onClick={() => void exportFile(true)}
+					onClick={() => void exportFile(['ready', 'published'].includes(job.status))}
 				>
-					Итоговый отчёт
+					{['ready', 'published'].includes(job.status) ? 'Скачать Excel' : 'Excel-черновик'}
 				</Button>
 			</div>
+			<small className="document-highlight-legend">
+				Жёлтым в PDF отмечены использованные источники.
+			</small>
+			<DocumentPublishPanel job={job} refresh={refresh} openObject={openObject} />
 			<Modal
 				title={editing?.name}
 				open={!!editing}

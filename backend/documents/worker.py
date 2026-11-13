@@ -9,6 +9,7 @@ import re
 import shutil
 import subprocess
 import time
+import xml.etree.ElementTree as ET
 from datetime import UTC, datetime, timedelta
 
 import httpx
@@ -19,6 +20,7 @@ from sqlalchemy import or_, select
 
 from .. import matcher, store, workspaces
 from ..runtime import configure_runtime
+from .execution import JobDeleted, cancellable, check_active, current_job, run
 from .extraction import classify, propose
 from .normalization import build_groups, financial_summary
 from .repository import DocumentJob, folder, session
@@ -26,7 +28,9 @@ from .repository import DocumentJob, folder, session
 
 def update(ident, **values):
     with session() as database:
-        job = database.get(DocumentJob, ident)
+        job = database.scalar(select(DocumentJob).where(DocumentJob.id == ident).with_for_update())
+        if job is None:
+            raise JobDeleted()
         for key, value in values.items():
             setattr(job, key, value)
         job.updated_at = datetime.now(UTC)
@@ -38,7 +42,7 @@ def ocr_page(source, number, destination):
     prefix = destination / f"page-{number}"
     image = prefix.with_suffix(".jpg")
     try:
-        subprocess.run(
+        run(
             [
                 "pdftoppm",
                 "-f",
@@ -60,7 +64,7 @@ def ocr_page(source, number, destination):
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
-        result = subprocess.run(
+        result = run(
             ["tesseract", str(image), "stdout", "-l", "rus+eng", "tsv"],
             check=True,
             timeout=120,
@@ -137,6 +141,50 @@ def ocr_page(source, number, destination):
         raise
 
 
+def text_page(source, number):
+    if not shutil.which("pdftotext"):
+        return None
+    result = run(
+        ["pdftotext", "-f", str(number), "-l", str(number), "-bbox-layout", str(source), "-"],
+        capture_output=True,
+        check=True,
+        timeout=60,
+    )
+    root = ET.fromstring(result.stdout)
+    page = next((item for item in root.iter() if item.tag.endswith("}page")), None)
+    if page is None:
+        return None
+    text = ""
+    layout = []
+    for line in page.iter():
+        if not line.tag.endswith("}line"):
+            continue
+        words = [word for word in line if word.tag.endswith("}word") and word.text]
+        if not words:
+            continue
+        start = len(text)
+        text += " ".join(word.text for word in words) + "\n"
+        layout.append(
+            {
+                "start": start,
+                "end": len(text),
+                "left": float(line.attrib["xMin"]),
+                "top": float(line.attrib["yMin"]),
+                "right": float(line.attrib["xMax"]),
+                "bottom": float(line.attrib["yMax"]),
+            }
+        )
+    return {
+        "text": text,
+        "confidence": None,
+        "layout": {
+            "width": float(page.attrib["width"]),
+            "height": float(page.attrib["height"]),
+            "lines": layout,
+        },
+    }
+
+
 def process(ident, payload):
     path = folder(ident)
     reader = PdfReader(path / "source.pdf")
@@ -150,9 +198,12 @@ def process(ident, payload):
     results = payload.get("page_results", [])
     update(ident, pages=total)
     for index in range(len(results), total):
+        check_active()
         text = reader.pages[index].extract_text() or ""
+        if len(text.strip()) >= 30:
+            text = text_page(path / "source.pdf", index + 1) or text
         confidence = None
-        if len(text.strip()) < 30:
+        if isinstance(text, str) and len(text.strip()) < 30:
             text = ocr_page(path / "source.pdf", index + 1, path)
             if text is None:
                 update(
@@ -283,7 +334,7 @@ def analyse(ident, payload):
         calls += 1
         payload = {**payload, "ai_calls": calls}
         update(ident, payload=payload)
-        return await matcher.complete(*args)
+        return await cancellable(matcher.complete(*args))
 
     for page, key, text in ledger:
         if key in done:
@@ -396,11 +447,14 @@ def run_once():
         ident, payload, analysis = job.id, job.payload, job.status in {"ai_queued", "analysing"}
         job.status = "analysing" if analysis else "extracting"
         job.updated_at = datetime.now(UTC)
+    context = current_job.set(ident)
     try:
         if analysis:
             analyse(ident, payload)
         else:
             process(ident, payload)
+    except JobDeleted:
+        shutil.rmtree(folder(ident), ignore_errors=True)
     except (
         OSError,
         ValueError,
@@ -417,9 +471,12 @@ def run_once():
         )
         with session() as database:
             job = database.get(DocumentJob, ident)
-            job.status = "failed"
-            job.payload = {**job.payload, "notice": notice}
-            job.updated_at = datetime.now(UTC)
+            if job is not None:
+                job.status = "failed"
+                job.payload = {**job.payload, "notice": notice}
+                job.updated_at = datetime.now(UTC)
+    finally:
+        current_job.reset(context)
     return True
 
 

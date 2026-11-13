@@ -1,10 +1,11 @@
 import csv
 import io
 import re
-import subprocess
 
 import numpy as np
 from PIL import Image, ImageOps
+
+from .execution import run
 
 
 def centers(indices):
@@ -66,7 +67,7 @@ def recognize(image_path):
             cursor += patch.height + 30
         data = io.BytesIO()
         canvas.save(data, format="PNG")
-        output = subprocess.run(
+        output = run(
             ["tesseract", "stdin", "stdout", "-l", "rus+eng", "--psm", "6", "tsv"],
             input=data.getvalue(),
             capture_output=True,
@@ -103,7 +104,7 @@ def recognize(image_path):
             data = io.BytesIO()
             patch.save(data, format="PNG")
             checked = (
-                subprocess.run(
+                run(
                     [
                         "tesseract",
                         "stdin",
