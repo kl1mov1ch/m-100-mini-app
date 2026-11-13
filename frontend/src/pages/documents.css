@@ -156,6 +156,44 @@
 	display: grid;
 	gap: 12px;
 }
+.document-live-progress .document-section-title h2 {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-size: 15px;
+}
+.document-progress-metadata,
+.document-progress-live {
+	color: var(--ios-secondary);
+	font-size: 12px;
+	line-height: 1.4;
+}
+.document-progress-counts {
+	display: flex;
+	justify-content: space-between;
+	gap: 12px;
+	font-size: 13px;
+}
+.document-progress-counts > span {
+	color: var(--ios-secondary);
+}
+.document-progress-counts > strong {
+	font-variant-numeric: tabular-nums;
+}
+.document-live-progress .ant-progress {
+	margin: -6px 0;
+}
+.document-progress-notice {
+	margin: 0;
+	font-size: 13px;
+	line-height: 1.5;
+	color: var(--ios-secondary);
+}
+@media (prefers-reduced-motion: reduce) {
+	.document-live-progress .spinning {
+		animation: none;
+	}
+}
 .document-analysis .page-context {
 	margin: 0;
 }

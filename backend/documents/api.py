@@ -6,15 +6,18 @@ from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
+from starlette.concurrency import run_in_threadpool
 
 from .. import profile_webhooks
 from ..analytics import style_sheet
 from ..report_downloads import report_export
+from .metadata import page_count
 from .normalization import build_groups, canonical, financial_summary, unit_value
+from .progress import notify_queue
 from .repository import DocumentJob, create, folder, owned, public, session, version
 
 router = APIRouter(prefix="/api/documents")
@@ -58,7 +61,7 @@ def reserve_upload(request: Request, body: UploadReservation):
 
 
 @router.post("/{ident}/file")
-async def upload_reserved(ident: str, request: Request):
+async def upload_reserved(ident: str, request: Request, background: BackgroundTasks):
     with session() as database:
         job = owned(database, ident, request.state.user["telegram_id"])
         if job.status != "uploading":
@@ -86,6 +89,10 @@ async def upload_reserved(ident: str, request: Request):
                 digest.update(block)
         if not size:
             raise HTTPException(422, "Файл пустой")
+        try:
+            pages = await run_in_threadpool(page_count, path / "source.pdf")
+        except ValueError as error:
+            raise HTTPException(422, str(error)) from error
         with session() as database:
             job = database.scalar(
                 select(DocumentJob)
@@ -111,10 +118,13 @@ async def upload_reserved(ident: str, request: Request):
             if existing:
                 database.delete(job)
                 shutil.rmtree(path, ignore_errors=True)
+                background.add_task(notify_queue)
                 return public(existing)
-            job.payload = {**job.payload, "file_hash": digest.hexdigest()}
+            job.payload = {**job.payload, "file_hash": digest.hexdigest(), "file_bytes": size}
+            job.pages = pages
             job.status = "queued"
             job.updated_at = datetime.now(UTC)
+            background.add_task(notify_queue)
             return public(job)
     except BaseException:
         with session() as database:
@@ -161,6 +171,10 @@ def list_jobs(request: Request):
                 DocumentJob.payload["notice"].as_string().label("notice"),
                 DocumentJob.payload["summary"].label("summary"),
                 DocumentJob.payload["coverage"].label("coverage"),
+                DocumentJob.payload["progress"].label("progress"),
+                DocumentJob.payload["analysis_done"].label("analysis_done"),
+                DocumentJob.payload["analysis_total"].label("analysis_total"),
+                DocumentJob.payload["file_bytes"].label("file_bytes"),
             )
             .where(DocumentJob.owner_id == request.state.user["telegram_id"])
             .order_by(DocumentJob.created_at.desc())
@@ -174,7 +188,16 @@ def list_jobs(request: Request):
                 },
                 "payload": {
                     name: row[name]
-                    for name in ("query", "notice", "summary", "coverage")
+                    for name in (
+                        "query",
+                        "notice",
+                        "summary",
+                        "coverage",
+                        "progress",
+                        "analysis_done",
+                        "analysis_total",
+                        "file_bytes",
+                    )
                     if row[name] is not None
                 },
             }
@@ -183,7 +206,7 @@ def list_jobs(request: Request):
 
 
 @router.post("")
-async def upload(request: Request):
+async def upload(request: Request, background: BackgroundTasks):
     form = await request.form(max_files=1, max_fields=3, max_part_size=52 * 1024 * 1024)
     file = form.get("file")
     if not file or not hasattr(file, "read") or not str(file.filename).lower().endswith(".pdf"):
@@ -211,6 +234,10 @@ async def upload(request: Request):
                 digest.update(block)
         if not size:
             raise HTTPException(422, "Файл пустой")
+        try:
+            job.pages = await run_in_threadpool(page_count, destination / "source.pdf")
+        except ValueError as error:
+            raise HTTPException(422, str(error)) from error
         with session() as database:
             existing = database.scalar(
                 select(DocumentJob)
@@ -224,14 +251,17 @@ async def upload(request: Request):
             )
             if existing:
                 shutil.rmtree(destination)
+                background.add_task(notify_queue)
                 return public(existing)
             job.payload = {
                 **job.payload,
                 "file_hash": digest.hexdigest(),
                 "query_key": canonical(query),
+                "file_bytes": size,
             }
             database.add(job)
             database.flush()
+            background.add_task(notify_queue)
             return public(job)
     except Exception:
         shutil.rmtree(destination)
@@ -286,7 +316,7 @@ class AnalysisInput(BaseModel):
 
 
 @router.post("/{ident}/analyse")
-def analyse(ident: str, request: Request, body: AnalysisInput):
+def analyse(ident: str, request: Request, body: AnalysisInput, background: BackgroundTasks):
     with session() as database:
         job = owned(database, ident, request.state.user["telegram_id"])
         if job.status not in {"text_ready", "draft", "needs_ai", "needs_budget", "needs_review"}:
@@ -301,7 +331,7 @@ def analyse(ident: str, request: Request, body: AnalysisInput):
             raise HTTPException(422, "Выберите от 1 до 12 распознанных страниц")
         job.payload = {
             **job.payload,
-            "selected_pages": pages,
+            "selected_pages": pages if body.pages else [],
             "call_budget": int(job.payload.get("call_budget", 1000)) + 1000
             if job.status == "needs_budget"
             else int(job.payload.get("call_budget", 1000)),
@@ -309,17 +339,19 @@ def analyse(ident: str, request: Request, body: AnalysisInput):
         }
         job.status = "ai_queued"
         job.updated_at = datetime.now(UTC)
+        background.add_task(notify_queue)
         return public(job)
 
 
 @router.post("/{ident}/retry")
-def retry(ident: str, request: Request):
+def retry(ident: str, request: Request, background: BackgroundTasks):
     with session() as database:
         job = owned(database, ident, request.state.user["telegram_id"])
         if job.status not in {"needs_ocr", "failed"}:
             raise HTTPException(409, "Задание уже выполняется или завершено")
         job.status = "queued"
         job.updated_at = datetime.now(UTC)
+        background.add_task(notify_queue)
         return public(job)
 
 

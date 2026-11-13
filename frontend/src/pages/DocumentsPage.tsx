@@ -1,9 +1,18 @@
-import { App, Button, Empty, Input, Progress, Spin, Upload } from 'antd';
-import { ChevronDown, ChevronRight, FilePlus2, FileText, RefreshCw, X } from 'lucide-react';
+import { App, Button, Empty, Input, Spin, Upload } from 'antd';
+import {
+	ChevronDown,
+	ChevronRight,
+	FilePlus2,
+	FileText,
+	LoaderCircle,
+	RefreshCw,
+	X,
+} from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { WorkspaceView } from '../App';
 import { request } from '../lib/api';
 import { DocumentResultsPage } from './DocumentResultsPage';
+import { DocumentProgress, documentActive } from './DocumentProgress';
 import type { DocumentJob } from './document-types';
 import './documents.css';
 
@@ -11,10 +20,10 @@ type PendingFile = { uid: string; file: File; state: 'pending' | 'uploading' | '
 type Transfer = { job?: string; controller: AbortController; cancelled: boolean };
 const labels: Record<string, string> = {
 	uploading: 'Загрузка файла',
-	queued: 'В очереди',
+	queued: 'Ожидает запуска',
 	extracting: 'Читаем страницы',
 	needs_ocr: 'Нужна проверка OCR',
-	ai_queued: 'В очереди ИИ',
+	ai_queued: 'Передаём в ИИ',
 	analysing: 'Собираем данные',
 	needs_ai: 'Подключите ИИ',
 	needs_budget: 'Продолжите обработку',
@@ -39,11 +48,14 @@ export function DocumentsPage({ workspace }: { workspace: WorkspaceView }) {
 		[error, setError] = useState(''),
 		[deleting, setDeleting] = useState<string[]>([]);
 	const transfers = useRef(new Map<string, Transfer>()),
-		removed = useRef(new Set<string>());
+		removed = useRef(new Set<string>()),
+		loadingList = useRef(false);
 	useEffect(() => {
 		setComposerOpen(!selected);
 	}, [selected?.id]);
 	const load = async () => {
+		if (loadingList.current) return;
+		loadingList.current = true;
 		try {
 			const data = await request<DocumentJob[]>('/documents');
 			setJobs(data.filter((job) => !removed.current.has(job.id)));
@@ -51,15 +63,32 @@ export function DocumentsPage({ workspace }: { workspace: WorkspaceView }) {
 		} catch (failure) {
 			setError((failure as Error).message);
 		} finally {
+			loadingList.current = false;
 			setLoading(false);
 		}
 	};
+	const processing =
+		jobs.some((job) => documentActive(job.status)) ||
+		(!!selected && documentActive(selected.status));
+	const selectedVersion = jobs.find((job) => job.id === selected?.id)?.updated_at;
 	useEffect(() => {
 		setLoading(true);
 		void load();
-		const timer = setInterval(() => void load(), 4000);
-		return () => clearInterval(timer);
-	}, [workspace.session.user.telegram_id]);
+		const timer = setInterval(
+			() => {
+				if (!document.hidden) void load();
+			},
+			processing ? 2000 : 10000,
+		);
+		const onVisible = () => {
+			if (!document.hidden) void load();
+		};
+		document.addEventListener('visibilitychange', onVisible);
+		return () => {
+			clearInterval(timer);
+			document.removeEventListener('visibilitychange', onVisible);
+		};
+	}, [workspace.session.user.telegram_id, processing]);
 	useEffect(() => {
 		if (!selected) return;
 		const brief = jobs.find((job) => job.id === selected.id);
@@ -67,14 +96,15 @@ export function DocumentsPage({ workspace }: { workspace: WorkspaceView }) {
 		const controller = new AbortController();
 		void request<DocumentJob>('/documents/' + selected.id, undefined, undefined, controller.signal)
 			.then((job) => {
-				if (!removed.current.has(job.id)) setSelected(job);
+				if (!removed.current.has(job.id))
+					setSelected((current) => (current?.id === job.id ? job : current));
 			})
 			.catch((failure) => {
 				if (!controller.signal.aborted && !removed.current.has(selected.id))
 					setError(failure.message);
 			});
 		return () => controller.abort();
-	}, [jobs, selected?.id, selected?.updated_at]);
+	}, [selectedVersion, selected?.id, selected?.updated_at]);
 	const add = (file: File) => {
 		setComposerOpen(true);
 		if (!file.name.toLowerCase().endsWith('.pdf') || file.size > 50 * 1024 * 1024) {
@@ -309,7 +339,11 @@ export function DocumentsPage({ workspace }: { workspace: WorkspaceView }) {
 								onClick={() => (selected?.id === job.id ? setSelected(null) : void open(job.id))}
 							>
 								<span className="document-file-icon">
-									<FileText size={19} />
+									{documentActive(job.status) ? (
+										<LoaderCircle size={19} className="spinning" />
+									) : (
+										<FileText size={19} />
+									)}
 								</span>
 								<span className="document-job-label">
 									<strong>{job.name}</strong>
@@ -338,35 +372,13 @@ export function DocumentsPage({ workspace }: { workspace: WorkspaceView }) {
 					description="Добавьте PDF — найденные работы появятся здесь"
 				/>
 			)}
-			{selected && !selected.payload.groups?.length && (
-				<section className="document-analysis">
-					<div className="document-section-title">
-						<h2>{labels[selected.status]}</h2>
-						<small>
-							{selected.processed}/{selected.pages || '…'} стр.
-						</small>
-					</div>
-					<Progress
-						size="small"
-						percent={Math.round(
-							(selected.status === 'extracting'
-								? selected.processed / Math.max(1, selected.pages)
-								: (selected.payload.analysis_done || 0) /
-									Math.max(1, selected.payload.analysis_total || 1)) * 100,
-						)}
-						status={['extracting', 'analysing'].includes(selected.status) ? 'active' : 'normal'}
-					/>
-					{selected.payload.notice && (
-						<details className="document-details">
-							<summary>Подробнее</summary>
-							<p>{selected.payload.notice}</p>
-						</details>
-					)}
-					{['needs_ocr', 'failed', 'needs_ai', 'needs_budget', 'text_ready'].includes(
+			{selected &&
+				(documentActive(selected.status) ||
+					!selected.payload.groups?.length ||
+					['failed', 'needs_ai', 'needs_budget', 'needs_ocr', 'text_ready'].includes(
 						selected.status,
-					) && <Button onClick={() => void resume()}>Продолжить обработку</Button>}
-				</section>
-			)}
+					)) && <DocumentProgress job={selected} resume={() => void resume()} />}
+
 			{selected && !!selected.payload.groups?.length && (
 				<DocumentResultsPage
 					key={selected.id}

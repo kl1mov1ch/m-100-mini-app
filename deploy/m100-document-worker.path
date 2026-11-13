@@ -1,0 +1,9 @@
+[Unit]
+Description=Start M-100 PDF processing after upload
+
+[Path]
+PathChanged=/var/miniApp/m-100/data/document-queue.signal
+Unit=m100-document-worker.service
+
+[Install]
+WantedBy=multi-user.target

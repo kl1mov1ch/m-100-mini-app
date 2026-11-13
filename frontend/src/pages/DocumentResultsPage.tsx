@@ -114,6 +114,9 @@ export function DocumentResultsPage({
 	);
 	const summary = job.payload.summary;
 	const readOnly = !['ready', 'needs_review', 'draft'].includes(job.status);
+	useEffect(() => {
+		setEditing(null);
+	}, [readOnly]);
 	const needsScope = !!(
 		job.payload.coverage?.drawings?.length ||
 		job.payload.coverage?.low_ocr?.length ||
@@ -207,6 +210,9 @@ export function DocumentResultsPage({
 			<div className="page-title document-results-title">
 				<div>
 					{embedded ? <h2>Данные файла</h2> : <h1>Выборка работ</h1>}
+					{['queued', 'ai_queued', 'extracting', 'analysing'].includes(job.status) && (
+						<small className="page-context">Предварительные данные · обработка продолжается</small>
+					)}
 					{!embedded && <small className="page-context document-filename">{job.name}</small>}
 				</div>
 			</div>

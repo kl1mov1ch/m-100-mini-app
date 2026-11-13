@@ -1,8 +1,7 @@
 [Unit]
 Description=M-100 PDF document queue
 After=network-online.target m100-app.service
-StartLimitIntervalSec=1800
-StartLimitBurst=3
+StartLimitIntervalSec=0
 
 [Service]
 Type=oneshot

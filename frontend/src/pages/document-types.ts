@@ -34,6 +34,14 @@ export type DocumentJob = {
 	processed: number;
 	updated_at: string;
 	payload: {
+		file_bytes?: number;
+		progress?: {
+			stage: string;
+			page: number;
+			chunk?: number;
+			chunks?: number;
+			started_at?: string;
+		};
 		query?: string;
 		questions?: string[];
 		notice?: string;

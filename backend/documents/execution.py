@@ -8,6 +8,7 @@ from sqlalchemy import select
 from .repository import DocumentJob, session
 
 current_job = ContextVar("document_job", default=None)
+last_heartbeat = ContextVar("document_heartbeat", default=0.0)
 
 
 class JobDeleted(RuntimeError):
@@ -20,6 +21,12 @@ def check_active():
         with session() as database:
             if database.scalar(select(DocumentJob.id).where(DocumentJob.id == ident)) is None:
                 raise JobDeleted()
+        if time.monotonic() - last_heartbeat.get() >= 5:
+            from .progress import heartbeat
+
+            if not heartbeat(ident):
+                raise JobDeleted()
+            last_heartbeat.set(time.monotonic())
 
 
 def run(command, **kwargs):

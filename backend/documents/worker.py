@@ -16,13 +16,15 @@ import httpx
 from dotenv import load_dotenv
 from pypdf import PdfReader
 from pypdf.errors import PdfReadError
-from sqlalchemy import or_, select
+from sqlalchemy import case, or_, select
 
 from .. import matcher, store, workspaces
 from ..runtime import configure_runtime
 from .execution import JobDeleted, cancellable, check_active, current_job, run
 from .extraction import classify, propose
 from .normalization import build_groups, financial_summary
+from .page_cache import cache_page, cached_page, text_digest
+from .progress import recover_interrupted, worker_lock
 from .repository import DocumentJob, folder, session
 
 
@@ -31,9 +33,27 @@ def update(ident, **values):
         job = database.scalar(select(DocumentJob).where(DocumentJob.id == ident).with_for_update())
         if job is None:
             raise JobDeleted()
+        progress = values.pop("progress", None)
+        if "payload" in values:
+            values["payload"] = {**values["payload"], "progress": job.payload.get("progress", {})}
+        if progress is not None:
+            job.payload = {
+                **job.payload,
+                "progress": {
+                    "started_at": job.payload.get("progress", {}).get(
+                        "started_at", datetime.now(UTC).isoformat()
+                    ),
+                    **progress,
+                },
+            }
         for key, value in values.items():
             setattr(job, key, value)
         job.updated_at = datetime.now(UTC)
+
+
+def phase(stage, page, **details):
+    if ident := current_job.get():
+        update(ident, progress={"stage": stage, "page": page, **details})
 
 
 def ocr_page(source, number, destination):
@@ -42,6 +62,7 @@ def ocr_page(source, number, destination):
     prefix = destination / f"page-{number}"
     image = prefix.with_suffix(".jpg")
     try:
+        phase("rendering", number)
         run(
             [
                 "pdftoppm",
@@ -64,6 +85,7 @@ def ocr_page(source, number, destination):
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
+        phase("ocr", number)
         result = run(
             ["tesseract", str(image), "stdout", "-l", "rus+eng", "tsv"],
             check=True,
@@ -115,6 +137,7 @@ def ocr_page(source, number, destination):
         )
         from .table_ocr import recognize
 
+        phase("table_ocr", number)
         table = recognize(image)
         if table:
             separator = (
@@ -187,66 +210,72 @@ def text_page(source, number):
 
 def process(ident, payload):
     path = folder(ident)
-    reader = PdfReader(path / "source.pdf")
-    if reader.is_encrypted:
-        raise ValueError("PDF защищён паролем. Загрузите открытую копию.")
-    total = len(reader.pages)
-    if total > 2000:
-        raise ValueError(
-            "В одном задании поддерживается до 2000 страниц. Разделите проект на тома."
-        )
-    results = payload.get("page_results", [])
-    update(ident, pages=total)
-    for index in range(len(results), total):
-        check_active()
-        text = reader.pages[index].extract_text() or ""
-        if len(text.strip()) >= 30:
-            text = text_page(path / "source.pdf", index + 1) or text
-        confidence = None
-        if isinstance(text, str) and len(text.strip()) < 30:
-            text = ocr_page(path / "source.pdf", index + 1, path)
-            if text is None:
-                update(
-                    ident,
-                    status="needs_ocr",
-                    payload={
-                        **payload,
-                        "page_results": results,
-                        "notice": "Для сканированного PDF нужен OCR-обработчик с русским языком.",
-                    },
+    with PdfReader(path / "source.pdf") as reader:
+        if reader.is_encrypted:
+            raise ValueError("PDF защищён паролем. Загрузите открытую копию.")
+        total = len(reader.pages)
+        if not 1 <= total <= 2000:
+            raise ValueError("Поддерживается от 1 до 2000 страниц. Разделите проект на тома.")
+        results = list(payload.get("page_results", []))
+        batch = 1 if not results else 3
+        stop = min(total, len(results) + batch) if payload.get("automatic") else total
+        update(ident, pages=total)
+        for index in range(len(results), stop):
+            check_active()
+            phase("reading", index + 1)
+            cached = cached_page(path, index + 1, payload.get("file_hash"))
+            text = cached if cached else reader.pages[index].extract_text() or ""
+            if isinstance(text, str) and len(text.strip()) >= 30:
+                text = text_page(path / "source.pdf", index + 1) or text
+            confidence = None
+            layout = None
+            if isinstance(text, str) and len(text.strip()) < 30:
+                text = ocr_page(path / "source.pdf", index + 1, path)
+                if text is None:
+                    update(
+                        ident,
+                        status="needs_ocr",
+                        payload={
+                            **payload,
+                            "page_results": results,
+                            "notice": "Для сканированного PDF нужен OCR-обработчик с русским языком.",
+                        },
+                    )
+                    return
+            if isinstance(text, dict):
+                confidence = text["confidence"]
+                layout = text.get("layout")
+                text = text["text"]
+            if len(text) > 500000:
+                raise ValueError(
+                    f"Страница {index + 1} содержит слишком большой текстовый поток. Разделите PDF."
                 )
-                return
-        if isinstance(text, dict):
-            confidence = text["confidence"]
-            if text.get("layout"):
-                (path / f"page-{index + 1}.layout.json").write_text(
-                    json.dumps(text["layout"]), encoding="utf-8"
-                )
-            text = text["text"]
-        if len(text) > 500000:
-            raise ValueError(
-                f"Страница {index + 1} содержит слишком большой текстовый поток. Разделите PDF."
+            digest = text_digest(text)
+            duplicate = next(
+                (page["page"] for page in results if page.get("digest") == digest), None
             )
-        digest = hashlib.sha256(re.sub(r"\s+", " ", text).strip().encode()).hexdigest()
-        duplicate = next((page["page"] for page in results if page.get("digest") == digest), None)
-        (path / f"page-{index + 1}.txt").write_text(text, encoding="utf-8")
-        results.append(
-            {
-                "page": index + 1,
-                "kind": classify(text),
-                "characters": len(text),
-                "excerpt": text[:120],
-                "digest": digest,
-                "duplicate_of": duplicate,
-                "ocr_confidence": confidence,
+            cache_page(path, index + 1, text, confidence, layout, payload.get("file_hash"))
+            results.append(
+                {
+                    "page": index + 1,
+                    "kind": classify(text),
+                    "characters": len(text),
+                    "excerpt": text[:120],
+                    "digest": digest,
+                    "duplicate_of": duplicate,
+                    "ocr_confidence": confidence,
+                }
+            )
+            payload = {
+                **payload,
+                "page_results": results,
+                "extraction_complete": len(results) == total,
             }
-        )
-        payload = {**payload, "page_results": results}
-        update(ident, processed=index + 1, payload=payload)
+            update(ident, processed=index + 1, payload=payload)
     update(
         ident,
         status="ai_queued" if payload.get("automatic") else "text_ready",
-        payload={**payload, "notice": "Текст извлечён. ИИ собирает выборку по вашему запросу."},
+        payload={**payload, "notice": "Страницы прочитаны. ИИ собирает найденные работы."},
     )
 
 
@@ -339,6 +368,7 @@ def analyse(ident, payload):
     for page, key, text in ledger:
         if key in done:
             continue
+        phase("ai", page, chunk=len(done) + 1, chunks=len(ledger))
         try:
             suggested, clarifications = extract_part(
                 text,
@@ -395,6 +425,12 @@ def analyse(ident, payload):
     drawings = [
         page["page"] for page in payload.get("page_results", []) if page.get("kind") == "drawing"
     ]
+    with session() as database:
+        total_pages = database.get(DocumentJob, ident)
+        if total_pages is None:
+            raise JobDeleted()
+        total_pages = total_pages.pages
+    complete_extraction = len(payload.get("page_results", [])) == total_pages
     coverage = {
         "pages": len(payload.get("page_results", [])),
         "analysed": len({page for page, key, _ in ledger if key in done}),
@@ -403,7 +439,8 @@ def analyse(ident, payload):
         ),
         "unreadable": unresolved_pages,
         "drawings": drawings,
-        "complete": all(key in done for _, key, _ in ledger)
+        "complete": complete_extraction
+        and all(key in done for _, key, _ in ledger)
         and {
             page["page"] for page in payload.get("page_results", []) if not page.get("duplicate_of")
         }
@@ -418,7 +455,7 @@ def analyse(ident, payload):
     }
     update(
         ident,
-        status="needs_review",
+        status="queued" if payload.get("automatic") and not complete_extraction else "needs_review",
         payload={
             **payload,
             "coverage": coverage,
@@ -438,7 +475,11 @@ def run_once():
                     & (DocumentJob.updated_at < datetime.now(UTC) - timedelta(minutes=20)),
                 )
             )
-            .order_by(DocumentJob.created_at)
+            .order_by(
+                case((DocumentJob.status == "ai_queued", 0), else_=1),
+                DocumentJob.updated_at,
+                DocumentJob.created_at,
+            )
             .with_for_update(skip_locked=True)
             .limit(1)
         )
@@ -486,11 +527,16 @@ def main():
     args = parser.parse_args()
     load_dotenv(store.ROOT / ".env")
     configure_runtime()
-    while True:
-        if not run_once():
-            if args.drain:
-                return
-            time.sleep(3)
+    lock = worker_lock()
+    if lock is None:
+        return
+    with lock:
+        recover_interrupted()
+        while True:
+            if not run_once():
+                if args.drain:
+                    return
+                time.sleep(3)
 
 
 if __name__ == "__main__":

@@ -37,6 +37,7 @@ def session():
             Session(bind=connection, expire_on_commit=False) as database,
         ):
             yield database
+            database.flush()
         return
     path = Path(os.getenv("APP_REGISTRY", str(store.base_path().with_suffix(".registry.sqlite3"))))
     engine = create_engine(
