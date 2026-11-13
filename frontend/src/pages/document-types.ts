@@ -1,4 +1,8 @@
 export type DocumentSource = {
+	item_code?: string;
+	section?: string;
+	subsection?: string;
+	source_row?: number;
 	name: string;
 	category: string;
 	quantity: string | number | null;
@@ -13,6 +17,17 @@ export type DocumentSource = {
 	highlights?: { left: number; top: number; width: number; height: number }[];
 };
 export type DocumentGroup = {
+	categories?: string[];
+	mention_count?: number;
+	source_summary?: string;
+	previous_reviews?: {
+		name: string;
+		quantity: string | null;
+		unit: string | null;
+		rate: string | null;
+		notes: string;
+	}[];
+	quantity_mode?: 'sum' | 'one' | 'mentions' | 'manual';
 	section?: string;
 	subsection?: string;
 	duplicate_sources?: DocumentSource[];

@@ -24,6 +24,7 @@ from .conversion import convert_document, converted_page
 from .examples import confirmed_examples
 from .execution import JobDeleted, cancellable, check_active, current_job, run
 from .extraction import classify, propose
+from .families import assign_work_names
 from .normalization import build_groups, financial_summary
 from .page_cache import cache_page, cached_page, text_digest
 from .progress import recover_interrupted, worker_lock
@@ -515,13 +516,18 @@ def extract_part(text, page, settings, query, depth=0, complete=None):
 
 def analyse(ident, payload):
     if (
-        not payload.get("selection_streaming")
+        not payload.get("regroup_only")
+        and not payload.get("selection_streaming")
         and payload.get("selection_policy", "specifications") != "all"
         and not payload.get("selection_complete")
     ):
         update(ident, status="queued")
         return
-    if payload.get("selection_complete") and not payload.get("selected_specifications"):
+    if (
+        not payload.get("regroup_only")
+        and payload.get("selection_complete")
+        and not payload.get("selected_specifications")
+    ):
         update(
             ident,
             status="needs_review",
@@ -558,7 +564,7 @@ def analyse(ident, payload):
         if not page.get("duplicate_of") and not page["kind"].startswith("excluded_")
     ]
     ledger = []
-    for page in pages:
+    for page in [] if payload.get("regroup_only") else pages:
         text = (folder(ident) / f"page-{page}.txt").read_text(encoding="utf-8")
         for index, part in enumerate(chunks(text)):
             ledger.append(
@@ -578,6 +584,41 @@ def analyse(ident, payload):
         update(ident, payload=payload)
         return await cancellable(matcher.complete(*args))
 
+    while (payload.get("engine") == "docling" or payload.get("regroup_only")) and any(
+        not work.get("work_name") for work in works
+    ):
+        phase("grouping", 0)
+        try:
+            asyncio.run(assign_work_names(works, settings, budgeted_complete))
+        except BudgetExhausted:
+            update(
+                ident,
+                status="needs_budget",
+                payload={
+                    **payload,
+                    "works": works,
+                    "notice": "Группировка сохранена. Продолжите обработку.",
+                },
+            )
+            return
+        payload = {**payload, "works": works}
+        update(ident, payload=payload)
+    if payload.get("regroup_only"):
+        groups = build_groups(works, payload.get("groups"))
+        update(
+            ident,
+            status="needs_review",
+            payload={
+                **payload,
+                "regroup_only": False,
+                "works": works,
+                "groups": groups,
+                "summary": financial_summary(groups),
+                "publication": None,
+                "notice": "Одинаковые работы объединены. Проверьте общий объём и расценку.",
+            },
+        )
+        return
     for page, key, text in ledger:
         if key in done:
             continue
@@ -591,6 +632,11 @@ def analyse(ident, payload):
                     "document_section": payload.get("section_context", {})
                     if page in {payload.get("section_page"), payload.get("section_page", -2) + 1}
                     else {},
+                    "document_work_names": list(
+                        dict.fromkeys(
+                            work.get("work_name") for work in works if work.get("work_name")
+                        )
+                    )[:100],
                 },
                 payload.get("query", "Подготовить перечень монтажных работ"),
                 complete=budgeted_complete,
@@ -611,7 +657,6 @@ def analyse(ident, payload):
         )
         for item in suggested:
             item["page_digest"] = page_digest
-        works.extend(suggested)
         for item in suggested:
             if item.get("section") and item["section"] != "Без раздела":
                 payload = {
@@ -626,9 +671,30 @@ def analyse(ident, payload):
         if layout_path.is_file():
             layout = json.loads(layout_path.read_text(encoding="utf-8"))
             page_text = (folder(ident) / f"page-{page}.txt").read_text(encoding="utf-8")
+            expanded = []
             for work in suggested:
-                start = page_text.find(work["quote"])
-                if start >= 0:
+                if work.get("source_row") is not None:
+                    prefix = f"Строка {work['source_row']}: "
+                    starts = [
+                        match.end()
+                        for match in re.finditer(r"^" + re.escape(prefix), page_text, re.MULTILINE)
+                        if page_text.startswith(work["quote"], match.end())
+                    ]
+                else:
+                    starts = [
+                        match.start() for match in re.finditer(re.escape(work["quote"]), page_text)
+                    ]
+                    # Without a table row number a repeated quote cannot locate a unique item.
+                    if len(starts) > 1:
+                        work["evidence_warning"] = (
+                            "Цитата повторяется на странице. Уточните объём по выделенным строкам."
+                        )
+                        starts = starts[:1]
+                for start in starts or [-1]:
+                    work = {**work, "source_start": start if start >= 0 else None}
+                    if start < 0:
+                        expanded.append(work)
+                        continue
                     work["highlights"] = [
                         {
                             "left": line["left"] / layout["width"] * 100,
@@ -639,6 +705,9 @@ def analyse(ident, payload):
                         for line in layout["lines"]
                         if line["end"] > start and line["start"] < start + len(work["quote"])
                     ]
+                    expanded.append(work)
+            suggested = expanded
+        works.extend(suggested)
         questions.extend(clarifications)
         done.add(key)
         groups = build_groups(works, payload.get("groups"))

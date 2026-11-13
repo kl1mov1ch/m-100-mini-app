@@ -106,7 +106,9 @@ def test_ocr_and_ai_publish_partial_results_before_document_finishes(client, mon
     assert worker.run_once()
     finished = client.get(f"/api/documents/{ident}").json()
     assert finished["status"] == "needs_review"
-    assert finished["processed"] == 3 and len(finished["payload"]["groups"]) == 3
+    assert finished["processed"] == 3 and len(finished["payload"]["groups"]) == 1
+    assert finished["payload"]["groups"][0]["quantity"] == "30"
+    assert finished["payload"]["groups"][0]["mention_count"] == 3
     assert finished["payload"]["coverage"]["complete"] is True
     assert finished["payload"]["analysis_done"] == finished["payload"]["analysis_total"] == 3
     brief = client.get("/api/documents").json()[0]

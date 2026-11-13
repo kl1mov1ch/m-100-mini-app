@@ -1,7 +1,7 @@
 import { App, Button, Checkbox, Input, InputNumber, Modal, Select } from 'antd';
 import { ArrowLeft, Download, FileSearch } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { Money, nf } from '../lib/format';
+import { Money, countLabel, nf } from '../lib/format';
 import { headers, request } from '../lib/api';
 import { downloadReport } from '../lib/report-download';
 import type { DocumentJob, DocumentGroup, DocumentSource } from './document-types';
@@ -107,20 +107,13 @@ export function DocumentResultsPage({
 		[saving, setSaving] = useState(false);
 	const { message, modal } = App.useApp();
 	const groups = job.payload.groups || [];
-	const categories = ['Все', ...new Set(groups.map((row) => row.category))];
+	const categories = ['Все', ...new Set(groups.flatMap((row) => row.categories || [row.category]))];
 	const rows = groups.filter(
 		(row) =>
-			(category === 'Все' || row.category === category) &&
+			(category === 'Все' || (row.categories || [row.category]).includes(category)) &&
 			(status === 'all' || (status === 'pending' ? !row.confirmed : row.confirmed)) &&
 			row.name.toLowerCase().includes(query.toLowerCase()),
 	);
-	const sections = new Map<string, DocumentGroup[]>();
-	for (const row of rows) {
-		const label = [row.category, row.section || 'Без раздела', row.subsection]
-			.filter(Boolean)
-			.join(' · ');
-		sections.set(label, [...(sections.get(label) || []), row]);
-	}
 	const summary = job.payload.summary;
 	const readOnly = !['ready', 'needs_review', 'draft'].includes(job.status);
 	useEffect(() => {
@@ -153,6 +146,7 @@ export function DocumentResultsPage({
 					rate: row.rate,
 					unit: row.unit,
 					notes: row.notes,
+					resolution: row.quantity_mode,
 				})),
 			});
 			refresh(next);
@@ -175,7 +169,7 @@ export function DocumentResultsPage({
 		setSection(row.section || '');
 		setSubsection(row.subsection || '');
 		setNotes(row.notes || '');
-		setResolution(undefined);
+		setResolution(row.quantity === null ? undefined : row.quantity_mode || 'manual');
 		setAcknowledge(false);
 	};
 	const confirm = async () => {
@@ -213,17 +207,17 @@ export function DocumentResultsPage({
 			message.error((error as Error).message);
 		}
 	};
-	const rebuild = () =>
+	const regroup = () =>
 		modal.confirm({
-			title: 'Пересобрать выборку?',
+			title: 'Объединить одинаковые работы?',
 			icon: null,
 			content:
-				'Будут заново отобраны спецификации и разделы этого файла. Текущая выборка заменится. Подтверждённые примеры названий сохранятся.',
-			okText: 'Пересобрать',
+				'Соберём одинаковые работы в общие строки. Исходные объёмы, обозначения и страницы сохранятся.',
+			okText: 'Объединить',
 			cancelText: 'Отмена',
 			onOk: async () => {
 				refresh(
-					await request<DocumentJob>(`/documents/${job.id}/rebuild`, { version: job.updated_at }),
+					await request<DocumentJob>(`/documents/${job.id}/regroup`, { version: job.updated_at }),
 				);
 			},
 		});
@@ -237,15 +231,15 @@ export function DocumentResultsPage({
 			)}
 			<div className="page-title document-results-title">
 				<div>
-					{embedded ? <h2>Данные файла</h2> : <h1>Выборка работ</h1>}
+					{embedded ? <h2>Сводная смета</h2> : <h1>Сводная смета</h1>}
 					{['queued', 'ai_queued', 'extracting', 'analysing'].includes(job.status) && (
 						<small className="page-context">Предварительные данные · обработка продолжается</small>
 					)}
 					{!embedded && <small className="page-context document-filename">{job.name}</small>}
 				</div>
 				{!readOnly && (
-					<Button type="text" onClick={rebuild}>
-						Пересобрать
+					<Button type="text" onClick={regroup}>
+						Объединить
 					</Button>
 				)}
 			</div>
@@ -329,44 +323,39 @@ export function DocumentResultsPage({
 					/>
 				</div>
 			</div>
-			<div className="document-works document-section-list" aria-label="Работы из документа">
-				{[...sections].map(([label, sectionRows]) => (
-					<section className="document-section" key={label}>
-						<h3>
-							{label} <small>{sectionRows.length}</small>
-						</h3>
-						<div className="compact-list">
-							{sectionRows.map((row) => (
-								<CompactRow
-									key={row.id}
-									className="document-review-row"
-									title={row.name}
-									description={
-										<>
-											{row.category} ·{' '}
-											{row.quantity === null
-												? 'Уточните объём'
-												: nf.format(Number(row.quantity)) + ' ' + row.unit}
-										</>
-									}
-									value={
-										row.rate !== null ? (
-											<>
-												<Money value={Number(row.rate)} /> / {row.unit}
-											</>
-										) : (
-											'Нет расценки'
-										)
-									}
-									meta={
-										row.confirmed ? 'Проверено' : row.issues.length ? 'Нужна проверка' : 'Черновик'
-									}
-									attention={!row.confirmed && !!row.issues.length}
-									onClick={() => choose(row)}
-								/>
-							))}
-						</div>
-					</section>
+			<div className="document-works compact-list" aria-label="Сводный список работ">
+				{rows.map((row) => (
+					<CompactRow
+						key={row.id}
+						className="document-review-row"
+						title={row.name}
+						description={
+							<>
+								{countLabel(
+									row.mention_count ?? row.sources.length,
+									'упоминание',
+									'упоминания',
+									'упоминаний',
+								)}{' '}
+								·{' '}
+								{row.quantity === null
+									? 'Уточните объём'
+									: nf.format(Number(row.quantity)) + ' ' + row.unit}
+							</>
+						}
+						value={
+							row.rate !== null ? (
+								<>
+									<Money value={Number(row.rate)} /> / {row.unit}
+								</>
+							) : (
+								'Нет расценки'
+							)
+						}
+						meta={row.confirmed ? 'Проверено' : row.issues.length ? 'Нужна проверка' : 'Черновик'}
+						attention={!row.confirmed && !!row.issues.length}
+						onClick={() => choose(row)}
+					/>
 				))}
 				{!rows.length && <p className="compact-empty">Работ по этим фильтрам нет</p>}
 			</div>
@@ -439,8 +428,19 @@ export function DocumentResultsPage({
 								<strong>
 									Страница {source.page} · {source.original_quantity ?? 'Не определено'}{' '}
 									{source.original_unit}
+									{source.source_row != null && ` · строка ${source.source_row}`}
 								</strong>
 								<blockquote>{source.quote}</blockquote>
+								<small className="page-context">
+									{source.item_code ? source.item_code + ' · ' : ''}
+									{source.name}
+								</small>
+								{(source.section || source.subsection) && (
+									<small className="page-context">
+										{[source.section, source.subsection].filter(Boolean).join(' · ')}
+									</small>
+								)}
+								{source.notes && <p>{source.notes}</p>}
 								{source.question && <p className="document-question">{source.question}</p>}
 								<SourcePreview jobId={job.id} page={source.page} highlights={source.highlights} />
 								{source.conversion_factor && source.conversion_factor !== '1' && (
@@ -553,7 +553,10 @@ export function DocumentResultsPage({
 								Единица измерения
 								<Select
 									value={unit}
-									onChange={setUnit}
+									onChange={(value) => {
+										setUnit(value);
+										setResolution('manual');
+									}}
 									options={['м', 'м²', 'м³', 'шт.', 'кг', 'компл.', 'чел·ч', 'чел·дн'].map(
 										(value) => ({
 											value,
@@ -569,7 +572,10 @@ export function DocumentResultsPage({
 									min="0"
 									max="1000000000"
 									value={quantity}
-									onChange={setQuantity}
+									onChange={(value) => {
+										setQuantity(value);
+										setResolution('manual');
+									}}
 									controls={false}
 								/>
 							</label>
@@ -586,7 +592,15 @@ export function DocumentResultsPage({
 							/>
 						</label>
 						<details className="document-details document-edit-details">
-							<summary>Примечание</summary>
+							<summary>Примечания и упоминания</summary>
+							{editing?.source_summary && <p className="page-context">{editing.source_summary}</p>}
+							{editing?.previous_reviews?.map((previous, index) => (
+								<p className="page-context" key={index}>
+									Ранее подтверждено · {previous.name} · {previous.quantity} {previous.unit}
+									{previous.rate != null && ` · ${previous.rate} BYN за ед.`}
+									{previous.notes && ` · ${previous.notes}`}
+								</p>
+							))}
 							<label>
 								Примечания
 								<Input.TextArea
@@ -597,31 +611,43 @@ export function DocumentResultsPage({
 								/>
 							</label>
 						</details>
-						{!!editing?.issues.length && (
+						{editing && (
 							<label>
-								Как проверен спорный объём
+								Как посчитать объём
 								<Select
 									value={resolution}
 									onChange={(value) => {
 										setResolution(value);
 										if (value === 'sum' && editing.proposed_quantity !== null)
 											setQuantity(String(editing.proposed_quantity));
-										if (value === 'one' && editing.sources[0]?.quantity !== null)
+										if (value === 'sum' || value === 'one') setUnit(editing.unit || unit);
+										if (value === 'mentions') {
+											setUnit(editing.unit || 'шт.');
+											setQuantity(String(editing.mention_count ?? editing.sources.length));
+										}
+										if (value === 'one' && editing.sources[0]?.quantity != null)
 											setQuantity(String(editing.sources[0].quantity));
 									}}
 									placeholder="Выберите решение"
 									options={[
 										{
 											value: 'sum',
-											label: 'Работы разные — сложить объёмы',
+											label: `Сложить объёмы · ${editing.proposed_quantity ?? '—'} ${editing.unit || ''}`,
 											disabled: editing.proposed_quantity === null,
 										},
 										{
 											value: 'one',
 											label: 'Повтор одной позиции — учесть один раз',
-											disabled: editing.sources[0]?.quantity === null,
+											disabled: editing.sources[0]?.quantity == null,
 										},
-										{ value: 'manual', label: 'Объём проверен и уточнён вручную' },
+										{
+											value: 'mentions',
+											label: `По упоминаниям · ${editing.mention_count ?? editing.sources.length}`,
+											disabled:
+												!editing.sources.length ||
+												!['шт.', 'компл.'].includes(editing.unit || 'шт.'),
+										},
+										{ value: 'manual', label: 'Ввести объём вручную' },
 									]}
 								/>
 							</label>

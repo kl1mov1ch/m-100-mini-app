@@ -4,6 +4,8 @@ import unicodedata
 from collections import defaultdict
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
+from .aggregation import source_identity, source_summary, system_codes, work_key, work_label
+
 UNIT_ALIASES = {
     "м": ("м", "1"),
     "мп": ("м", "1"),
@@ -69,28 +71,45 @@ def normalise(work):
 
 
 def build_groups(works, previous=None):
-    prior = {row["id"]: row for row in previous or []}
+    def evidence(sources):
+        return frozenset(
+            (source_identity(source), str(source.get("quantity")), source.get("unit"))
+            for source in sources
+        )
+
+    prior_by_evidence = defaultdict(list)
+    prior_by_source = defaultdict(set)
+    previous = previous or []
+    for index, row in enumerate(previous):
+        source_set = evidence(row.get("sources", []))
+        prior_by_evidence[source_set].append(index)
+        for source in source_set:
+            prior_by_source[source].add(index)
     grouped = defaultdict(list)
     for raw in works:
         work = normalise(raw)
-        key = "|".join(
-            [
-                canonical(work.get("category")),
-                canonical(work.get("section")),
-                canonical(work.get("subsection")),
-                canonical(work.get("name")),
-                canonical(work.get("unit")),
-                canonical(work.get("notes")),
-            ]
-        )
+        work["work_name"] = work_label(work["name"], work.get("work_name"))
+        key = work_key(work["work_name"]) + "|" + canonical(work.get("unit"))
         grouped[key].append(work)
     result = []
     for key, items in grouped.items():
         ident = hashlib.sha256(key.encode()).hexdigest()[:24]
+        all_notes = list(
+            dict.fromkeys(
+                work.get("notes", "").strip() for work in items if work.get("notes", "").strip()
+            )
+        )
         unique = {}
         for work in items:
-            fingerprint = (work.get("page"), canonical(work.get("quote")), work.get("quantity"))
-            unique.setdefault(fingerprint, work)
+            fingerprint = source_identity(work)
+            if fingerprint in unique and unique[fingerprint]["quantity"] != work["quantity"]:
+                unique[fingerprint] = {
+                    **unique[fingerprint],
+                    "quantity": None,
+                    "evidence_warning": "Расходятся объёмы одной исходной строки",
+                }
+            else:
+                unique.setdefault(fingerprint, work)
         items = list(unique.values())
         copies = []
         identities = {}
@@ -104,35 +123,32 @@ def build_groups(works, previous=None):
             )
             if not identity[0] or not work.get("page_digest"):
                 identity = (*identity, work.get("page"))
-            if identity[0] and identity in identities:
+            if (
+                identity[0]
+                and identity in identities
+                and work.get("page") != identities[identity].get("page")
+            ):
                 copies.append({**work, "duplicate_of_page": identities[identity]["page"]})
             else:
-                identities[identity] = work
-        items = list(identities.values())
+                identities.setdefault(identity, work)
+        copied_locations = {source_identity(work) for work in copies}
+        items = [work for work in items if source_identity(work) not in copied_locations]
         quote_pages = defaultdict(set)
         for work in items:
             quote_pages[canonical(work.get("quote"))].add(work.get("page"))
         duplicate = any(len(pages) > 1 for pages in quote_pages.values())
-        if len(items) > 1:
-            tags = [
-                set(
-                    re.findall(
-                        r"(?<![\w])(?:П|В|ПВ|ВЕ|ПЕ|Т|К)\d+(?:[.]\d+)?(?![\w])",
-                        work.get("quote", ""),
-                        re.IGNORECASE,
-                    )
-                )
-                for work in items
-            ]
-            duplicate = (
-                duplicate
-                or any(not value for value in tags)
-                or any(
-                    tags[left] & tags[right]
-                    for left in range(len(tags))
-                    for right in range(left + 1, len(tags))
-                )
-            )
+        tag_pages = defaultdict(set)
+        unlocated = defaultdict(int)
+        for work in items:
+            for tag in system_codes(work.get("quote")):
+                tag_pages[canonical(tag).replace(" ", ""), work["quantity"]].add(work.get("page"))
+            if source_identity(work)[1] is None:
+                unlocated[work.get("page"), work["quantity"]] += 1
+        duplicate = (
+            duplicate
+            or any(len(pages) > 1 for pages in tag_pages.values())
+            or any(count > 1 for count in unlocated.values())
+        )
         missing = any(work["quantity"] is None or not work["unit"] for work in items)
         total = sum(
             (Decimal(str(work["quantity"])) for work in items if work["quantity"] is not None),
@@ -140,15 +156,21 @@ def build_groups(works, previous=None):
         )
         row = {
             "id": ident,
-            "name": items[0]["name"],
+            "name": items[0].get("work_name") or items[0]["name"],
             "category": items[0]["category"],
+            "categories": list(
+                dict.fromkeys(item.get("category") for item in items if item.get("category"))
+            ),
             "section": items[0].get("section", "Без раздела"),
             "subsection": items[0].get("subsection", ""),
             "unit": items[0]["unit"],
             "quantity": None if missing or duplicate else str(total),
             "proposed_quantity": None if missing else str(total),
             "rate": None,
-            "notes": items[0].get("notes", ""),
+            "notes": "\n".join(all_notes)[:1900],
+            "mention_count": len(items),
+            "source_summary": source_summary(items),
+            "quantity_mode": "sum",
             "sources": items,
             "duplicate_sources": copies,
             "issues": (
@@ -165,8 +187,11 @@ def build_groups(works, previous=None):
             "confirmed": False,
             "resolution": None,
         }
-        old = prior.get(ident)
-        if old and old.get("sources") == row["sources"]:
+
+        source_set = evidence(items)
+        matching = prior_by_evidence[source_set]
+        old = previous[matching[0]] if len(matching) == 1 else None
+        if old and old.get("confirmed"):
             for field in (
                 "quantity",
                 "rate",
@@ -175,13 +200,40 @@ def build_groups(works, previous=None):
                 "resolution",
                 "issues",
                 "amount",
+                "quantity_mode",
+                "category",
+                "unit",
+                "section",
+                "subsection",
             ):
                 if field in old:
                     row[field] = old[field]
+            row["name"] = old["name"]
+        else:
+            overlapping = set().union(*(prior_by_source[source] for source in source_set))
+            merged = [
+                previous[index]
+                for index in sorted(overlapping)
+                if evidence(previous[index]["sources"]) <= source_set
+            ]
+            rates = {str(old["rate"]) for old in merged if old.get("rate") is not None}
+            if len(rates) == 1:
+                row["rate"] = next(iter(rates))
+            earlier_reviews = [
+                review for old in merged for review in old.get("previous_reviews", [])
+            ]
+            earlier_reviews.extend(
+                {key: old.get(key) for key in ("name", "quantity", "unit", "rate", "notes")}
+                for old in merged
+                if old.get("confirmed")
+            )
+            if earlier_reviews:
+                row["issues"].append(
+                    "Объединены ранее проверенные позиции: подтвердите общий объём"
+                )
+                row["previous_reviews"] = earlier_reviews
         result.append(row)
-    return sorted(
-        result, key=lambda row: (row["category"], row["section"], row["subsection"], row["name"])
-    )
+    return sorted(result, key=lambda row: canonical(row["name"]))
 
 
 def financial_summary(groups):

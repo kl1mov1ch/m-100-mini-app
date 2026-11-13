@@ -3,9 +3,64 @@ import io
 
 import pytest
 from pypdf import PdfWriter
+from test_workspaces import client as client, grant
 
 from backend.documents import extraction, repository, worker
-from test_workspaces import client, grant
+from backend.documents.api import ReviewValues, apply_review
+
+
+def test_mentions_mode_and_manual_override():
+    from fastapi import HTTPException
+
+    row = {
+        "unit": "шт.",
+        "sources": [{"quantity": "7"}, {"quantity": "16"}],
+        "proposed_quantity": "23",
+        "issues": [],
+    }
+    apply_review(row, ReviewValues(unit="шт.", quantity=2, rate=60, resolution="mentions"))
+    assert row["quantity_mode"] == "mentions" and row["amount"] == 120
+    with pytest.raises(HTTPException):
+        apply_review(row, ReviewValues(unit="шт.", quantity=23, rate=60, resolution="mentions"))
+    apply_review(row, ReviewValues(unit="шт.", quantity=25, rate=60, resolution="manual"))
+    assert row["quantity"] == "25" and row["amount"] == 1500
+
+
+def test_regroup_uses_saved_rows_without_running_ocr(client, monkeypatch):
+    job = repository.create("local-admin", "ventilation.pdf")
+    job.status = "needs_review"
+    job.payload = {
+        "works": [
+            {
+                "name": "Монтаж радиального вентилятора №10",
+                "page": 1,
+                "quote": "П1: вентиляторы 7 шт.",
+                "quantity": 7,
+                "unit": "шт.",
+                "category": "Вентиляция",
+            },
+            {
+                "name": "Монтаж радиального вентилятора №5",
+                "page": 2,
+                "quote": "П2: вентиляторы 16 шт.",
+                "quantity": 16,
+                "unit": "шт.",
+                "category": "Прочее",
+            },
+        ]
+    }
+    with repository.session() as database:
+        database.add(job)
+    monkeypatch.setattr(worker.matcher, "provider", lambda *_: {"key": "test"})
+    response = client.post(
+        f"/api/documents/{job.id}/regroup", json={"version": repository.version(job.updated_at)}
+    )
+    assert response.status_code == 200 and response.json()["status"] == "ai_queued"
+    assert worker.run_once()
+    result = client.get(f"/api/documents/{job.id}").json()
+    assert result["status"] == "needs_review"
+    groups = result["payload"]["groups"]
+    assert len(groups) == 1 and groups[0]["quantity"] == "23"
 
 
 def sample_pdf():
@@ -79,7 +134,8 @@ def test_document_queue_ownership_ocr_ai_and_export(client, monkeypatch, tmp_pat
     import openpyxl
 
     book = openpyxl.load_workbook(io.BytesIO(exported.content))
-    assert book.active["H2"].value == "Уточнить высоту"
+    assert "Уточнить высоту" in book.active["H2"].value
+    assert "Упоминаний: 1. стр. 1" in book.active["H2"].value
     assert book.active["F2"].value is None
     assert client.get("/api/documents/" + ident + "/export.xlsx", headers=other).status_code == 404
     assert (

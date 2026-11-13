@@ -346,7 +346,12 @@ def discover(content, *, original=False, workbook=None):
         return journals, []
     sheets, warnings = [], []
     for sheet in w:
-        if sheet.title in ("Расчёт бригады", "Итоги объекта") or is_journal(sheet):
+        if sheet.title in (
+            "Расчёт бригады",
+            "Итоги объекта",
+            "Примечания PDF",
+            "Источники PDF",
+        ) or is_journal(sheet):
             continue
         if not any(cell.value is not None for row in sheet for cell in row):
             continue

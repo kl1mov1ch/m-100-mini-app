@@ -3,6 +3,7 @@ import math
 import re
 
 from .. import matcher
+from .aggregation import work_label
 
 CATEGORIES = [
     "Вентиляция",
@@ -46,6 +47,8 @@ async def propose(
         + query
         + "\nОбрабатываются только ведомости и спецификации. Не извлекай перечень работ из общих данных, легенд, планов и схем. Не создавай позиции из заголовков, подписей и реквизитов чертёжной рамки. Сохрани дословные section (раздел), subsection (подраздел/система) и item_code (позиция/артикул) каждой строки в объекте works. Если раздел начался на предыдущей странице, используй контекст: "
         + json.dumps(context, ensure_ascii=False)
+        + "\nДля каждой строки дополнительно верни work_name — короткий вид оплачиваемой работы для сводной сметы. Одинаковый вид работы объединяется независимо от раздела, номера системы, марки и размера. Сохраняй тип (радиальный/канальный/осевой), материал, взрывозащиту, монтаж/демонтаж: это разные работы. Исходное полное название сохрани в name. Числа, буквы, марки и размеры не теряются, они остаются в name и quote. Для уже встречавшегося вида используй прежнее work_name из словаря: "
+        + json.dumps(settings.get("document_work_names", []), ensure_ascii=False)
         + "\nЗаголовки section и subsection определяй заново по ЭТОМУ файлу, дословно. Фиксированного набора разделов нет. Подтверждённые примеры пользователя служат только образцом структуры; не переноси их названия и данные в документ без источника: "
         + json.dumps(
             relevant_examples(query + " " + text[:1500], settings.get("document_examples", [])),
@@ -72,11 +75,13 @@ async def propose(
         name = str(item.get("name", "")).strip()
         source_row = item.get("source_row")
         structured_header = False
+        located_row = None
         conflicting_cell = False
         if type(source_row) is int and "Таблица: ячейки по строкам и колонкам." in text:
             matching = re.findall(r"^Строка " + str(source_row) + r": (.+)$", text, re.MULTILINE)
             if len(matching) == 1:
                 quote = matching[0]
+                located_row = source_row
                 column = str(item.get("quantity_column") or "").replace("-", "–")
                 if re.fullmatch(r"C\d+–C\d+", column):
                     pattern = re.escape(column) + r"=([^|]+)"
@@ -209,6 +214,7 @@ async def propose(
         works.append(
             {
                 "name": name[:300],
+                "work_name": work_label(name[:300], item.get("work_name")),
                 "category": item.get("category")
                 if item.get("category") in CATEGORIES
                 else "Прочее",
@@ -216,6 +222,7 @@ async def propose(
                 "quantity": quantity,
                 "quote": quote,
                 "page": page,
+                "source_row": located_row,
                 "section": heading("section") or "Без раздела",
                 "subsection": heading("subsection"),
                 "item_code": item_code,

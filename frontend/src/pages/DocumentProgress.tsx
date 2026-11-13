@@ -14,31 +14,33 @@ export function DocumentProgress({ job, resume }: { job: DocumentJob; resume: ()
 		job.status,
 	);
 	const title =
-		stage === 'converting' && active
-			? `Преобразуем в текст · страница ${page || '…'}`
-			: stage === 'indexing' && active
-				? 'Ищем ведомости и спецификации'
-				: job.status === 'uploading'
-					? 'Получаем файл'
-					: job.status === 'queued'
-						? job.processed
-							? 'Продолжаем чтение'
-							: 'Файл готов к обработке'
-						: job.status === 'ai_queued'
-							? 'Передаём страницы ИИ'
-							: job.status === 'analysing'
-								? `ИИ обрабатывает страницу ${page || '…'}`
-								: job.status === 'extracting'
-									? `${stage === 'rendering' ? 'Готовим' : stage === 'ocr' ? 'Распознаём' : stage === 'table_ocr' ? 'Читаем таблицы на' : 'Читаем'} страницу ${page || job.processed + 1}`
-									: job.status === 'needs_ai'
-										? 'Нужно подключить ИИ'
-										: job.status === 'needs_budget'
-											? 'Достигнут лимит обработки'
-											: job.status === 'needs_ocr'
-												? 'Нужно распознавание текста'
-												: job.status === 'failed'
-													? 'Обработка остановлена'
-													: 'Страницы прочитаны';
+		stage === 'grouping' && active
+			? 'Объединяем одинаковые работы'
+			: stage === 'converting' && active
+				? `Преобразуем в текст · страница ${page || '…'}`
+				: stage === 'indexing' && active
+					? 'Ищем ведомости и спецификации'
+					: job.status === 'uploading'
+						? 'Получаем файл'
+						: job.status === 'queued'
+							? job.processed
+								? 'Продолжаем чтение'
+								: 'Файл готов к обработке'
+							: job.status === 'ai_queued'
+								? 'Передаём страницы ИИ'
+								: job.status === 'analysing'
+									? `ИИ обрабатывает страницу ${page || '…'}`
+									: job.status === 'extracting'
+										? `${stage === 'rendering' ? 'Готовим' : stage === 'ocr' ? 'Распознаём' : stage === 'table_ocr' ? 'Читаем таблицы на' : 'Читаем'} страницу ${page || job.processed + 1}`
+										: job.status === 'needs_ai'
+											? 'Нужно подключить ИИ'
+											: job.status === 'needs_budget'
+												? 'Достигнут лимит обработки'
+												: job.status === 'needs_ocr'
+													? 'Нужно распознавание текста'
+													: job.status === 'failed'
+														? 'Обработка остановлена'
+														: 'Страницы прочитаны';
 	const size = job.payload.file_bytes
 		? `${(job.payload.file_bytes / 1048576).toLocaleString('ru', { maximumFractionDigits: 1 })} МБ`
 		: '';

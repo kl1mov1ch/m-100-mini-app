@@ -41,7 +41,7 @@ def test_unit_conversion_is_dimensionally_correct(unit, quantity, expected):
     assert Decimal(normalise(item(unit=unit, quantity=quantity))["quantity"]) == Decimal(expected)
 
 
-def test_dimension_and_diameter_and_conditions_remain_separate():
+def test_dimensions_remain_separate_and_conditions_are_retained_in_notes():
     groups = build_groups(
         [
             item(unit="м"),
@@ -50,7 +50,8 @@ def test_dimension_and_diameter_and_conditions_remain_separate():
             item(notes="На высоте 12 м"),
         ]
     )
-    assert len(groups) == 4
+    assert len(groups) == 3
+    assert any("На высоте 12 м" in group["notes"] for group in groups)
 
 
 def test_disjoint_systems_sum_but_overlapping_sources_require_resolution():
@@ -66,6 +67,34 @@ def test_disjoint_systems_sum_but_overlapping_sources_require_resolution():
 def test_overlapping_chunk_results_are_not_double_counted():
     group = build_groups([item(), item()])[0]
     assert group["quantity"] == "10" and len(group["sources"]) == 1
+
+
+def test_ventilation_estimate_groups_by_work_and_keeps_source_locations():
+    first = {
+        **item(
+            80, 7, "шт", "В1: радиальный вентилятор 7 шт.", "Монтаж радиального вентилятора №10"
+        ),
+        "source_row": 8,
+    }
+    second = {
+        **item(
+            81,
+            16,
+            "шт.",
+            "В2: радиальные вентиляторы 16 шт.",
+            "Установка вентиляторов радиальных №5",
+        ),
+        "category": "Прочее",
+        "source_row": 9,
+    }
+    distinct = item(81, 11, "шт.", "В3: вентиляторы 11 шт.", "Монтаж вентиляторов канальных")
+    groups = build_groups([first, first, second, distinct])
+    assert len(groups) == 2
+    radial = next(row for row in groups if "радиальных" in row["name"])
+    assert radial["quantity"] == "23" and radial["mention_count"] == 2
+    assert "В1 · стр. 80" in radial["source_summary"] and "В2 · стр. 81" in radial["source_summary"]
+    two_rows = build_groups([first, {**first, "source_row": 10}])[0]
+    assert two_rows["quantity"] == "14" and two_rows["mention_count"] == 2
 
 
 def test_unknown_volume_never_becomes_zero_and_unconfirmed_money_is_excluded():

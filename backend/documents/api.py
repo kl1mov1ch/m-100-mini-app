@@ -15,6 +15,7 @@ from starlette.concurrency import run_in_threadpool
 from .. import profile_webhooks
 from ..analytics import style_sheet
 from ..report_downloads import report_export
+from .aggregation import notes_with_sources
 from .examples import remember
 from .metadata import mark_uploaded, page_count
 from .normalization import build_groups, canonical, financial_summary, unit_value
@@ -350,6 +351,40 @@ def rebuild(ident: str, body: RebuildInput, request: Request, background: Backgr
         return public(job)
 
 
+@router.post("/{ident}/regroup")
+def regroup(ident: str, body: RebuildInput, request: Request, background: BackgroundTasks):
+    with session() as database:
+        job = database.scalar(
+            select(DocumentJob)
+            .where(
+                DocumentJob.id == ident, DocumentJob.owner_id == request.state.user["telegram_id"]
+            )
+            .with_for_update()
+        )
+        if job is None:
+            raise HTTPException(404, "Документ не найден")
+        if job.status not in {"needs_review", "ready", "draft"}:
+            raise HTTPException(409, "Дождитесь завершения обработки")
+        if version(job.updated_at) != body.version:
+            raise HTTPException(409, "Выборка обновилась. Повторите действие.")
+        works = job.payload.get("works", [])
+        if not works:
+            raise HTTPException(422, "Сначала прочитайте документ")
+        job.payload = {
+            **job.payload,
+            "works": [
+                {key: value for key, value in work.items() if key != "work_name"} for work in works
+            ],
+            "regroup_only": True,
+            "publication": None,
+            "notice": "Объединяем одинаковые работы",
+        }
+        job.status = "ai_queued"
+        job.updated_at = datetime.now(UTC)
+        background.add_task(notify_queue)
+        return public(job)
+
+
 @router.get("/{ident}/pages/{page}/preview")
 def preview_page(ident: str, page: int, request: Request):
     with session() as database:
@@ -408,7 +443,7 @@ def analyse(ident: str, request: Request, body: AnalysisInput, background: Backg
             if page["kind"] != "needs_ocr" and not page["kind"].startswith("excluded_")
         }
         pages = sorted(set(body.pages)) if body.pages else sorted(available)
-        if not pages or not set(pages) <= available:
+        if (not pages or not set(pages) <= available) and not job.payload.get("regroup_only"):
             raise HTTPException(422, "Выберите от 1 до 12 распознанных страниц")
         job.payload = {
             **job.payload,
@@ -430,7 +465,7 @@ def retry(ident: str, request: Request, background: BackgroundTasks):
         job = owned(database, ident, request.state.user["telegram_id"])
         if job.status not in {"needs_ocr", "failed"}:
             raise HTTPException(409, "Задание уже выполняется или завершено")
-        job.status = "queued"
+        job.status = "ai_queued" if job.payload.get("regroup_only") else "queued"
         job.updated_at = datetime.now(UTC)
         background.add_task(notify_queue)
         return public(job)
@@ -445,7 +480,7 @@ class ReviewValues(BaseModel):
     rate: Decimal = Field(ge=0, le=1000000000, decimal_places=4)
     unit: str = Field(min_length=1, max_length=24)
     notes: str = Field(default="", max_length=2000)
-    resolution: Literal["sum", "one", "manual"] | None = None
+    resolution: Literal["sum", "one", "mentions", "manual"] | None = None
     acknowledge_scope: bool = False
 
 
@@ -490,6 +525,16 @@ def apply_review(row, body):
         raise HTTPException(
             422, "Для повтора используйте объём первого источника или выберите ручное уточнение"
         )
+    if body.resolution == "mentions" and (
+        measure not in {"шт.", "компл."}
+        or row.get("unit") not in {None, "шт.", "компл."}
+        or body.quantity != len(row.get("sources", []))
+        or not row.get("sources")
+    ):
+        raise HTTPException(
+            422,
+            "По упоминаниям можно посчитать только штучные позиции. Для метров и площади используйте объёмы документа.",
+        )
     before = {
         key: row.get(key)
         for key in (
@@ -501,6 +546,7 @@ def apply_review(row, body):
             "unit",
             "rate",
             "notes",
+            "quantity_mode",
             "confirmed",
         )
     }
@@ -523,6 +569,13 @@ def apply_review(row, body):
         notes=body.notes,
         confirmed=True,
         resolution=body.resolution or "manual",
+        quantity_mode=body.resolution
+        or (
+            "sum"
+            if row.get("proposed_quantity") is not None
+            and body.quantity == Decimal(str(row["proposed_quantity"]))
+            else "manual"
+        ),
         issues=[],
     )
     row["amount"] = float(
@@ -630,7 +683,7 @@ def export(ident: str, request: Request, prepare: bool = False, final: bool = Fa
             rows = job.payload.get("groups") or build_groups(job.payload.get("works", []))
             workbook = Workbook()
             sheet = workbook.active
-            sheet.title = "Работы по категориям"
+            sheet.title = "Сводная смета"
             sheet.append(
                 [
                     "№",
@@ -645,6 +698,8 @@ def export(ident: str, request: Request, prepare: bool = False, final: bool = Fa
                     "Что уточнить",
                     "Раздел",
                     "Подраздел",
+                    "Упоминания",
+                    "Расчёт объёма",
                 ]
             )
             for index, work in enumerate(rows, 1):
@@ -657,7 +712,7 @@ def export(ident: str, request: Request, prepare: bool = False, final: bool = Fa
                         float(work["quantity"]) if work["quantity"] is not None else None,
                         float(work["rate"]) if work.get("rate") is not None else None,
                         work.get("amount") if work.get("confirmed") else None,
-                        work["notes"],
+                        notes_with_sources(work),
                         ", ".join(str(source["page"]) for source in work.get("sources", [])),
                         "Подтверждено"
                         if work.get("confirmed")
@@ -665,9 +720,15 @@ def export(ident: str, request: Request, prepare: bool = False, final: bool = Fa
                         or "Проверьте объём и введите расценку",
                         work.get("section", "Без раздела"),
                         work.get("subsection", ""),
+                        work.get("mention_count", len(work.get("sources", []))),
+                        {
+                            "mentions": "По упоминаниям",
+                            "manual": "Вручную",
+                            "one": "Один источник",
+                        }.get(work.get("quantity_mode"), "Сумма объёмов"),
                     ]
                 )
-            style_sheet(sheet, 1, [7, 24, 55, 10, 14, 19, 19, 45, 16, 45, 30, 30], (6, 7))
+            style_sheet(sheet, 1, [7, 24, 55, 10, 14, 19, 19, 65, 16, 45, 30, 30, 14, 24], (6, 7))
             sheet.freeze_panes = "D2"
             sheet.append(
                 [
@@ -687,7 +748,21 @@ def export(ident: str, request: Request, prepare: bool = False, final: bool = Fa
                 cell.fill = PatternFill("solid", fgColor="007AFF")
             sheet.cell(sheet.max_row, 7).number_format = "#,##0.00"
             sources = workbook.create_sheet("Источники")
-            sources.append(["Позиция", "Страница", "Исходный объём", "Исходная единица", "Цитата"])
+            sources.append(
+                [
+                    "Позиция",
+                    "Страница",
+                    "Исходный объём",
+                    "Исходная единица",
+                    "Цитата",
+                    "Обозначение",
+                    "Исходное название",
+                    "Условия",
+                    "Строка",
+                    "Раздел",
+                    "Подраздел",
+                ]
+            )
             for work in rows:
                 for source in work.get("sources", []):
                     sources.append(
@@ -697,9 +772,15 @@ def export(ident: str, request: Request, prepare: bool = False, final: bool = Fa
                             source.get("original_quantity", source.get("quantity")),
                             source.get("original_unit", source.get("unit")),
                             source["quote"],
+                            source.get("item_code", ""),
+                            source.get("name", ""),
+                            source.get("notes", ""),
+                            source.get("source_row"),
+                            source.get("section", ""),
+                            source.get("subsection", ""),
                         ]
                     )
-            style_sheet(sources, 1, [50, 14, 18, 18, 100])
+            style_sheet(sources, 1, [50, 14, 18, 18, 100, 22, 55, 60, 14, 30, 30])
             report = workbook.create_sheet("Контроль")
             report.append(["Показатель", "Значение"])
             report.append(["Запрос", job.payload.get("query", "")])

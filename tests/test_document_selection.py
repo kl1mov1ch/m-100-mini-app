@@ -29,7 +29,7 @@ def test_structural_selection_does_not_reuse_fixed_section_names():
     assert selection.classify_page("Теплоизоляционные материалы") == "uncertain"
 
 
-def test_sections_and_repeated_source_rows_remain_distinct_or_count_once():
+def test_sections_merge_and_copies_only_count_once():
     work = {
         "name": "Монтаж материала",
         "category": "Прочее",
@@ -51,7 +51,21 @@ def test_sections_and_repeated_source_rows_remain_distinct_or_count_once():
         and independent["proposed_quantity"] == "10"
         and independent["issues"]
     )
-    assert len(build_groups([work, {**work, "section": "Другой раздел"}])) == 2
+    combined = build_groups(
+        [
+            work,
+            {
+                **work,
+                "section": "Другой раздел",
+                "category": "Вентиляция",
+                "source_row": 2,
+                "quote": "П2: материал 6 м",
+                "quantity": 6,
+            },
+        ]
+    )
+    assert len(combined) == 1 and combined[0]["quantity"] == "11"
+    assert combined[0]["mention_count"] == 2 and len(combined[0]["categories"]) == 2
     ambiguous = build_groups([{**work, "item_code": ""}, {**work, "item_code": "", "page": 9}])[0]
     assert ambiguous["quantity"] is None and ambiguous["issues"]
 

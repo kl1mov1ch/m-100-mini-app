@@ -19,6 +19,7 @@ from ..analytics import style_sheet
 from ..naming import unique_project_name
 from ..orm_models import Position, Project, ProjectSetting, User
 from ..workbook_journal import format_journal, is_journal, journal_row
+from .aggregation import notes_with_sources
 from .normalization import financial_summary
 from .repository import DocumentJob, folder, owned, public, session, version
 
@@ -57,7 +58,7 @@ def make_workbook(content, rows):
             "section": " · ".join(
                 filter(None, [row["category"], row.get("section"), row.get("subsection")])
             ),
-            "source_sheet": row["category"],
+            "source_sheet": "Сводная смета",
             "source_row": index + 1,
             "unit": row["unit"],
             "planned": float(row["quantity"]),
@@ -74,7 +75,7 @@ def make_workbook(content, rows):
         ):
             book.remove(sheet)
     notes = book.create_sheet("Примечания PDF")
-    notes.append(["Работа", "Категория", "Примечание", "Страницы PDF"])
+    notes.append(["Работа", "Категория", "Примечание", "Страницы PDF", "Упоминания"])
     by_id = {"pdf-" + row["id"]: row for row in rows}
     from openpyxl.comments import Comment
 
@@ -86,7 +87,7 @@ def make_workbook(content, rows):
             if metadata and metadata[0] in by_id:
                 row = by_id[metadata[0]]
                 text = (
-                    row["notes"]
+                    notes_with_sources(row)
                     + "\nСтраницы PDF: "
                     + ", ".join(str(source["page"]) for source in row["sources"])
                 )
@@ -96,11 +97,46 @@ def make_workbook(content, rows):
             [
                 row["name"],
                 row["category"],
-                row["notes"],
+                notes_with_sources(row),
                 ", ".join(str(source["page"]) for source in row["sources"]),
+                row.get("mention_count", len(row["sources"])),
             ]
         )
-    style_sheet(notes, 1, [55, 25, 75, 18])
+    style_sheet(notes, 1, [55, 25, 85, 18, 14])
+    sources = book.create_sheet("Источники PDF")
+    sources.append(
+        [
+            "Работа",
+            "Обозначение",
+            "Страница PDF",
+            "Исходный объём",
+            "Ед.",
+            "Исходное название",
+            "Примечание",
+            "Цитата",
+            "Строка",
+            "Раздел",
+            "Подраздел",
+        ]
+    )
+    for row in rows:
+        for source in row.get("sources", []):
+            sources.append(
+                [
+                    row["name"],
+                    source.get("item_code", ""),
+                    source["page"],
+                    source.get("original_quantity"),
+                    source.get("original_unit"),
+                    source.get("name"),
+                    source.get("notes"),
+                    source["quote"],
+                    source.get("source_row"),
+                    source.get("section", ""),
+                    source.get("subsection", ""),
+                ]
+            )
+    style_sheet(sources, 1, [50, 22, 16, 18, 12, 55, 65, 100, 14, 30, 30])
     book.active = next(sheet for sheet in book if is_journal(sheet))
     output = io.BytesIO()
     book.save(output)

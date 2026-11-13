@@ -309,21 +309,9 @@
 	display: grid;
 	gap: 12px;
 }
-.document-works.document-section-list {
-	display: grid;
+.document-works.compact-list {
 	grid-template-columns: minmax(0, 1fr);
-	gap: 14px;
-}
-.document-section h3 {
-	margin: 0 0 8px;
-	font-size: 14px;
-	line-height: 1.5;
-	font-weight: 600;
-}
-.document-section h3 small {
-	color: var(--ios-secondary);
-	font-weight: 400;
-	margin-left: 6px;
+	gap: 0;
 }
 .document-review-card > div:first-child {
 	display: flex;
