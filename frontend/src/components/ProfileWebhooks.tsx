@@ -1,9 +1,10 @@
 import { App, Button, Empty, Input, Modal } from 'antd';
-import { KeyRound, Pencil, Plus, Trash2 } from 'lucide-react';
+import { KeyRound, Plus, Trash2 } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import type { WorkspaceView } from '../App';
 import type { DiskWebhook } from '../types';
 import { FieldHelp } from './FieldHelp';
+import { CompactRow } from './CompactRow';
 
 export function ProfileWebhooks({ workspace }: { workspace: WorkspaceView }) {
 	const [editing, setEditing] = useState<DiskWebhook | null>(null);
@@ -56,6 +57,7 @@ export function ProfileWebhooks({ workspace }: { workspace: WorkspaceView }) {
 			onOk: async () => {
 				try {
 					await workspace.deleteDiskWebhook(item.id);
+					if (editing?.id === item.id) setOpen(false);
 					message.success('Вебхук удалён из профиля');
 				} catch (failure) {
 					message.error((failure as Error).message);
@@ -82,29 +84,16 @@ export function ProfileWebhooks({ workspace }: { workspace: WorkspaceView }) {
 					description="Сохраните вебхук для подключения таблиц"
 				/>
 			)}
-			<ul>
+			<div className="compact-list">
 				{workspace.diskWebhooks.map((item) => (
-					<li key={item.id}>
-						<div className="webhook-description">
-							<strong>{item.name}</strong>
-							<small>{item.portal}</small>
-						</div>
-						<Button
-							type="text"
-							aria-label={'Изменить вебхук ' + item.name}
-							icon={<Pencil size={17} />}
-							onClick={() => edit(item)}
-						/>
-						<Button
-							type="text"
-							danger
-							aria-label={'Удалить вебхук ' + item.name}
-							icon={<Trash2 size={17} />}
-							onClick={() => remove(item)}
-						/>
-					</li>
+					<CompactRow
+						key={item.id}
+						title={item.name}
+						description={item.portal}
+						onClick={() => edit(item)}
+					/>
 				))}
-			</ul>
+			</div>
 			<Modal
 				title={editing ? 'Изменить вебхук' : 'Новый вебхук'}
 				open={open}
@@ -117,6 +106,26 @@ export function ProfileWebhooks({ workspace }: { workspace: WorkspaceView }) {
 				cancelButtonProps={{ disabled: saving }}
 				maskClosable={!saving}
 				closable={!saving}
+				{...(editing
+					? {
+							footer: (
+								<>
+									<Button
+										type="text"
+										danger
+										icon={<Trash2 size={16} />}
+										disabled={saving}
+										onClick={() => remove(editing)}
+									>
+										Удалить
+									</Button>
+									<Button type="primary" loading={saving} onClick={() => save()}>
+										Сохранить
+									</Button>
+								</>
+							),
+						}
+					: {})}
 			>
 				<form className="object-connection-form" onSubmit={save}>
 					<label>

@@ -1,11 +1,12 @@
-import { App, Button, Checkbox, Input, InputNumber, Modal, Pagination, Select } from 'antd';
-import { ArrowLeft, ChevronRight, Download, FileSearch } from 'lucide-react';
+import { App, Button, Checkbox, Input, InputNumber, Modal, Select } from 'antd';
+import { ArrowLeft, Download, FileSearch } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { Money } from '../lib/format';
+import { Money, nf } from '../lib/format';
 import { headers, request } from '../lib/api';
 import { downloadReport } from '../lib/report-download';
 import type { DocumentJob, DocumentGroup, DocumentSource } from './document-types';
 import { DocumentPublishPanel } from './DocumentPublishPanel';
+import { CompactRow } from '../components/CompactRow';
 
 function SourcePreview({
 	jobId,
@@ -91,7 +92,6 @@ export function DocumentResultsPage({
 	const [category, setCategory] = useState('Все'),
 		[status, setStatus] = useState('all'),
 		[query, setQuery] = useState(''),
-		[page, setPage] = useState(1),
 		[editing, setEditing] = useState<DocumentGroup | null>(null),
 		[sources, setSources] = useState<DocumentGroup | null>(null),
 		[quantity, setQuantity] = useState<string | null>(null),
@@ -102,8 +102,7 @@ export function DocumentResultsPage({
 		[notes, setNotes] = useState(''),
 		[resolution, setResolution] = useState<string>(),
 		[acknowledge, setAcknowledge] = useState(false),
-		[saving, setSaving] = useState(false),
-		[rates, setRates] = useState<Record<string, string | null>>({});
+		[saving, setSaving] = useState(false);
 	const { message } = App.useApp();
 	const groups = job.payload.groups || [];
 	const categories = ['Все', ...new Set(groups.map((row) => row.category))];
@@ -127,7 +126,7 @@ export function DocumentResultsPage({
 				!row.confirmed &&
 				!row.issues.length &&
 				row.quantity !== null &&
-				rates[row.id] != null,
+				row.rate != null,
 		)
 		.slice(0, 100);
 	const confirmBatch = async () => {
@@ -139,7 +138,7 @@ export function DocumentResultsPage({
 				items: eligible.map((row) => ({
 					group_id: row.id,
 					quantity: String(row.quantity),
-					rate: rates[row.id],
+					rate: row.rate,
 					unit: row.unit,
 					notes: row.notes,
 				})),
@@ -156,7 +155,7 @@ export function DocumentResultsPage({
 	const choose = (row: DocumentGroup) => {
 		setEditing(row);
 		setQuantity(row.quantity === null ? null : String(row.quantity));
-		setRate(rates[row.id] ?? (row.rate === null ? null : String(row.rate)));
+		setRate(row.rate === null ? null : String(row.rate));
 		setUnit(row.unit || 'м');
 		setName(row.name);
 		setEditCategory(row.category);
@@ -165,7 +164,7 @@ export function DocumentResultsPage({
 		setAcknowledge(false);
 	};
 	const confirm = async () => {
-		if (!editing || quantity === null || rate === null) return;
+		if (readOnly || !editing || quantity === null || rate === null) return;
 		setSaving(true);
 		try {
 			const next = await request<DocumentJob>('/documents/' + job.id + '/groups/' + editing.id, {
@@ -212,7 +211,6 @@ export function DocumentResultsPage({
 				</div>
 			</div>
 			<section className="document-result-summary">
-				<p>{job.payload.query}</p>
 				<div>
 					<span>
 						<small>Подтверждено</small>
@@ -221,13 +219,12 @@ export function DocumentResultsPage({
 						</strong>
 					</span>
 					<span>
-						<small>Стоимость</small>
+						<small>Проверенная сумма</small>
 						<strong>
 							<Money value={summary?.amount || 0} />
 						</strong>
 					</span>
 				</div>
-				<small>В сумме — только проверенные строки с расценками.</small>
 			</section>
 			<details className="document-checks">
 				<summary>
@@ -237,6 +234,8 @@ export function DocumentResultsPage({
 						{job.payload.questions?.length ? ` · ${job.payload.questions.length} вопросов` : ''}
 					</span>
 				</summary>
+				<p>{job.payload.query}</p>
+				<p>В сумме — только проверенные строки с расценками.</p>
 				{!job.payload.coverage?.complete && (
 					<p>Обработка неполная — итоговый отчёт пока недоступен.</p>
 				)}
@@ -260,7 +259,6 @@ export function DocumentResultsPage({
 					value={query}
 					onChange={(event) => {
 						setQuery(event.target.value);
-						setPage(1);
 					}}
 				/>
 				<div>
@@ -269,7 +267,6 @@ export function DocumentResultsPage({
 						value={category}
 						onChange={(value) => {
 							setCategory(value);
-							setPage(1);
 						}}
 						options={categories.map((value) => ({ value, label: value }))}
 					/>
@@ -278,7 +275,6 @@ export function DocumentResultsPage({
 						value={status}
 						onChange={(value) => {
 							setStatus(value);
-							setPage(1);
 						}}
 						options={[
 							{ value: 'all', label: 'Все строки' },
@@ -288,73 +284,40 @@ export function DocumentResultsPage({
 					/>
 				</div>
 			</div>
-			<div className="document-works">
-				{rows.slice((page - 1) * 8, page * 8).map((row) => (
-					<section
-						className={'document-review-card' + (row.issues.length ? ' needs-review' : '')}
+			<div className="document-works compact-list" aria-label="Работы из документа">
+				{rows.map((row) => (
+					<CompactRow
 						key={row.id}
-					>
-						<div>
-							<strong>{row.name}</strong>
-							<span className={'document-row-status' + (row.confirmed ? ' checked' : '')}>
-								{row.confirmed ? 'Проверено' : row.issues.length ? 'Уточнить' : 'Черновик'}
-							</span>
-						</div>
-						<small>
-							{row.category} · {row.sources.length} источн.
-						</small>
-						<div className="document-review-values">
-							<span>
-								<small>Объём</small>
-								<b>
-									{row.quantity === null ? 'Нужна проверка' : row.quantity} {row.unit}
-								</b>
-							</span>
-							<label className="document-inline-rate">
-								<small>Расценка за {row.unit || 'единицу'}</small>
-								{row.confirmed ? (
-									<b>
-										<Money value={Number(row.rate)} />
-									</b>
-								) : (
-									<InputNumber
-										disabled={readOnly}
-										stringMode
-										controls={false}
-										min="0"
-										max="1000000000"
-										precision={4}
-										placeholder="BYN"
-										aria-label={`Расценка: ${row.name}`}
-										value={rates[row.id] ?? null}
-										onChange={(value) => setRates((current) => ({ ...current, [row.id]: value }))}
-									/>
-								)}
-							</label>
-						</div>
-						{row.notes && (
-							<details className="document-row-notes">
-								<summary>Примечание</summary>
-								<p>{row.notes}</p>
-							</details>
-						)}
-						{row.issues.length > 0 && <p className="document-question">{row.issues[0]}</p>}
-						<div className="document-review-actions">
-							<Button type="text" icon={<FileSearch size={16} />} onClick={() => setSources(row)}>
-								Источники
-							</Button>
-							<Button type="text" disabled={readOnly} onClick={() => choose(row)}>
-								{row.confirmed ? 'Изменить' : 'Проверить'}
-								<ChevronRight size={15} />
-							</Button>
-						</div>
-					</section>
+						className="document-review-row"
+						title={row.name}
+						description={
+							<>
+								{row.category} ·{' '}
+								{row.quantity === null
+									? 'Уточните объём'
+									: nf.format(Number(row.quantity)) + ' ' + row.unit}
+							</>
+						}
+						value={
+							row.rate !== null ? (
+								<>
+									<Money value={Number(row.rate)} /> / {row.unit}
+								</>
+							) : (
+								'Нет расценки'
+							)
+						}
+						meta={row.confirmed ? 'Проверено' : row.issues.length ? 'Нужна проверка' : 'Черновик'}
+						attention={!row.confirmed && !!row.issues.length}
+						onClick={() => choose(row)}
+					/>
 				))}
+				{!rows.length && <p className="compact-empty">Работ по этим фильтрам нет</p>}
 			</div>
 			{eligible.length > 0 && (
 				<section className="document-batch-review">
 					<small>
-						Проверенные вами объёмы с введёнными расценками. Спорные строки подтверждаются отдельно.
+						Строки с расценками без спорных объёмов. Подтвердите их после проверки источников.
 					</small>
 					{needsScope && !job.payload.acknowledge_scope && (
 						<Checkbox
@@ -368,19 +331,6 @@ export function DocumentResultsPage({
 						Подтвердить строки · {eligible.length}
 					</Button>
 				</section>
-			)}
-			{rows.length > 8 && (
-				<Pagination
-					simple={{ readOnly: true }}
-					current={page}
-					pageSize={8}
-					total={rows.length}
-					showSizeChanger={false}
-					onChange={(value) => {
-						setPage(value);
-						window.scrollTo({ top: 0, behavior: 'smooth' });
-					}}
-				/>
 			)}
 			<div className="document-export-actions">
 				<Button
@@ -405,10 +355,13 @@ export function DocumentResultsPage({
 			</small>
 			<DocumentPublishPanel job={job} refresh={refresh} openObject={openObject} />
 			<Modal
+				className="document-work-sheet"
 				title={editing?.name}
 				open={!!editing}
 				onCancel={() => !saving && setEditing(null)}
 				confirmLoading={saving}
+				destroyOnHidden
+				{...(readOnly ? { footer: <Button onClick={() => setEditing(null)}>Готово</Button> } : {})}
 				okText="Подтвердить"
 				cancelText="Отмена"
 				onOk={() => void confirm()}
@@ -419,137 +372,175 @@ export function DocumentResultsPage({
 						((editing?.issues.length || 0) > 0 && !resolution),
 				}}
 			>
-				<div className="document-review-form">
-					<details className="document-details document-edit-details">
-						<summary>Название и категория</summary>
-						<label>
-							Название работы
-							<Input
-								value={name}
-								maxLength={300}
-								onChange={(event) => setName(event.target.value)}
-							/>
-						</label>
-						<label>
-							Категория
-							<Select
-								value={editCategory}
-								onChange={setEditCategory}
-								options={[
-									'Вентиляция',
-									'Отопление',
-									'Водоснабжение',
-									'Канализация',
-									'Кондиционирование',
-									'Электроснабжение',
-									'Автоматика',
-									'Прочее',
-								].map((value) => ({ value, label: value }))}
-							/>
-						</label>
-					</details>
-					{editing?.issues.map((issue) => (
-						<p className="document-question" key={issue}>
-							{issue}
-						</p>
-					))}
-					{editing && (
-						<Button type="text" icon={<FileSearch size={16} />} onClick={() => setSources(editing)}>
-							Проверить источники
+				{readOnly ? (
+					<div className="document-review-form">
+						<dl className="position-totals">
+							<div>
+								<dt>По смете</dt>
+								<dd>
+									{editing?.quantity ?? 'Не определено'} {editing?.unit}
+								</dd>
+							</div>
+							<div>
+								<dt>За единицу</dt>
+								<dd>
+									{editing?.rate != null ? <Money value={Number(editing.rate)} /> : 'Не указано'}
+								</dd>
+							</div>
+						</dl>
+						<p>{editing?.category}</p>
+						{editing?.notes && <p>{editing.notes}</p>}
+						<Button icon={<FileSearch size={16} />} onClick={() => setSources(editing)}>
+							Источники · {editing?.sources.length}
 						</Button>
-					)}
-					<div className="document-input-pair">
-						<label>
-							Единица измерения
-							<Select
-								value={unit}
-								onChange={setUnit}
-								options={['м', 'м²', 'м³', 'шт.', 'кг', 'компл.', 'чел·ч', 'чел·дн'].map(
-									(value) => ({
-										value,
-										label: value,
-									}),
+					</div>
+				) : (
+					<div className="document-review-form">
+						<div className="document-work-total">
+							<span>Сумма по позиции</span>
+							<strong>
+								{quantity !== null && rate !== null ? (
+									<Money value={Number(quantity) * Number(rate)} />
+								) : (
+									'Укажите объём и расценку'
 								)}
-							/>
-						</label>
+							</strong>
+						</div>
+						<details className="document-details document-edit-details">
+							<summary>Название и категория</summary>
+							<label>
+								Название работы
+								<Input
+									value={name}
+									maxLength={300}
+									onChange={(event) => setName(event.target.value)}
+								/>
+							</label>
+							<label>
+								Категория
+								<Select
+									value={editCategory}
+									onChange={setEditCategory}
+									options={[
+										'Вентиляция',
+										'Отопление',
+										'Водоснабжение',
+										'Канализация',
+										'Кондиционирование',
+										'Электроснабжение',
+										'Автоматика',
+										'Прочее',
+									].map((value) => ({ value, label: value }))}
+								/>
+							</label>
+						</details>
+						{editing?.issues.map((issue) => (
+							<p className="document-question" key={issue}>
+								{issue}
+							</p>
+						))}
+						{editing && (
+							<Button
+								type="text"
+								icon={<FileSearch size={16} />}
+								onClick={() => setSources(editing)}
+							>
+								Проверить источники
+							</Button>
+						)}
+						<div className="document-input-pair">
+							<label>
+								Единица измерения
+								<Select
+									value={unit}
+									onChange={setUnit}
+									options={['м', 'м²', 'м³', 'шт.', 'кг', 'компл.', 'чел·ч', 'чел·дн'].map(
+										(value) => ({
+											value,
+											label: value,
+										}),
+									)}
+								/>
+							</label>
+							<label>
+								Объём
+								<InputNumber
+									stringMode
+									min="0"
+									max="1000000000"
+									value={quantity}
+									onChange={setQuantity}
+									controls={false}
+								/>
+							</label>
+						</div>
 						<label>
-							Объём
+							Расценка за {unit}, BYN
 							<InputNumber
 								stringMode
 								min="0"
 								max="1000000000"
-								value={quantity}
-								onChange={setQuantity}
+								value={rate}
+								onChange={setRate}
 								controls={false}
 							/>
 						</label>
-					</div>
-					<label>
-						Расценка за {unit}, BYN
-						<InputNumber
-							stringMode
-							min="0"
-							max="1000000000"
-							value={rate}
-							onChange={setRate}
-							controls={false}
-						/>
-					</label>
-					<details className="document-details document-edit-details">
-						<summary>Примечание</summary>
-						<label>
-							Примечания
-							<Input.TextArea
-								value={notes}
-								maxLength={2000}
-								autoSize={{ minRows: 2, maxRows: 5 }}
-								onChange={(event) => setNotes(event.target.value)}
-							/>
-						</label>
-					</details>
-					{!!editing?.issues.length && (
-						<label>
-							Как проверен спорный объём
-							<Select
-								value={resolution}
-								onChange={(value) => {
-									setResolution(value);
-									if (value === 'sum' && editing.proposed_quantity !== null)
-										setQuantity(String(editing.proposed_quantity));
-									if (value === 'one' && editing.sources[0]?.quantity !== null)
-										setQuantity(String(editing.sources[0].quantity));
-								}}
-								placeholder="Выберите решение"
-								options={[
-									{
-										value: 'sum',
-										label: 'Работы разные — сложить объёмы',
-										disabled: editing.proposed_quantity === null,
-									},
-									{
-										value: 'one',
-										label: 'Повтор одной позиции — учесть один раз',
-										disabled: editing.sources[0]?.quantity === null,
-									},
-									{ value: 'manual', label: 'Объём проверен и уточнён вручную' },
-								]}
-							/>
-						</label>
-					)}
-					{!!(
-						job.payload.coverage?.drawings?.length ||
-						job.payload.coverage?.low_ocr?.length ||
-						job.payload.coverage?.questions
-					) &&
-						!job.payload.acknowledge_scope && (
-							<Checkbox
-								checked={acknowledge}
-								onChange={(event) => setAcknowledge(event.target.checked)}
-							>
-								Источники и полнота проверены. Геометрия чертежей не измерялась.
-							</Checkbox>
+						<details className="document-details document-edit-details">
+							<summary>Примечание</summary>
+							<label>
+								Примечания
+								<Input.TextArea
+									value={notes}
+									maxLength={2000}
+									autoSize={{ minRows: 2, maxRows: 5 }}
+									onChange={(event) => setNotes(event.target.value)}
+								/>
+							</label>
+						</details>
+						{!!editing?.issues.length && (
+							<label>
+								Как проверен спорный объём
+								<Select
+									value={resolution}
+									onChange={(value) => {
+										setResolution(value);
+										if (value === 'sum' && editing.proposed_quantity !== null)
+											setQuantity(String(editing.proposed_quantity));
+										if (value === 'one' && editing.sources[0]?.quantity !== null)
+											setQuantity(String(editing.sources[0].quantity));
+									}}
+									placeholder="Выберите решение"
+									options={[
+										{
+											value: 'sum',
+											label: 'Работы разные — сложить объёмы',
+											disabled: editing.proposed_quantity === null,
+										},
+										{
+											value: 'one',
+											label: 'Повтор одной позиции — учесть один раз',
+											disabled: editing.sources[0]?.quantity === null,
+										},
+										{ value: 'manual', label: 'Объём проверен и уточнён вручную' },
+									]}
+								/>
+							</label>
 						)}
-				</div>
+						{!!(
+							job.payload.coverage?.drawings?.length ||
+							job.payload.coverage?.low_ocr?.length ||
+							job.payload.coverage?.questions
+						) &&
+							!job.payload.acknowledge_scope && (
+								<Checkbox
+									checked={acknowledge}
+									onChange={(event) => setAcknowledge(event.target.checked)}
+								>
+									Источники и полнота проверены. Геометрия чертежей не измерялась.
+								</Checkbox>
+							)}
+					</div>
+				)}
 			</Modal>
 			<Modal
 				title="Источники позиции"

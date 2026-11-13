@@ -1,10 +1,11 @@
 import { Button, Empty } from 'antd';
 import 'dayjs/locale/ru';
-import { Building2, ChevronRight, Plus, Users } from 'lucide-react';
+import { Building2, Plus } from 'lucide-react';
 import { AdminOverview } from '../components/AdminOverview';
 import dayjs from '../lib/date';
 
 import type { WorkspaceView } from '../App';
+import { CompactRow } from '../components/CompactRow';
 import { QuickReportComposer } from '../components/QuickReportComposer';
 import { countLabel, Money } from '../lib/format';
 export function ObjectsPage({ workspace }: { workspace: WorkspaceView }) {
@@ -39,74 +40,43 @@ export function ObjectsPage({ workspace }: { workspace: WorkspaceView }) {
 			</div>
 			{isAdmin && <AdminOverview workspace={workspace} />}
 			{!isAdmin && session.projects.length > 0 && <QuickReportComposer workspace={workspace} />}
-			<div className="object-grid">
+			<div className="object-grid compact-list">
 				{projects.map((p) => (
-					<button
-						className={'object-card ' + (p.id === project ? 'selected' : '')}
+					<CompactRow
 						key={p.id}
-						onClick={() => selectObject(p.id)}
-					>
-						<div className="object-card-top">
-							<span className="object-tile">
-								<Building2 size={21} />
-							</span>
-							<div className="object-card-identity">
-								<h2>{p.name}</h2>
-								<p>
-									{isAdmin && p.owner_name + ' · '}
-									{countLabel(p.positions, 'работа', 'работы', 'работ')}
-								</p>
-							</div>
-							<ChevronRight size={17} />
-						</div>
-						<span className={'connection-dot ' + (p.table?.read_connected ? 'connected' : '')}>
-							{!isAdmin && p.table?.pending_review
-								? 'Проверьте импорт'
-								: p.table?.read_connected
-									? 'Таблица подключена'
+						className={'object-card ' + (p.id === project ? 'selected' : '')}
+						dialog={false}
+						title={p.name}
+						leading={<Building2 size={20} />}
+						description={
+							<>
+								{countLabel(p.positions, 'работа', 'работы', 'работ')} ·{' '}
+								{p.table?.read_connected
+									? 'Подключён'
 									: p.source === 'detached'
 										? 'Таблица отвязана'
-										: p.positions > 0
+										: p.positions
 											? 'Смета в приложении'
 											: 'Добавьте таблицу'}
-						</span>
-						<div className="object-totals">
-							<span>
-								{summaryDate === session.today ? 'Сегодня' : dayjs(summaryDate).format('D MMMM')}
-								<strong>
-									<Money value={p.today_amount} />
-								</strong>
-							</span>
-							<span>
-								На человека
-								<strong>
-									{p.today_crew ? (
-										<Money value={p.today_per_person} />
-									) : (
-										<span className="no-value">—</span>
-									)}
-								</strong>
-							</span>
-						</div>
-						<div className="object-card-bottom">
-							<span>
-								<Users size={13} />
-								{p.today_crew ? `${p.today_crew} чел.` : 'Бригада не указана'}
-							</span>
-							<span>{countLabel(p.today_positions, 'работа', 'работы', 'работ')} за день</span>
-						</div>
-						<div className="object-card-status">
-							<span>
+								{isAdmin && ' · ' + p.owner_name}
+							</>
+						}
+						value={<Money value={p.today_amount} />}
+						meta={
+							<>
+								{summaryDate === session.today ? 'Сегодня' : dayjs(summaryDate).format('D MMM')}
 								{p.pending && p.table?.write_connected
-									? `${p.pending} отч. не отправлено`
-									: p.last_change
-										? dayjs(p.last_change).format('D MMM, HH:mm')
+									? ' · ' + p.pending + ' не отправл.'
+									: p.today_crew
+										? ' · ' + p.today_crew + ' чел.'
 										: p.today_confirmed
-											? 'Отчёт подтверждён'
-											: 'Отчёт ещё не сдан'}
-							</span>
-						</div>
-					</button>
+											? ' · сдан'
+											: ' · нет отчёта'}
+							</>
+						}
+						attention={!!p.table?.pending_review || (!!p.pending && !!p.table?.write_connected)}
+						onClick={() => selectObject(p.id)}
+					/>
 				))}
 			</div>
 			{!projects.length && (

@@ -1,3 +1,4 @@
+import { CompactWorkEditor } from '../components/CompactRow';
 import { Alert, App, Button, Input, Select, Switch, TimePicker, Tag, Empty } from 'antd';
 import { Bell, Send } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -150,12 +151,19 @@ export function RemindersPage({ workspace }: { workspace: WorkspaceView }) {
 					Без отчёта сегодня{' '}
 					<Tag className="status-tag-attention">{data?.recipients.length || 0}</Tag>
 				</h2>
-				<div className="reminder-recipients">
+				<div className="reminder-recipients compact-list">
 					{data?.recipients.map((recipient) => (
-						<div key={recipient.telegram_id}>
-							<b>{recipient.name}</b>
-							<span>{recipient.projects.join(' · ')}</span>
-						</div>
+						<CompactWorkEditor
+							key={recipient.telegram_id}
+							title={recipient.name}
+							description={recipient.projects.join(' · ')}
+							meta="Нет отчёта"
+						>
+							<p>Сегодня отчёт ещё не сдан.</p>
+							{recipient.projects.map((name) => (
+								<p key={name}>{name}</p>
+							))}
+						</CompactWorkEditor>
 					))}
 				</div>
 				{!data?.recipients.length && (
@@ -172,27 +180,31 @@ export function RemindersPage({ workspace }: { workspace: WorkspaceView }) {
 			</section>
 			<section className="settings-card">
 				<h2>Последние отправки</h2>
-				<div className="reminder-recipients">
+				<div className="reminder-recipients compact-list">
 					{data?.deliveries.map((item, index) => (
-						<div key={item.created_at + index}>
-							<b>
-								{item.name}{' '}
-								<Tag
-									color={item.status === 'sent' ? 'green' : undefined}
-									className={item.status === 'sent' ? undefined : 'status-tag-attention'}
-								>
-									{item.status === 'sent'
-										? 'Отправлено'
-										: item.status === 'sending'
-											? 'Отправляется'
-											: 'Не доставлено'}
-								</Tag>
-							</b>
-							<span>
-								{dayjs(item.created_at).format('D MMMM, HH:mm')}
-								{item.error ? ' · ' + item.error : ''}
-							</span>
-						</div>
+						<CompactWorkEditor
+							key={item.created_at + index}
+							title={item.name}
+							description={dayjs(item.created_at).format('D MMMM, HH:mm')}
+							meta={
+								item.status === 'sent'
+									? 'Отправлено'
+									: item.status === 'sending'
+										? 'Отправляется'
+										: 'Не доставлено'
+							}
+							attention={item.status !== 'sent' && item.status !== 'sending'}
+						>
+							<p>{dayjs(item.created_at).format('D MMMM YYYY, HH:mm')}</p>
+							<p>
+								{item.status === 'sent'
+									? 'Напоминание отправлено'
+									: item.status === 'sending'
+										? 'Напоминание отправляется'
+										: 'Напоминание не доставлено'}
+							</p>
+							{item.error && <p className="form-error">{item.error}</p>}
+						</CompactWorkEditor>
 					))}
 				</div>
 				{!data?.deliveries.length && <p>Напоминаний пока не было</p>}

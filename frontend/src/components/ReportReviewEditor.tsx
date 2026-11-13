@@ -9,6 +9,7 @@ import type { Position, Report } from '../types';
 import { estimateBalance } from '../lib/position-volume';
 import { WorkEstimate, WorkOverruns } from './WorkEstimate';
 import './review-editor.css';
+import { CompactWorkEditor } from './CompactRow';
 
 export type ReportReviewValues = {
 	lines: { item_id: string; quantity: number }[];
@@ -115,101 +116,123 @@ export const ReportReviewEditor = forwardRef<ReportReviewHandle, ReviewProps>(
 						onChange={setCrew}
 					/>
 				</label>
-				{rows.map((id) => {
-					const position = props.positions[id];
-					if (!position) return null;
-					const previous = before[id] || 0;
-					const next = quantities[id] ?? (id in quantities ? null : 0);
-					return (
-						<section
-							className={
-								'review-editor-work ' +
-								(next === 0 ? 'removed' : balances[id]?.excess ? 'work-overrun' : '')
-							}
-							key={id}
-						>
-							<div className="review-editor-heading">
-								<b>{position.name}</b>
-								<Button
-									type="text"
-									size="small"
-									aria-label={'Убрать из общего отчёта ' + position.name}
-									icon={<Trash2 size={16} />}
-									disabled={next === 0}
-									onClick={() =>
-										confirmRemoval(
-											{
-												name: position.name,
-												quantity: next,
-												unit: position.unit,
-												saved: previous > 0,
-											},
-											() => changeQuantity(id, 0),
-										)
-									}
-								/>
-							</div>
-							<div className="review-editor-comparison">
-								<span>
-									Было {nf.format(previous)} {unit(position.unit)}
-									{next !== null && next !== previous
-										? ` · ${next > previous ? '+' : ''}${nf.format(next - previous)} ${unit(position.unit)}`
-										: ''}
-								</span>
-								<b>
-									{next === 0
+				<div className="compact-list">
+					{rows.map((id) => {
+						const position = props.positions[id];
+						if (!position) return null;
+						const previous = before[id] || 0;
+						const next = quantities[id] ?? (id in quantities ? null : 0);
+						return (
+							<CompactWorkEditor
+								key={id}
+								title={position.name}
+								description={
+									'Было ' +
+									nf.format(previous) +
+									' → ' +
+									(next == null ? 'Уточните объём' : nf.format(next) + ' ' + unit(position.unit))
+								}
+								value={<Money value={(next || 0) * position.rate} />}
+								meta={
+									next === 0
 										? 'Будет убрано'
-										: next === null
-											? 'Укажите объём'
-											: `Итого ${nf.format(next)} ${unit(position.unit)}`}
-								</b>
-							</div>
-							<div className="review-editor-values">
-								<label>
-									Итоговый объём
-									<InputNumber
-										aria-label={'Итоговый объём ' + position.name}
-										min={0}
-										max={1e8}
-										controls={false}
-										value={next}
-										onChange={(value) => changeQuantity(id, value)}
-										addonAfter={unit(position.unit)}
-									/>
-								</label>
-								<div>
-									<span>Сумма</span>
-									<strong>
-										<Money value={(next || 0) * position.rate} />
-									</strong>
-								</div>
-							</div>
-							<WorkEstimate balance={balances[id]} unit={position.unit} />
-							{editing === id ? (
-								<Select<string>
-									autoFocus
-									virtual={false}
-									classNames={{ popup: { root: 'work-position-options' } }}
-									aria-label="Заменить работу в общем отчёте"
-									showSearch
-									optionFilterProp="label"
-									value={id}
-									options={options}
-									onChange={(value) => moveWork(id, value)}
-								/>
-							) : (
-								<Button
-									type="link"
-									size="small"
-									icon={<Pencil size={12} />}
-									onClick={() => setEditing(id)}
-								>
-									Изменить работу
-								</Button>
-							)}
-						</section>
-					);
-				})}
+										: balances[id]?.excess
+											? 'Перерасход ' + nf.format(balances[id].excess) + ' ' + unit(position.unit)
+											: next !== previous
+												? 'Изменено'
+												: 'Без изменений'
+								}
+								attention={next == null || !!balances[id]?.excess}
+								hint="Правки применятся при подтверждении отчёта."
+							>
+								<section className="review-editor-work work-detail">
+									<div className="review-editor-heading">
+										<b>{position.name}</b>
+										<Button
+											type="text"
+											size="small"
+											aria-label={'Убрать из общего отчёта ' + position.name}
+											icon={<Trash2 size={16} />}
+											disabled={next === 0}
+											onClick={() =>
+												confirmRemoval(
+													{
+														name: position.name,
+														quantity: next,
+														unit: position.unit,
+														saved: previous > 0,
+													},
+													() => changeQuantity(id, 0),
+												)
+											}
+										/>
+									</div>
+									<div className="review-editor-comparison">
+										<span>
+											Было {nf.format(previous)} {unit(position.unit)}
+											{next !== null && next !== previous
+												? ` · ${next > previous ? '+' : ''}${nf.format(next - previous)} ${unit(position.unit)}`
+												: ''}
+										</span>
+										<b>
+											{next === 0
+												? 'Будет убрано'
+												: next === null
+													? 'Укажите объём'
+													: `Итого ${nf.format(next)} ${unit(position.unit)}`}
+										</b>
+									</div>
+									<div className="review-editor-values">
+										<label>
+											Итоговый объём
+											<InputNumber
+												aria-label={'Итоговый объём ' + position.name}
+												min={0}
+												max={1e8}
+												controls={false}
+												value={next}
+												onChange={(value) => changeQuantity(id, value)}
+												addonAfter={unit(position.unit)}
+											/>
+										</label>
+										<div>
+											<span>Сумма</span>
+											<strong>
+												<Money value={(next || 0) * position.rate} />
+											</strong>
+										</div>
+									</div>
+									<WorkEstimate balance={balances[id]} unit={position.unit} />
+									{editing === id ? (
+										<Select<string>
+											autoFocus
+											virtual={false}
+											classNames={{ popup: { root: 'work-position-options' } }}
+											aria-label="Заменить работу в общем отчёте"
+											showSearch
+											optionFilterProp="label"
+											value={id}
+											options={options}
+											onChange={(value) => moveWork(id, value)}
+										/>
+									) : (
+										<Button
+											type="link"
+											size="small"
+											icon={<Pencil size={12} />}
+											onClick={() => setEditing(id)}
+										>
+											Изменить работу
+										</Button>
+									)}
+									<p className="position-rate">
+										<Money value={position.rate} /> / {unit(position.unit)}
+									</p>
+								</section>
+							</CompactWorkEditor>
+						);
+					})}
+				</div>
 				<Select<string>
 					virtual={false}
 					classNames={{ popup: { root: 'work-position-options' } }}

@@ -2,10 +2,11 @@ import { Alert, Button, InputNumber, Select } from 'antd';
 import { Trash2, Users } from 'lucide-react';
 import type { WorkspaceView } from '../App';
 import { useConfirmWorkRemoval } from '../hooks/useConfirmWorkRemoval';
-import { Money, unit, countLabel } from '../lib/format';
+import { Money, unit, countLabel, nf } from '../lib/format';
 import { estimateBalance } from '../lib/position-volume';
 import { WorkEstimate } from './WorkEstimate';
 import './report-draft.css';
+import { CompactWorkEditor } from './CompactRow';
 
 export function ReportDraftFields({ workspace }: { workspace: WorkspaceView }) {
 	const confirmRemoval = useConfirmWorkRemoval();
@@ -65,87 +66,117 @@ export function ReportDraftFields({ workspace }: { workspace: WorkspaceView }) {
 					onChange={updateParsedCrew}
 				/>
 			</label>
-			{parsed.map((line, index) => {
-				const position = line.item_id ? byId[line.item_id] : null;
-				const balance = position
-					? estimateBalance(position, estimateLines[position.id], daily.get(position.id))
-					: null;
-				const candidates = positions.filter((item) => (line.candidates || []).includes(item.id));
-				const others = positions.filter(
-					(item) => !candidates.some((candidate) => candidate.id === item.id),
-				);
-				const options = (items: typeof positions) =>
-					items.map((item) => ({ value: item.id, label: `${item.name} · ${unit(item.unit)}` }));
-				return (
-					<section
-						className={
-							'draft-work ' +
-							(!position || !line.quantity ? 'needs-review' : balance?.excess ? 'work-overrun' : '')
-						}
-						key={index}
-					>
-						<div className="draft-work-heading">
-							<b>{line.raw || `Работа ${index + 1}`}</b>
-							<Button
-								type="text"
-								size="small"
-								aria-label={'Убрать распознанную работу ' + (index + 1)}
-								icon={<Trash2 size={16} />}
-								onClick={() =>
-									confirmRemoval(
-										{
-											name: position?.name || line.raw || 'Работа',
-											quantity: line.quantity,
-											unit: position?.unit || line.unit || undefined,
-										},
-										() => removeParsedLine(index),
-									)
-								}
-							/>
-						</div>
-						<Select
-							virtual={false}
-							classNames={{ popup: { root: 'work-position-options' } }}
-							aria-label={'Позиция сметы для работы ' + (index + 1)}
-							showSearch
-							optionFilterProp="label"
-							placeholder="Выберите вариант из сметы"
-							value={line.item_id || undefined}
-							onChange={(value) => patchParsedLine(index, { item_id: value, reason: '' })}
-							options={[
-								...(candidates.length
-									? [{ label: 'Подходящие варианты', options: options(candidates) }]
-									: []),
-								{ label: 'Все работы объекта', options: options(others) },
-							]}
-						/>
-						<div className="draft-work-values">
-							<label>
-								Объём
-								<InputNumber
-									aria-label={'Распознанный объём работы ' + (index + 1)}
-									controls={false}
-									min={0.01}
-									max={1e8}
-									value={line.quantity}
-									onChange={(value) => patchParsedLine(index, { quantity: value })}
-									addonAfter={unit(position?.unit || line.unit || 'ед.')}
+			<div className="compact-list">
+				{parsed.map((line, index) => {
+					const position = line.item_id ? byId[line.item_id] : null;
+					const balance = position
+						? estimateBalance(position, estimateLines[position.id], daily.get(position.id))
+						: null;
+					const candidates = positions.filter((item) => (line.candidates || []).includes(item.id));
+					const others = positions.filter(
+						(item) => !candidates.some((candidate) => candidate.id === item.id),
+					);
+					const options = (items: typeof positions) =>
+						items.map((item) => ({ value: item.id, label: `${item.name} · ${unit(item.unit)}` }));
+					return (
+						<CompactWorkEditor
+							key={(line.raw || line.item_id || 'work') + ':' + index}
+							title={position?.name || line.raw || 'Работа ' + (index + 1)}
+							description={
+								<>
+									{line.quantity == null
+										? 'Уточните объём'
+										: nf.format(line.quantity) +
+											' ' +
+											unit(position?.unit || line.unit || 'ед.')}{' '}
+									· {position ? 'Из сметы' : 'Выберите позицию'}
+								</>
+							}
+							value={position ? <Money value={position.rate * (line.quantity || 0)} /> : '—'}
+							meta={
+								!position || !line.quantity
+									? 'Нужна проверка'
+									: balance?.excess
+										? 'Перерасход ' + nf.format(balance.excess) + ' ' + unit(position.unit)
+										: 'Распознано'
+							}
+							attention={!position || !line.quantity || !!balance?.excess}
+							hint="Правки остаются в черновике до подтверждения отчёта."
+						>
+							<section className="draft-work work-detail">
+								<div className="draft-work-heading">
+									<b>{line.raw || `Работа ${index + 1}`}</b>
+									<Button
+										type="text"
+										size="small"
+										aria-label={'Убрать распознанную работу ' + (index + 1)}
+										icon={<Trash2 size={16} />}
+										onClick={() =>
+											confirmRemoval(
+												{
+													name: position?.name || line.raw || 'Работа',
+													quantity: line.quantity,
+													unit: position?.unit || line.unit || undefined,
+												},
+												() => removeParsedLine(index),
+											)
+										}
+									/>
+								</div>
+								<Select
+									virtual={false}
+									classNames={{ popup: { root: 'work-position-options' } }}
+									aria-label={'Позиция сметы для работы ' + (index + 1)}
+									showSearch
+									optionFilterProp="label"
+									placeholder="Выберите вариант из сметы"
+									value={line.item_id || undefined}
+									onChange={(value) => patchParsedLine(index, { item_id: value, reason: '' })}
+									options={[
+										...(candidates.length
+											? [{ label: 'Подходящие варианты', options: options(candidates) }]
+											: []),
+										{ label: 'Все работы объекта', options: options(others) },
+									]}
 								/>
-							</label>
-							<div>
-								<span>Сумма</span>
-								<strong>
-									{position ? <Money value={position.rate * (line.quantity || 0)} /> : '—'}
-								</strong>
-							</div>
-						</div>
-						{position && balance && <WorkEstimate balance={balance} unit={position.unit} />}
-						{!position && (
-							<small className="draft-review-hint">Выберите подходящую работу из вариантов</small>
-						)}
-					</section>
-				);
-			})}
+								<div className="draft-work-values">
+									<label>
+										Объём
+										<InputNumber
+											aria-label={'Распознанный объём работы ' + (index + 1)}
+											controls={false}
+											min={0.01}
+											max={1e8}
+											value={line.quantity}
+											onChange={(value) => patchParsedLine(index, { quantity: value })}
+											addonAfter={unit(position?.unit || line.unit || 'ед.')}
+										/>
+									</label>
+									<div>
+										<span>Сумма</span>
+										<strong>
+											{position ? <Money value={position.rate * (line.quantity || 0)} /> : '—'}
+										</strong>
+									</div>
+								</div>
+								{position && balance && (
+									<>
+										<WorkEstimate balance={balance} unit={position.unit} />
+										<p className="position-rate">
+											<Money value={position.rate} /> / {unit(position.unit)}
+										</p>
+									</>
+								)}
+								{!position && (
+									<small className="draft-review-hint">
+										Выберите подходящую работу из вариантов
+									</small>
+								)}
+							</section>
+						</CompactWorkEditor>
+					);
+				})}
+			</div>
 			{!!report?.lines.length && (
 				<p className="draft-addition-hint">
 					Новые объёмы прибавятся к текущим. Общий итог можно изменить перед отправкой.

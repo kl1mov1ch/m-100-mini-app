@@ -3,6 +3,7 @@ import 'dayjs/locale/ru';
 import { ArrowLeft, Plus, Settings2, Trash2, TriangleAlert } from 'lucide-react';
 
 import type { WorkspaceView } from '../App';
+import { CompactWorkEditor } from '../components/CompactRow';
 import { TelegramAvatar } from '../components/TelegramAvatar';
 import { request } from '../lib/api';
 import type { User } from '../types';
@@ -52,51 +53,78 @@ export function TeamPage({ workspace }: { workspace: WorkspaceView }) {
 					Добавить
 				</Button>
 			</div>
-			<div className="team-list">
+			<div className="team-list compact-list">
 				{users.map((u) => (
-					<section className="team-card" key={u.telegram_id}>
-						<TelegramAvatar userId={u.telegram_id} name={u.name} source={u.avatar_url} size={42} />
-						<div>
-							<b>{u.name}</b>
-							<small>
-								{u.telegram_id === 'local-admin' ? 'Администратор' : `Telegram ID ${u.telegram_id}`}
-							</small>
+					<CompactWorkEditor
+						key={u.telegram_id}
+						title={u.name}
+						description={
+							u.enabled ? (u.role === 'admin' ? 'Администратор' : 'Мастер') : 'Доступ отключён'
+						}
+						value={(u.projects || 0) + ' объектов'}
+						attention={!u.enabled}
+						leading={
+							<TelegramAvatar
+								userId={u.telegram_id}
+								name={u.name}
+								source={u.avatar_url}
+								size={30}
+							/>
+						}
+					>
+						<section className="team-card work-detail">
+							<TelegramAvatar
+								userId={u.telegram_id}
+								name={u.name}
+								source={u.avatar_url}
+								size={42}
+							/>
 							<div>
-								<Tag color={u.enabled ? 'blue' : 'default'}>
-									{u.enabled
-										? u.role === 'admin'
-											? 'Администратор'
-											: 'Мастер'
-										: 'Доступ отключён'}
-								</Tag>
-								<small>{u.projects || 0} объектов</small>
+								<b>{u.name}</b>
+								<small>
+									{u.telegram_id === 'local-admin'
+										? 'Администратор'
+										: `Telegram ID ${u.telegram_id}`}
+								</small>
+								<div>
+									<Tag color={u.enabled ? 'blue' : 'default'}>
+										{u.enabled
+											? u.role === 'admin'
+												? 'Администратор'
+												: 'Мастер'
+											: 'Доступ отключён'}
+									</Tag>
+									<small>{u.projects || 0} объектов</small>
+								</div>
 							</div>
-						</div>
-						{u.telegram_id !== 'local-admin' && (
-							<div className="team-actions">
-								<Button
-									type="text"
-									aria-label={'Изменить доступ ' + u.name}
-									icon={<Settings2 size={18} />}
-									onClick={() => {
-										setUserId(u.telegram_id);
-										setUserName(u.name);
-										setUserRole(u.role);
-										setUserForm(true);
-									}}
-								/>
-								{u.telegram_id !== session.user.telegram_id && (
+							{u.telegram_id !== 'local-admin' && (
+								<div className="team-actions">
 									<Button
 										type="text"
-										danger
-										aria-label={'Удалить пользователя ' + u.name}
-										icon={<Trash2 size={18} />}
-										onClick={() => remove(u)}
-									/>
-								)}
-							</div>
-						)}
-					</section>
+										aria-label={'Изменить доступ ' + u.name}
+										icon={<Settings2 size={18} />}
+										onClick={() => {
+											setUserId(u.telegram_id);
+											setUserName(u.name);
+											setUserRole(u.role);
+											setUserForm(true);
+										}}
+									>
+										Изменить доступ
+									</Button>
+									{u.telegram_id !== session.user.telegram_id && (
+										<Button
+											type="text"
+											danger
+											aria-label={'Удалить пользователя ' + u.name}
+											icon={<Trash2 size={18} />}
+											onClick={() => remove(u)}
+										/>
+									)}
+								</div>
+							)}
+						</section>
+					</CompactWorkEditor>
 				))}
 			</div>
 		</>

@@ -3,8 +3,9 @@ import { History } from 'lucide-react';
 import { useReportDateSwipe } from '../hooks/useReportDateSwipe';
 import { DatePicker } from './ResponsiveDatePicker';
 import { Status } from './SyncStatus';
-import { Money } from '../lib/format';
+import { Money, nf, unit } from '../lib/format';
 import { estimateBalance } from '../lib/position-volume';
+import { CompactWorkEditor } from './CompactRow';
 import { WorkEstimate, WorkOverruns } from './WorkEstimate';
 import dayjs from '../lib/date';
 import type { WorkspaceView } from '../App';
@@ -68,25 +69,43 @@ export function AdminDailyReport({ workspace }: { workspace: WorkspaceView }) {
 				История и выгрузка
 			</Button>
 			<WorkOverruns items={entries} confirmed={!!report?.revision} />
-			<div className="admin-work-list">
+			<div className="admin-work-list compact-list">
 				{lines.map((line) => {
 					const position = line.item_id ? byId[line.item_id] : undefined;
 					return (
-						<section
+						<CompactWorkEditor
 							key={line.item_id}
-							className={
-								'admin-work-row' + (position && balances[position.id].excess ? ' work-overrun' : '')
+							title={position?.name || line.raw || 'Работа'}
+							description={
+								nf.format(line.quantity || 0) + ' ' + unit(position?.unit || 'ед.') + ' за день'
 							}
+							value={<Money value={(line.quantity || 0) * (position?.rate || 0)} />}
+							meta={
+								position && balances[position.id].excess
+									? 'Перерасход ' +
+										nf.format(balances[position.id].excess) +
+										' ' +
+										unit(position.unit)
+									: position?.section
+							}
+							attention={!!position && !!balances[position.id].excess}
 						>
-							<b>{position?.name || line.raw}</b>
-							<div>
-								<span>Стоимость работы</span>
-								<strong>
-									<Money value={(line.quantity || 0) * (position?.rate || 0)} />
-								</strong>
-							</div>
-							{position && <WorkEstimate balance={balances[position.id]} unit={position.unit} />}
-						</section>
+							<section className="admin-work-row work-detail">
+								<b>{position?.name || line.raw}</b>
+								<div>
+									<span>Стоимость работы</span>
+									<strong>
+										<Money value={(line.quantity || 0) * (position?.rate || 0)} />
+									</strong>
+								</div>
+								{position && <WorkEstimate balance={balances[position.id]} unit={position.unit} />}
+								{position && (
+									<p className="position-rate">
+										<Money value={position.rate} /> / {unit(position.unit)}
+									</p>
+								)}
+							</section>
+						</CompactWorkEditor>
 					);
 				})}
 			</div>

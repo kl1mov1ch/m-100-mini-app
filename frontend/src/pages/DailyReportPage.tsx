@@ -14,6 +14,7 @@ import { AdminDailyReport } from '../components/AdminDailyReport';
 import { QuickReportComposer } from '../components/QuickReportComposer';
 import { ReportDraftFields } from '../components/ReportDraftFields';
 import { WorkEstimate, WorkOverruns } from '../components/WorkEstimate';
+import { CompactWorkEditor } from '../components/CompactRow';
 import { estimateBalance } from '../lib/position-volume';
 export function DailyReportPage({ workspace }: { workspace: WorkspaceView }) {
 	if (workspace.isAdmin) return <AdminDailyReport workspace={workspace} />;
@@ -155,86 +156,104 @@ function MasterDailyReport({ workspace }: { workspace: WorkspaceView }) {
 			{textVisible && <QuickReportComposer workspace={workspace} inline />}
 			<ReportDraftFields workspace={workspace} />
 			<WorkOverruns items={workBalances} confirmed={!!report?.revision && !dirty} />
-			<div className="work-list">
+			<div className="work-list compact-list">
 				{lines.map((l, i) => {
 					const p = l.item_id ? byId[l.item_id] : null;
 					const changed = p && oldLines[p.id] !== l.quantity;
 					const balance = p ? balances[p.id] : null;
 					return (
-						<section
-							className={
-								'work-card ' + (!p ? 'needs-review' : balance?.excess ? 'work-overrun' : '')
+						<CompactWorkEditor
+							key={l.item_id || l.raw || i}
+							title={p?.name || l.raw || 'Выберите работу'}
+							description={
+								<>
+									{nf.format(l.quantity || 0)} {unit(p?.unit || 'ед.')} за день
+									{p
+										? ' · смета ' + nf.format(p.planned) + ' ' + unit(p.unit)
+										: ' · выберите позицию'}
+								</>
 							}
-							key={i}
+							value={<Money value={(p?.rate || 0) * (l.quantity || 0)} />}
+							meta={
+								balance?.excess
+									? 'Перерасход ' + nf.format(balance.excess) + ' ' + unit(p?.unit || '')
+									: changed
+										? 'Изменено'
+										: p?.section
+							}
+							attention={!p || !!balance?.excess}
+							hint="Правки остаются в черновике до подтверждения отчёта."
 						>
-							<div className="work-card-heading">
-								<button
-									className="work-name"
-									onClick={() => {
-										setReplaceIndex(i);
-										setWorkPicker(true);
-									}}
-								>
-									<b>{p ? shortName(p) : 'Выберите работу'}</b>
-									<small>{p?.section || l.reason || l.raw}</small>
-								</button>
-								<button
-									className="plain-icon"
-									aria-label={'Удалить работу ' + (i + 1)}
-									onClick={() =>
-										confirmRemoval(
-											{
-												name: p?.name || l.raw || 'Работа',
-												quantity: l.quantity,
-												unit: p?.unit,
-												saved: !!(l.item_id && oldLines[l.item_id]),
-											},
-											() => setLines((ls) => ls.filter((line) => line !== l)),
-										)
-									}
-								>
-									<Trash2 size={16} />
-								</button>
-							</div>
-							{l.raw && <p className="recognized-text">{l.raw}</p>}
-							{!p && <Alert type="warning" message="Нужен выбор позиции перед подтверждением" />}
-							<div className="work-card-input">
-								<label>
-									Выполнено
-									<div className="quantity-field">
-										<InputNumber
-											aria-label={'Объём работы ' + (i + 1)}
-											controls={false}
-											min={0.01}
-											max={1e8}
-											value={l.quantity}
-											placeholder="0"
-											onChange={(v) => patchLine(i, v)}
-										/>
-										<span>{p ? unit(p.unit) : 'ед.'}</span>
-									</div>
-								</label>
-								<div className="work-value">
-									<span>Стоимость работы</span>
-									<strong>
-										<Money value={(p?.rate || 0) * (l.quantity || 0)} />
-									</strong>
+							<section className="work-card work-detail">
+								<div className="work-card-heading">
+									<button
+										className="work-name"
+										onClick={() => {
+											setReplaceIndex(i);
+											setWorkPicker(true);
+										}}
+									>
+										<b>{p ? 'Заменить работу' : 'Выберите работу'}</b>
+										<small>{p?.section || l.reason || l.raw}</small>
+									</button>
+									<button
+										className="plain-icon"
+										aria-label={'Удалить работу ' + (i + 1)}
+										onClick={() =>
+											confirmRemoval(
+												{
+													name: p?.name || l.raw || 'Работа',
+													quantity: l.quantity,
+													unit: p?.unit,
+													saved: !!(l.item_id && oldLines[l.item_id]),
+												},
+												() => setLines((ls) => ls.filter((line) => line !== l)),
+											)
+										}
+									>
+										<Trash2 size={16} />
+									</button>
 								</div>
-							</div>
-							{p && balance && <WorkEstimate balance={balance} unit={p.unit} />}
-							<div className="work-card-foot">
-								<span>
-									{p ? (
-										<>
-											<Money value={p.rate} /> / {unit(p.unit)}
-										</>
-									) : (
-										'Уточните позицию'
-									)}
-								</span>
-								{changed && <Tag color="blue">Изменено</Tag>}
-							</div>
-						</section>
+								{l.raw && <p className="recognized-text">{l.raw}</p>}
+								{!p && <Alert type="warning" message="Нужен выбор позиции перед подтверждением" />}
+								<div className="work-card-input">
+									<label>
+										Выполнено
+										<div className="quantity-field">
+											<InputNumber
+												aria-label={'Объём работы ' + (i + 1)}
+												controls={false}
+												min={0.01}
+												max={1e8}
+												value={l.quantity}
+												placeholder="0"
+												onChange={(v) => patchLine(i, v)}
+											/>
+											<span>{p ? unit(p.unit) : 'ед.'}</span>
+										</div>
+									</label>
+									<div className="work-value">
+										<span>Стоимость работы</span>
+										<strong>
+											<Money value={(p?.rate || 0) * (l.quantity || 0)} />
+										</strong>
+									</div>
+								</div>
+								{p && balance && <WorkEstimate balance={balance} unit={p.unit} />}
+								<div className="work-card-foot">
+									<span>
+										{p ? (
+											<>
+												<Money value={p.rate} /> / {unit(p.unit)}
+											</>
+										) : (
+											'Уточните позицию'
+										)}
+									</span>
+									{changed && <Tag color="blue">Изменено</Tag>}
+								</div>
+							</section>
+						</CompactWorkEditor>
 					);
 				})}
 			</div>

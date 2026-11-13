@@ -1,8 +1,9 @@
 import { App, Button, Empty, Select, Spin, Modal } from 'antd';
 import { useEffect, useState } from 'react';
-import { ArrowDownToLine, ChevronRight, History, RefreshCw, SlidersHorizontal } from 'lucide-react';
+import { ArrowDownToLine, History, RefreshCw, SlidersHorizontal } from 'lucide-react';
 import { DatePicker } from '../components/ResponsiveDatePicker';
 import { Status } from '../components/SyncStatus';
+import { CompactWorkEditor } from '../components/CompactRow';
 import { request } from '../lib/api';
 import dayjs from '../lib/date';
 import { Money, countLabel } from '../lib/format';
@@ -225,31 +226,32 @@ export function ReportsPage({ workspace }: { workspace: WorkspaceView }) {
 				</section>
 			)}
 			<Spin spinning={loading}>
-				<div className="history-list">
+				<div className="history-list compact-list">
 					{data?.rows.map((row) => (
-						<section className="history-card" key={row.project_id + row.date}>
-							<button
-								className="history-open"
-								onClick={() => openHistoryReport(row.project_id, row.date)}
-								aria-label={
-									'Открыть отчёт: ' +
-									row.project_name +
-									', ' +
-									dayjs(row.date).format('D MMMM YYYY')
-								}
-							>
-								<div className="history-day">
-									<span>{dayjs(row.date).format('DD')}</span>
+						<CompactWorkEditor
+							key={row.project_id + row.date}
+							title={row.project_name}
+							description={
+								<>
+									{dayjs(row.date).format('D MMM YYYY')} ·{' '}
+									{countLabel(row.positions, 'работа', 'работы', 'работ')}
+									{row.crew_count ? ' · ' + row.crew_count + ' чел.' : ''}
+								</>
+							}
+							value={<Money value={row.amount} />}
+							meta={<Status status={row.sync_status} />}
+							attention={row.sync_status === 'error'}
+							leading={
+								<span className="compact-date">
+									<b>{dayjs(row.date).format('DD')}</b>
 									<small>{dayjs(row.date).format('MMM').replace(/\.$/, '')}</small>
-								</div>
-								<div className="history-main">
-									<b>{row.project_name}</b>
-									<small>
-										{dayjs(row.date).format('D MMMM YYYY')} · {row.owner_name}
-									</small>
-								</div>
-								<ChevronRight size={17} />
-							</button>
+								</span>
+							}
+						>
+							<p className="page-context">
+								{dayjs(row.date).format('D MMMM YYYY')} · {row.owner_name}
+							</p>
+
 							<div className="history-finance">
 								<span>
 									За день
@@ -271,7 +273,14 @@ export function ReportsPage({ workspace }: { workspace: WorkspaceView }) {
 								</span>
 								<Status status={row.sync_status} />
 							</div>
-						</section>
+							<Button
+								type="primary"
+								block
+								onClick={() => openHistoryReport(row.project_id, row.date)}
+							>
+								{isAdmin ? 'Посмотреть работы' : 'Открыть и изменить отчёт'}
+							</Button>
+						</CompactWorkEditor>
 					))}
 				</div>
 				{!loading && !data?.rows.length && <Empty description="За выбранный период отчётов нет" />}

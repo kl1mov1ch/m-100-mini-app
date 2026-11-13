@@ -1,6 +1,6 @@
-import { Button, Empty, Input, Modal, Pagination, Select, Tag } from 'antd';
-import { ChevronDown, ChevronRight, Search, SlidersHorizontal, TriangleAlert } from 'lucide-react';
-import { useMemo, useRef, useState } from 'react';
+import { Button, Empty, Input, Modal, Select } from 'antd';
+import { ChevronDown, Search, SlidersHorizontal } from 'lucide-react';
+import { useMemo, useState } from 'react';
 import type { WorkspaceView } from '../App';
 import { countLabel, Money, unit } from '../lib/format';
 import type { Position } from '../types';
@@ -17,6 +17,7 @@ import {
 	type CatalogueStatus,
 } from '../lib/catalogue';
 import './object-catalogue.css';
+import { CompactRow } from './CompactRow';
 
 const statusOptions = [
 	{ value: 'all', label: 'Все состояния' },
@@ -45,12 +46,9 @@ function CatalogueGroup({
 	onView: (position: Position) => void;
 }) {
 	const [open, setOpen] = useState(initiallyOpen);
-	const [page, setPage] = useState(1);
-	const groupElement = useRef<HTMLElement>(null);
 	const excess = positions.filter((position) => catalogueStatusMatches(position, 'overrun')).length;
-	const currentPage = Math.min(page, Math.max(1, Math.ceil(positions.length / 8)));
 	return (
-		<section className="catalogue-group" ref={groupElement}>
+		<section className="catalogue-group">
 			<button
 				className="catalogue-group-toggle"
 				type="button"
@@ -71,70 +69,43 @@ function CatalogueGroup({
 			{open && (
 				<div className="catalogue-group-body">
 					<ul className="object-catalogue">
-						{positions.slice((currentPage - 1) * 8, currentPage * 8).map((position) => {
+						{positions.map((position) => {
 							const values = catalogueValues(position);
 							const overrun = positionOverrun(position);
 							const excess = overrun || values.completed > values.planned + 1e-8;
 							return (
 								<li key={position.id} className={excess ? 'catalogue-overrun' : undefined}>
-									<button
-										type="button"
-										className="catalogue-position"
-										onClick={() => onView(position)}
-									>
-										<b>{position.name}</b>
-										{duplicateNames.has(position.name) && (
-											<small className="catalogue-source">
-												{position.source_sheet || position.section} · строка {position.source_row}
-											</small>
-										)}
-										<span className="catalogue-quantity-line">
-											<span>
-												План <strong>{formatVolume(values.planned, position.unit)}</strong>
-											</span>
-											<span>
-												Факт <strong>{formatVolume(values.completed, position.unit)}</strong>
-											</span>
-										</span>
-										<span className={'catalogue-position-foot' + (excess ? ' has-excess' : '')}>
-											<span>
-												{excess && <TriangleAlert size={13} aria-hidden />}
-												{excess && values.completed <= values.planned
-													? 'Проверьте остаток'
-													: estimateStatus(values, position.unit)}
-											</span>
-											<span>
+									<CompactRow
+										title={position.name}
+										description={
+											<>
+												{formatVolume(values.completed, position.unit)} из{' '}
+												{formatVolume(values.planned, position.unit)}
+												{duplicateNames.has(position.name) &&
+													' · ' +
+														(position.source_sheet || position.section) +
+														', стр. ' +
+														position.source_row}
+												{position.hidden && ' · скрыта'}
+											</>
+										}
+										value={
+											<>
 												<Money value={values.rate} /> / {unit(position.unit)}
-											</span>
-										</span>
-										{position.hidden && (
-											<Tag className="status-tag-attention">Скрыта из подбора</Tag>
-										)}
-										<ChevronRight className="catalogue-position-arrow" size={16} aria-hidden />
-									</button>
+											</>
+										}
+										meta={
+											excess && values.completed <= values.planned
+												? 'Проверьте остаток'
+												: estimateStatus(values, position.unit)
+										}
+										attention={!!excess}
+										onClick={() => onView(position)}
+									/>
 								</li>
 							);
 						})}
 					</ul>
-					{positions.length > 8 && (
-						<div className="catalogue-pagination">
-							<small>
-								{(currentPage - 1) * 8 + 1}–{Math.min(currentPage * 8, positions.length)} из{' '}
-								{positions.length}
-							</small>
-							<Pagination
-								simple={{ readOnly: true }}
-								current={currentPage}
-								pageSize={8}
-								total={positions.length}
-								showSizeChanger={false}
-								onChange={(value) => {
-									setPage(value);
-									groupElement.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-								}}
-							/>
-						</div>
-					)}
 				</div>
 			)}
 		</section>
@@ -271,7 +242,7 @@ export function ObjectCatalogue({
 						key={context + key}
 						title={group.title}
 						positions={group.positions}
-						initiallyOpen={grouped.length === 1 || (!!query.trim() && matching.length <= 8)}
+						initiallyOpen
 						duplicateNames={duplicateNames}
 						onView={onView}
 					/>
