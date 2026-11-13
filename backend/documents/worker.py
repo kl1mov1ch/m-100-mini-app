@@ -605,6 +605,12 @@ def analyse(ident, payload):
                 },
             )
             return
+        page_digest = next(
+            (row.get("digest") for row in payload.get("page_results", []) if row["page"] == page),
+            None,
+        )
+        for item in suggested:
+            item["page_digest"] = page_digest
         works.extend(suggested)
         for item in suggested:
             if item.get("section") and item["section"] != "Без раздела":

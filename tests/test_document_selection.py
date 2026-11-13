@@ -36,6 +36,7 @@ def test_sections_and_repeated_source_rows_remain_distinct_or_count_once():
         "section": "Раздел заказчика",
         "subsection": "Блок А",
         "item_code": "A-12",
+        "page_digest": "identical-source-page",
         "quantity": 5,
         "unit": "м",
         "page": 2,
@@ -44,6 +45,12 @@ def test_sections_and_repeated_source_rows_remain_distinct_or_count_once():
     groups = build_groups([work, {**work, "page": 9}])
     assert groups[0]["quantity"] == "5" and not groups[0]["issues"]
     assert len(groups[0]["sources"]) == 1 and len(groups[0]["duplicate_sources"]) == 1
+    independent = build_groups([work, {**work, "page": 9, "page_digest": "another-source-page"}])[0]
+    assert (
+        independent["quantity"] is None
+        and independent["proposed_quantity"] == "10"
+        and independent["issues"]
+    )
     assert len(build_groups([work, {**work, "section": "Другой раздел"}])) == 2
     ambiguous = build_groups([{**work, "item_code": ""}, {**work, "item_code": "", "page": 9}])[0]
     assert ambiguous["quantity"] is None and ambiguous["issues"]

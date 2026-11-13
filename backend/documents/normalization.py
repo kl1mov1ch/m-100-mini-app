@@ -100,8 +100,9 @@ def build_groups(works, previous=None):
                 canonical(work.get("quote")),
                 work.get("quantity"),
                 work.get("unit"),
+                work.get("page_digest"),
             )
-            if not identity[0]:
+            if not identity[0] or not work.get("page_digest"):
                 identity = (*identity, work.get("page"))
             if identity[0] and identity in identities:
                 copies.append({**work, "duplicate_of_page": identities[identity]["page"]})
