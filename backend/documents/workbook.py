@@ -26,7 +26,7 @@ def estimate_rows(payload):
     def source_key(source):
         return (
             source_identity(source),
-            canonical(source.get("name")),
+            canonical(source.get("original_name") or source.get("name")),
             unit_value(source.get("unit"))[0],
         )
 

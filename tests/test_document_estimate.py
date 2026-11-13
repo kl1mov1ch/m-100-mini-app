@@ -167,6 +167,8 @@ def test_export_preserves_confirmed_edits_and_uses_the_working_journal_format():
     rows = estimate_rows({"works": [first, second], "groups": [accepted]})
     assert rows[0] == accepted and rows[1]["id"] != accepted["id"]
     assert len(rows[1]["id"]) == 24
+    repaired = {**first, "original_name": first["name"], "name": "Воздуховод стальной"}
+    assert estimate_rows({"works": [repaired], "groups": [accepted]}) == [accepted]
     other = build_groups([source("Монтаж трубы Ø25 мм", 3, unit="м", category="Отопление")])[0]
     blank = io.BytesIO()
     openpyxl.Workbook().save(blank)
