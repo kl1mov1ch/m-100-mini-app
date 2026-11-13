@@ -99,9 +99,10 @@ def test_docling_streams_first_specification_to_ai_before_whole_file(client, mon
         value = {
             "source": "abc",
             "engine": ENGINE,
-            "text": "Наименование Количество Единица измерения Труба 12 м",
+            "text": "Спецификация оборудования. Общие указания: см. лист 1. Наименование Количество Единица измерения Труба 12 м",
             "layout": {"width": 100, "height": 200, "lines": []},
             "confidence": 85,
+            "analysis_text": "Строка 1: C1–C2=Наименование | C2–C3=Количество | C3–C4=Единица измерения |\nСтрока 2: C1–C2=Труба | C2–C3=12 | C3–C4=м |\nСтрока 3: C1–C2=Труба | C2–C3=5 | C3–C4=м |",
         }
         (target / "page-3.json").write_text(json.dumps(value), encoding="utf-8")
         (target / "page-1.json").write_text(
@@ -109,7 +110,7 @@ def test_docling_streams_first_specification_to_ai_before_whole_file(client, mon
                 {
                     **value,
                     "text": "Обшие данные. Ведомость чертежей.",
-                    "analysis_text": value["text"],
+                    "analysis_text": "Строка 1: C1–C2=Лист | C2–C3=Наименование | C3–C4=Примечание |\nСтрока 2: C1–C2=1 | C2–C3=Общие данные |\nСтрока 3: C1–C2=2 | C2–C3=План систем |",
                 }
             ),
             encoding="utf-8",

@@ -3,7 +3,8 @@ import io
 
 import pytest
 from pypdf import PdfWriter
-from test_workspaces import client as client, grant
+from test_workspaces import client as client
+from test_workspaces import grant
 
 from backend.documents import extraction, repository, worker
 from backend.documents.api import ReviewValues, apply_review
@@ -134,9 +135,14 @@ def test_document_queue_ownership_ocr_ai_and_export(client, monkeypatch, tmp_pat
     import openpyxl
 
     book = openpyxl.load_workbook(io.BytesIO(exported.content))
-    assert "Уточнить высоту" in book.active["H2"].value
-    assert "Упоминаний: 1. стр. 1" in book.active["H2"].value
-    assert book.active["F2"].value is None
+    assert book.active.title == "Работы · Кондиционирование"
+    assert book.active["D5"].value == 10
+    assert book.active["E5"].value is None
+    assert "Уточнить высоту" in book.active["B5"].comment.text
+    assert "Упоминаний: 1. стр. 1" in book.active["B5"].comment.text
+    assert book["Источники PDF"]["C2"].value == 1
+    cached = openpyxl.load_workbook(io.BytesIO(exported.content), data_only=True)
+    assert cached.active["F5"].value in (None, "")
     assert client.get("/api/documents/" + ident + "/export.xlsx", headers=other).status_code == 404
     assert (
         client.get("/api/documents/" + ident + "/export.xlsx?final=true", headers=owner).status_code
@@ -162,8 +168,8 @@ def test_document_queue_ownership_ocr_ai_and_export(client, monkeypatch, tmp_pat
     assert accepted.status_code == 200 and accepted.json()["status"] == "ready"
     final = client.get("/api/documents/" + ident + "/export.xlsx?final=true", headers=owner)
     assert final.status_code == 200
-    book = openpyxl.load_workbook(io.BytesIO(final.content))
-    assert book.active["G2"].value == 123.45
+    book = openpyxl.load_workbook(io.BytesIO(final.content), data_only=True)
+    assert book.active["F5"].value == 123.45
 
 
 def test_review_batch_is_atomic_and_duplicate_resolution_is_explicit(client, monkeypatch, tmp_path):

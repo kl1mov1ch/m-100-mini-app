@@ -14,7 +14,19 @@ import sys
 import time
 from pathlib import Path
 
-ENGINE = "docling-2.150.0-v2"
+ENGINE = "docling-2.150.0-v3"
+
+
+def valid_record(value, signature):
+    # OCR cell geometry is unchanged in v3. Reuse the expensive OCR pass while
+    # applying the new table-only selection to it; native text needs new cells.
+    return value.get("source") == signature and (
+        value.get("engine") == ENGINE
+        or (
+            value.get("engine") == "docling-2.150.0-v2"
+            and value.get("method") == "docling+tesseract"
+        )
+    )
 
 
 def write_json(path, value):
@@ -55,7 +67,7 @@ def native_lines(document, page):
     }
 
 
-def structured_table(image, record):
+def structured_table(image, record, *, verify_numbers=True):
     """Assign existing words to ruled cells using coordinates; never infer values."""
     import numpy as np
 
@@ -101,7 +113,8 @@ def structured_table(image, record):
     candidates = [
         index
         for index, (_, left, top, right, bottom, value) in enumerate(cells)
-        if right - left < image.width * 0.1
+        if verify_numbers
+        and right - left < image.width * 0.1
         and bottom - top < image.height * 0.08
         and (not value or re.fullmatch(r"[+-]?\d+(?:[.,]\d+)?", value))
     ]
@@ -190,6 +203,71 @@ def structured_table(image, record):
         "analysis_text": text,
         "analysis_layout": {**record["layout"], "lines": lines},
     }
+
+
+def native_table(source, number, destination, record):
+    """Parse ruled cells around native PDF text without OCRing its numbers."""
+    from PIL import Image
+
+    prefix = destination / f"native-{number}"
+    image_path = prefix.with_suffix(".png")
+    try:
+        subprocess.run(
+            [
+                "pdftoppm",
+                "-f",
+                str(number),
+                "-l",
+                str(number),
+                "-scale-to",
+                "3000",
+                "-singlefile",
+                "-gray",
+                "-png",
+                str(source),
+                str(prefix),
+            ],
+            check=True,
+            timeout=60,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        with Image.open(image_path) as original:
+            image = original.convert("L")
+        layout = record["layout"]
+        sx, sy = image.width / layout["width"], image.height / layout["height"]
+        scaled = {
+            **record,
+            "layout": {
+                "width": image.width,
+                "height": image.height,
+                "lines": [
+                    {
+                        **line,
+                        **{
+                            key: line[key] * factor
+                            for key, factor in (
+                                ("left", sx),
+                                ("right", sx),
+                                ("top", sy),
+                                ("bottom", sy),
+                            )
+                        },
+                    }
+                    for line in layout["lines"]
+                ],
+            },
+        }
+        result = structured_table(image, scaled, verify_numbers=False)
+        if result.get("analysis_text"):
+            return {
+                **record,
+                "analysis_text": result["analysis_text"],
+                "analysis_layout": result["analysis_layout"],
+            }
+        return record
+    finally:
+        image_path.unlink(missing_ok=True)
 
 
 def ocr(source, page, destination):
@@ -339,7 +417,7 @@ def convert(source, destination, signature, pages=None):
     for done, number in enumerate(selected):
         path = destination / f"page-{number}.json"
         cached = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
-        if cached.get("source") == signature and cached.get("engine") == ENGINE:
+        if valid_record(cached, signature):
             write_json(
                 destination / "progress.json",
                 {"done": done + 1, "total": len(selected), "page": number},
@@ -353,6 +431,8 @@ def convert(source, destination, signature, pages=None):
         page = native_lines(document, number)
         if len(page["text"].strip()) < 30:
             page = ocr(source, number, destination)
+        else:
+            page = native_table(source, number, destination, page)
         page.update(source=signature, engine=ENGINE)
         write_json(path, page)
         write_json(
@@ -361,8 +441,8 @@ def convert(source, destination, signature, pages=None):
         )
     if all(
         (destination / f"page-{number}.json").is_file()
-        and (lambda value: value.get("source") == signature and value.get("engine") == ENGINE)(
-            json.loads((destination / f"page-{number}.json").read_text(encoding="utf-8"))
+        and valid_record(
+            json.loads((destination / f"page-{number}.json").read_text(encoding="utf-8")), signature
         )
         for number in range(1, total + 1)
     ):

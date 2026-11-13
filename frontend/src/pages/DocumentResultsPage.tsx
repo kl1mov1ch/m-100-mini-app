@@ -212,7 +212,7 @@ export function DocumentResultsPage({
 			title: 'Объединить одинаковые работы?',
 			icon: null,
 			content:
-				'Соберём одинаковые работы в общие строки. Исходные объёмы, обозначения и страницы сохранятся.',
+				'Соберём строки таблиц по видам работ. Размеры и страницы останутся в источниках, подтверждённые правки сохранятся.',
 			okText: 'Объединить',
 			cancelText: 'Отмена',
 			onOk: async () => {
@@ -392,7 +392,7 @@ export function DocumentResultsPage({
 					icon={<Download size={16} />}
 					onClick={() => void exportFile(['ready', 'published'].includes(job.status))}
 				>
-					{['ready', 'published'].includes(job.status) ? 'Скачать Excel' : 'Excel-черновик'}
+					{['ready', 'published'].includes(job.status) ? 'Скачать смету' : 'Скачать черновик сметы'}
 				</Button>
 			</div>
 			<small className="document-highlight-legend">

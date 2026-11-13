@@ -237,9 +237,13 @@ def process_docling(ident, payload, path, total):
             continue
         from .selection import classify_page
 
-        kind = classify_page(record.get("raw_text", record["text"]))
-        if kind == "uncertain":
-            kind = classify_page(record["text"])
+        raw_kind = classify_page(record.get("raw_text", record["text"]))
+        # The full text is retained for the archive only. AI extraction receives
+        # bounded table rows, including their column headers and source boxes.
+        table = record.get("table")
+        kind = "specification" if table else raw_kind
+        if not table and kind == "specification":
+            kind = "uncertain"
         digest = text_digest(record.get("raw_text", record["text"]))
         duplicate = (
             next(
@@ -259,9 +263,9 @@ def process_docling(ident, payload, path, total):
             cache_page(
                 path,
                 number,
-                record["text"],
+                table["text"],
                 record["confidence"],
-                record["layout"],
+                {**table["layout"], "row_names": table["row_names"]},
                 payload.get("file_hash"),
             )
         results.append(
@@ -604,7 +608,9 @@ def analyse(ident, payload):
         payload = {**payload, "works": works}
         update(ident, payload=payload)
     if payload.get("regroup_only"):
-        groups = build_groups(works, payload.get("groups"))
+        from .workbook import estimate_rows
+
+        groups = estimate_rows({**payload, "works": works})
         update(
             ident,
             status="needs_review",
@@ -623,12 +629,22 @@ def analyse(ident, payload):
         if key in done:
             continue
         phase("ai", page, chunk=len(done) + 1, chunks=len(ledger))
+        page_layout = folder(ident) / f"page-{page}.layout.json"
+        row_names = (
+            json.loads(page_layout.read_text(encoding="utf-8")).get("row_names", {})
+            if page_layout.is_file()
+            else {}
+        )
+        part_rows = set(re.findall(r"^Строка (\d+):", text, re.M))
         try:
             suggested, clarifications = extract_part(
                 text,
                 page,
                 {
                     **settings,
+                    "document_row_names": {
+                        row: name for row, name in row_names.items() if row in part_rows
+                    },
                     "document_section": payload.get("section_context", {})
                     if page in {payload.get("section_page"), payload.get("section_page", -2) + 1}
                     else {},

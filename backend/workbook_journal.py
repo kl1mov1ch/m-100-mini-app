@@ -89,7 +89,9 @@ def journal_sheet(book, existing, group, multiple):
     return book.create_sheet(title)
 
 
-def format_journal(content, catalogue, entries, crew_by_day, issues, mappings=None):
+def format_journal(
+    content, catalogue, entries, crew_by_day, issues, mappings=None, *, named_groups=False
+):
     from .workbook_calculation import cache_formulas
 
     book = openpyxl.load_workbook(io.BytesIO(content))
@@ -136,7 +138,7 @@ def format_journal(content, catalogue, entries, crew_by_day, issues, mappings=No
             book,
             previous.get(group),
             group,
-            len(groups) > 1,
+            named_groups or len(groups) > 1,
             positions,
             quantities,
             days,
@@ -184,6 +186,20 @@ def write_journal_sheet(
     sheet.row_dimensions[3].height = 25
     last_column = get_column_letter(9 + len(days))
     last_row = 4 + len(catalogue)
+    previous_notes = {}
+    if previous:
+        for cell in previous["A"]:
+            metadata = journal_row(cell)
+            comment = previous.cell(cell.row, 2).comment
+            if metadata and comment and comment.author == "M100":
+                previous_notes[metadata[0]] = comment.text
+    notes = [
+        position.get("notes") or previous_notes.get(position["id"], "") for position in catalogue
+    ]
+    notes_column = 10 + len(days) if any(notes) else None
+    if notes_column:
+        sheet.cell(1, notes_column, "Примечание")
+        sheet.column_dimensions[get_column_letter(notes_column)].width = 34
     if days:
         sheet["J1"] = "Ежедневное выполнение"
         if len(days) > 1:
@@ -205,10 +221,31 @@ def write_journal_sheet(
         measure.data_type = "s"
         sheet.cell(row, 4, position["planned"])
         sheet.cell(row, 5, position["rate"])
-        sheet.cell(row, 6, f"=ROUND(D{row}*E{row},2)")
-        sheet.cell(row, 7, f"=D{row}-I{row}")
-        sheet.cell(row, 8, f"=ROUND(I{row}*E{row},2)")
+        draft = position.get("draft", False)
+        sheet.cell(
+            row,
+            6,
+            f'=IF(COUNT(D{row}:E{row})=2,ROUND(D{row}*E{row},2),"")'
+            if draft
+            else f"=ROUND(D{row}*E{row},2)",
+        )
+        sheet.cell(row, 7, f'=IF(COUNT(D{row})=1,D{row}-I{row},"")' if draft else f"=D{row}-I{row}")
+        sheet.cell(
+            row,
+            8,
+            f'=IF(COUNT(E{row})=1,ROUND(I{row}*E{row},2),"")'
+            if draft
+            else f"=ROUND(I{row}*E{row},2)",
+        )
         sheet.cell(row, 9, f"={baseline}+SUM(J{row}:{last_column}{row})" if days else baseline)
+        if notes_column and notes[row - 5]:
+            note = notes[row - 5]
+            name.comment = Comment(note, "M100")
+            preview = " ".join(note.split())
+            cell = sheet.cell(
+                row, notes_column, preview if len(preview) <= 105 else preview[:102].rstrip() + "…"
+            )
+            cell.data_type = "s"
         for column, day in enumerate(days, 10):
             sheet.cell(row, column, quantities.get((position["id"], day), 0))
         sheet.row_dimensions[row].height = max(20, min(70, 16 * (1 + len(position["name"]) // 55)))
@@ -253,7 +290,9 @@ def write_journal_sheet(
             sheet.cell(row, column).number_format = AMOUNT_FORMAT
 
     line = Side(style="hair", color="D6E2F0")
-    for row in sheet.iter_rows(min_row=1, max_row=totals + 5, max_col=9 + len(days)):
+    for row in sheet.iter_rows(
+        min_row=1, max_row=totals + 5, max_col=notes_column or 9 + len(days)
+    ):
         for cell in row:
             header = cell.row == 1
             date_heading = cell.row in (3, 4) and cell.column >= 10
@@ -276,12 +315,14 @@ def write_journal_sheet(
             )
             cell.border = Border(bottom=line)
             cell.alignment = Alignment(
-                horizontal="left" if cell.column == 2 else "center",
+                horizontal="left" if cell.column in (2, notes_column) else "center",
                 vertical="center",
                 wrap_text=True,
             )
             if 5 <= cell.row <= last_row:
                 position = catalogue[cell.row - 5]
+                if cell.column == notes_column:
+                    continue
                 key = days[cell.column - 10] if cell.column >= 10 else cell.column
                 fill = fills.get((position["id"], key)) or fills.get((cell.row, key))
                 if fill:
@@ -293,6 +334,9 @@ def write_journal_sheet(
     for column, width in enumerate((5, 39, 9, 12, 12, 13, 12, 13, 13), 1):
         sheet.column_dimensions[get_column_letter(column)].width = width
     if catalogue:
+        sheet.auto_filter.ref = (
+            f"A1:{get_column_letter(notes_column or 9 + len(days))}{last_row}" if not days else None
+        )
         sheet.conditional_formatting.add(
             f"G5:G{last_row}",
             CellIsRule(

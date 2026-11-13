@@ -41,17 +41,21 @@ def test_unit_conversion_is_dimensionally_correct(unit, quantity, expected):
     assert Decimal(normalise(item(unit=unit, quantity=quantity))["quantity"]) == Decimal(expected)
 
 
-def test_dimensions_remain_separate_and_conditions_are_retained_in_notes():
+def test_sizes_are_nested_but_measure_dimensions_remain_separate():
     groups = build_groups(
         [
             item(unit="м"),
             item(unit="м²"),
-            item(name="Монтаж трубы Ø10 мм"),
+            {**item(name="Монтаж трубы Ø10 мм"), "source_row": 2},
             item(notes="На высоте 12 м"),
         ]
     )
-    assert len(groups) == 3
+    assert len(groups) == 2
     assert any("На высоте 12 м" in group["notes"] for group in groups)
+    assert {source["name"] for row in groups for source in row["sources"]} == {
+        "Монтаж трубы Ø6 мм",
+        "Монтаж трубы Ø10 мм",
+    }
 
 
 def test_disjoint_systems_sum_but_overlapping_sources_require_resolution():

@@ -4,7 +4,7 @@ import unicodedata
 from collections import defaultdict
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
-from .aggregation import source_identity, source_summary, system_codes, work_key, work_label
+from .aggregation import estimate_name, source_identity, source_summary, system_codes, work_key
 
 UNIT_ALIASES = {
     "м": ("м", "1"),
@@ -86,10 +86,22 @@ def build_groups(works, previous=None):
         for source in source_set:
             prior_by_source[source].add(index)
     grouped = defaultdict(list)
+    prepared = []
+    measures = defaultdict(set)
     for raw in works:
         work = normalise(raw)
-        work["work_name"] = work_label(work["name"], work.get("work_name"))
-        key = work_key(work["work_name"]) + "|" + canonical(work.get("unit"))
+        work["work_name"] = estimate_name(work)
+        name_key = work_key(work["work_name"])
+        if work.get("conversion_factor") is not None:
+            measures[name_key].add(work["unit"])
+        prepared.append((name_key, work))
+    for name_key, work in prepared:
+        measure = work.get("unit")
+        if work.get("conversion_factor") is None and len(measures[name_key]) == 1:
+            measure = next(iter(measures[name_key]))
+        elif work.get("conversion_factor") is None:
+            measure = None
+        key = name_key + "|" + canonical(measure)
         grouped[key].append(work)
     result = []
     for key, items in grouped.items():
@@ -163,7 +175,10 @@ def build_groups(works, previous=None):
             ),
             "section": items[0].get("section", "Без раздела"),
             "subsection": items[0].get("subsection", ""),
-            "unit": items[0]["unit"],
+            "unit": next(
+                (work["unit"] for work in items if work.get("conversion_factor") is not None),
+                None,
+            ),
             "quantity": None if missing or duplicate else str(total),
             "proposed_quantity": None if missing else str(total),
             "rate": None,

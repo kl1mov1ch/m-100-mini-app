@@ -3,6 +3,33 @@ from functools import lru_cache
 
 import snowballstemmer
 
+VENTILATION_WORKS = (
+    (r"дроссель[ -]?клапан", "Монтаж дроссель-клапанов"),
+    (
+        r"(?:клапан.*(?:противопожар|огнезадерж)|(?:противопожар|огнезадерж).*клапан)",
+        "Монтаж противопожарных клапанов",
+    ),
+    (r"(?:клапан.*обратн|обратн.*клапан)", "Монтаж обратных клапанов"),
+    (r"заслонк.*взрывозащ", "Монтаж взрывозащищённых заслонок"),
+    (r"(?:шумоглушител|глушител)", "Монтаж шумоглушителей"),
+    (r"диффузор.*(?:вихрев|\bдпу\b)|\bдпу\b.*диффузор", "Монтаж вихревых диффузоров"),
+    (r"диффузор.*индустриальн", "Монтаж индустриальных диффузоров"),
+    (r"диффузор", "Монтаж диффузоров"),
+    (r"реш[её]тк.*нерегулируем", "Монтаж нерегулируемых решёток"),
+    (r"реш[её]тк.*регулируем", "Монтаж регулируемых решёток"),
+    (r"реш[её]тк", "Монтаж решёток"),
+    (r"лючк.*питометр|порт.*(?:замер|отбор проб)", "Монтаж измерительных портов"),
+    (r"дефлектор", "Монтаж дефлекторов"),
+    (r"зонт", "Монтаж зонтов"),
+    (r"(?:приточн|приточно[ -]вытяжн|вытяжн)\w* установ", "Монтаж приточно-вытяжных установок"),
+    (r"фильтр\w* рамн", "Монтаж рамных фильтров"),
+    (r"устройств\w* воздухоприемн|воздухоприемн\w* устройств", "Монтаж воздухоприёмных устройств"),
+    (r"переход\b|перехода\b", "Монтаж переходов воздуховодов"),
+    (r"быстрос[ъь]емн.*изоляц", "Монтаж быстросъёмной изоляции"),
+    (r"(?:теплоизоляц|изоляц).*мат|мат.*теплоизоляц", "Тепловая изоляция матами"),
+    (r"огнезащит", "Устройство огнезащитного покрытия"),
+)
+
 
 def system_codes(value):
     return list(
@@ -26,16 +53,21 @@ def work_key(name):
 
 
 def work_traits(name):
+    # Accessories in a supplied set do not change the primary labour type.
+    # A radial fan with a flexible connector is still a radial fan.
+    primary = re.split(r"\b(?:[lL]\s*=|в\s+комплекте|6\s+комплекте)", str(name or ""), maxsplit=1)[
+        0
+    ]
     return set(
         re.findall(
             r"демонтаж|радиальн|канальн|осев|гибк|жестк|взрывозащ|противопожар|огнезащ|обратн|теплоизоляц|медн|полипропилен",
-            str(name or "").casefold().replace("ё", "е"),
+            primary.casefold().replace("ё", "е"),
         )
     )
 
 
 def work_label(name, candidate):
-    value = name.casefold().replace("ё", "е")
+    value = re.sub(r"\s+", " ", name.casefold().replace("ё", "е")).strip()
     # Stable estimate lines for clear ventilation work descriptions. Everything
     # else retains its validated suggested name or its original description.
     if value.startswith(("монтаж ", "установка ")):
@@ -48,10 +80,18 @@ def work_label(name, candidate):
         if re.match(
             r"(?:монтаж|установка) (?:(?:радиальн|канальн|осев)\w* )?вентилятор\w*\b", value
         ):
-            if traits == {"радиальн"}:
-                return "Монтаж вентиляторов (радиальных)"
-            if traits and traits <= {"осев", "канальн"}:
-                return "Монтаж вентиляторов (канальных, осевых)"
+            if traits - {"взрывозащ"} == {"радиальн"}:
+                return (
+                    "Монтаж вентиляторов (радиальных, взрывозащищённых)"
+                    if "взрывозащ" in traits
+                    else "Монтаж вентиляторов (радиальных)"
+                )
+            if traits - {"взрывозащ"} and traits <= {"осев", "канальн", "взрывозащ"}:
+                return (
+                    "Монтаж вентиляторов (канальных, осевых, взрывозащищённых)"
+                    if "взрывозащ" in traits
+                    else "Монтаж вентиляторов (канальных, осевых)"
+                )
     candidate = str(candidate or "").strip()[:180]
     name_words = set(work_key(name).split())
     candidate_words = set(work_key(candidate).split())
@@ -63,6 +103,49 @@ def work_label(name, candidate):
     ):
         return candidate
     return name
+
+
+def estimate_name(source):
+    name = source["name"]
+    candidate = source.get("work_name")
+    if candidate and candidate != name:
+        name = work_label(name, candidate)
+    name = re.sub(r"^\s*\d+[.)]?\s+", "", name)
+    # Only trim clearly identified equipment codes and technical suffixes.
+    # Keep descriptive qualifiers, such as flange vs. threaded, in the name.
+    code = str(source.get("item_code") or "").strip()
+    if len(code) >= 3 and re.search(r"\d", code):
+        name = re.sub(r"(?<!\w)" + re.escape(code) + r"(?!\w)", " ", name, flags=re.IGNORECASE)
+    name = re.split(
+        r"\s+(?:[lpn]\s*[=:]|№\s*\d|#\s*\d)",
+        name,
+        maxsplit=1,
+        flags=re.IGNORECASE,
+    )[0]
+    name = re.sub(r"\s+\d+(?:[.,]\d+)?(?:\s*[xх×]\s*\d+(?:[.,]\d+)?){1,2}\s*(?:мм)?\s*$", "", name)
+    name = re.sub(
+        r"\s*(?:[Øø⌀#]|\bDN\s*|\bД[Уу]\s*|\bдиаметр\w*\s*)\d+(?:[.,]\d+)?(?:\s*[xх×]\s*\d+(?:[.,]\d+)?)*\s*(?:мм)?",
+        "",
+        name,
+        flags=re.IGNORECASE,
+    )
+    name = " ".join(name.split()).strip(" ,.;–-")
+    value = name.casefold().replace("ё", "е")
+    if re.match(r"^(?:тепловая изоляц|теплоизоляц|изоляц).*воздуховод", value):
+        return "Тепловая изоляция воздуховодов"
+    if source.get("category") == "Вентиляция" and value.startswith(
+        ("монтаж ", "установка ", "устройство ")
+    ):
+        subject = value.split(" ", 1)[1]
+        if not subject.startswith(("узла", "креплен", "комплекта", "подключен")):
+            for pattern, label in VENTILATION_WORKS:
+                if re.match(pattern, subject):
+                    return label + (
+                        " (взрывозащищённые)"
+                        if "взрывозащ" in subject and "взрывозащ" not in label
+                        else ""
+                    )
+    return work_label(name, name)
 
 
 def source_identity(source):
@@ -85,11 +168,14 @@ def source_summary(sources):
     entries = {}
     for source in sources:
         code = source.get("item_code") or ", ".join(system_codes(source.get("quote")))
+        detail = str(source.get("name") or "").strip()[:160]
         value = f"{code + ' · ' if code else ''}стр. {source['page']}"
         if source.get("source_row") is not None:
             value += f", строка {source['source_row']}"
         if source.get("quantity") is not None:
             value += f" — {source['quantity']} {source.get('unit') or ''}"
+        if detail:
+            value += " · " + detail
         entries[value] = None
     suffix = f"; ещё {len(entries) - 16} — в источниках" if len(entries) > 16 else ""
     return (f"Упоминаний: {len(sources)}. " + "; ".join(list(entries)[:16]) + suffix)[:1900]

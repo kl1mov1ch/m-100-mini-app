@@ -13,14 +13,14 @@ from sqlalchemy import select
 from starlette.concurrency import run_in_threadpool
 
 from .. import profile_webhooks
-from ..analytics import style_sheet
 from ..report_downloads import report_export
-from .aggregation import notes_with_sources
+from .conversion import table_works
 from .examples import remember
 from .metadata import mark_uploaded, page_count
-from .normalization import build_groups, canonical, financial_summary, unit_value
+from .normalization import canonical, financial_summary, unit_value
 from .progress import notify_queue
 from .repository import DocumentJob, create, folder, owned, public, session, version
+from .workbook import estimate_rows, make_estimate
 
 router = APIRouter(prefix="/api/documents")
 
@@ -367,7 +367,7 @@ def regroup(ident: str, body: RebuildInput, request: Request, background: Backgr
             raise HTTPException(409, "Дождитесь завершения обработки")
         if version(job.updated_at) != body.version:
             raise HTTPException(409, "Выборка обновилась. Повторите действие.")
-        works = job.payload.get("works", [])
+        works = table_works(folder(ident), job.payload)
         if not works:
             raise HTTPException(422, "Сначала прочитайте документ")
         job.payload = {
@@ -680,130 +680,19 @@ def export(ident: str, request: Request, prepare: bool = False, final: bool = Fa
                 raise HTTPException(
                     409, "Для итогового отчёта подтвердите все объёмы, расценки и полноту выборки"
                 )
-            rows = job.payload.get("groups") or build_groups(job.payload.get("works", []))
-            workbook = Workbook()
-            sheet = workbook.active
-            sheet.title = "Сводная смета"
-            sheet.append(
-                [
-                    "№",
-                    "Категория",
-                    "Работа",
-                    "Ед.",
-                    "Объём",
-                    "Расценка, BYN",
-                    "Сумма, BYN",
-                    "Примечания",
-                    "Страница PDF",
-                    "Что уточнить",
-                    "Раздел",
-                    "Подраздел",
-                    "Упоминания",
-                    "Расчёт объёма",
-                ]
-            )
-            for index, work in enumerate(rows, 1):
-                sheet.append(
-                    [
-                        index,
-                        work["category"],
-                        work["name"],
-                        work["unit"],
-                        float(work["quantity"]) if work["quantity"] is not None else None,
-                        float(work["rate"]) if work.get("rate") is not None else None,
-                        work.get("amount") if work.get("confirmed") else None,
-                        notes_with_sources(work),
-                        ", ".join(str(source["page"]) for source in work.get("sources", [])),
-                        "Подтверждено"
-                        if work.get("confirmed")
-                        else "; ".join(work.get("issues", []))
-                        or "Проверьте объём и введите расценку",
-                        work.get("section", "Без раздела"),
-                        work.get("subsection", ""),
-                        work.get("mention_count", len(work.get("sources", []))),
-                        {
-                            "mentions": "По упоминаниям",
-                            "manual": "Вручную",
-                            "one": "Один источник",
-                        }.get(work.get("quantity_mode"), "Сумма объёмов"),
-                    ]
+            rows = (
+                job.payload.get("groups", [])
+                if final
+                else estimate_rows(
+                    {
+                        **job.payload,
+                        "works": table_works(folder(ident), job.payload),
+                    }
                 )
-            style_sheet(sheet, 1, [7, 24, 55, 10, 14, 19, 19, 65, 16, 45, 30, 30, 14, 24], (6, 7))
-            sheet.freeze_panes = "D2"
-            sheet.append(
-                [
-                    None,
-                    None,
-                    "Итого подтверждено",
-                    None,
-                    None,
-                    None,
-                    financial_summary(rows)["amount"],
-                ]
             )
-            from openpyxl.styles import Font, PatternFill
-
-            for cell in sheet[sheet.max_row]:
-                cell.font = Font(bold=True, color="FFFFFF")
-                cell.fill = PatternFill("solid", fgColor="007AFF")
-            sheet.cell(sheet.max_row, 7).number_format = "#,##0.00"
-            sources = workbook.create_sheet("Источники")
-            sources.append(
-                [
-                    "Позиция",
-                    "Страница",
-                    "Исходный объём",
-                    "Исходная единица",
-                    "Цитата",
-                    "Обозначение",
-                    "Исходное название",
-                    "Условия",
-                    "Строка",
-                    "Раздел",
-                    "Подраздел",
-                ]
-            )
-            for work in rows:
-                for source in work.get("sources", []):
-                    sources.append(
-                        [
-                            work["name"],
-                            source["page"],
-                            source.get("original_quantity", source.get("quantity")),
-                            source.get("original_unit", source.get("unit")),
-                            source["quote"],
-                            source.get("item_code", ""),
-                            source.get("name", ""),
-                            source.get("notes", ""),
-                            source.get("source_row"),
-                            source.get("section", ""),
-                            source.get("subsection", ""),
-                        ]
-                    )
-            style_sheet(sources, 1, [50, 14, 18, 18, 100, 22, 55, 60, 14, 30, 30])
-            report = workbook.create_sheet("Контроль")
-            report.append(["Показатель", "Значение"])
-            report.append(["Запрос", job.payload.get("query", "")])
-            report.append(["Файл", job.name])
-            report.append(["Страниц", job.pages])
-            report.append(["Обработано", job.processed])
-            report.append(["Проверено строк", financial_summary(rows)["confirmed"]])
-            report.append(
-                ["Стоимость подтверждённых работ, BYN", financial_summary(rows)["amount"]]
-            )
-            report.append(["Статус", "Итоговый отчёт" if final else "Черновик"])
-            for question in job.payload.get("questions", []):
-                report.append(["Вопрос для проверки", question])
-            report.append(
-                [
-                    "Ограничения",
-                    "Геометрия по изображениям не измерялась. Процент ошибок 1% не подтверждён испытаниями.",
-                ]
-            )
-            style_sheet(report, 1, [48, 105])
-            output = io.BytesIO()
-            workbook.save(output)
-            return output.getvalue()
+        blank = io.BytesIO()
+        Workbook().save(blank)
+        return make_estimate(blank.getvalue(), rows, draft=not final)
 
     with session() as database:
         job = owned(database, ident, request.state.user["telegram_id"])
@@ -811,7 +700,7 @@ def export(ident: str, request: Request, prepare: bool = False, final: bool = Fa
             raise HTTPException(409, "Подтвердите объёмы и расценки перед итоговой выгрузкой")
     return report_export(
         request.state.user,
-        f"Выборка_{Path(job.name).stem[:90]}_{datetime.now(UTC):%Y-%m-%d}.xlsx",
+        f"Смета_{Path(job.name).stem[:90]}_{datetime.now(UTC):%Y-%m-%d}.xlsx",
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         render,
         prepare,
