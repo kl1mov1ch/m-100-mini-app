@@ -74,7 +74,7 @@ def test_bm25_prioritises_matching_structure_without_inventing_numbers():
     assert retrieval.relevant_examples("Воздуховод", examples) == examples[:1]
 
 
-def test_docling_streams_first_specification_to_ai_before_whole_file(client, monkeypatch, tmp_path):
+def test_docling_streams_parsed_quantities_before_whole_file(client, monkeypatch, tmp_path):
     monkeypatch.setattr(repository.store, "ROOT", tmp_path)
     job = repository.create("local-admin", "stream.pdf")
     job.pages = 3
@@ -122,32 +122,9 @@ def test_docling_streams_first_specification_to_ai_before_whole_file(client, mon
     worker.process_docling(job.id, payload, path, 3)
     with repository.session() as database:
         saved = database.get(repository.DocumentJob, job.id)
-        assert saved.status == "ai_queued" and saved.processed == 2
+        assert saved.status == "queued" and saved.processed == 2
         assert saved.payload["selected_specifications"] == [3]
         assert saved.payload["page_results"][0]["kind"] == "excluded_drawing"
         assert saved.payload["selection_streaming"] and not saved.payload["text_complete"]
-        streaming_payload = saved.payload
-    monkeypatch.setattr(worker.matcher, "provider", lambda *a: {"key": "test"})
-    monkeypatch.setattr(
-        worker,
-        "extract_part",
-        lambda *a, **kw: (
-            [
-                {
-                    "name": "Монтаж трубы",
-                    "category": "Вентиляция",
-                    "section": "Раздел файла",
-                    "quantity": 12,
-                    "unit": "м",
-                    "page": 3,
-                    "quote": "Труба 12 м",
-                }
-            ],
-            [],
-        ),
-    )
-    worker.analyse(job.id, streaming_payload)
-    with repository.session() as database:
-        saved = database.get(repository.DocumentJob, job.id)
-        assert saved.status == "queued" and len(saved.payload["groups"]) == 1
-        assert not saved.payload["coverage"]["complete"]
+        assert saved.payload["groups"][0]["quantity"] == "17"
+        assert saved.payload["structured_extraction"]

@@ -60,7 +60,7 @@ def test_sizes_and_supplied_accessories_do_not_split_the_labour_line():
     name = (
         "Монтаж вентилятора радиального взрывозащищенного L=350 м³/ч, в комплекте: гибкая вставка"
     )
-    assert estimate_name(source(name, 1)) == "Монтаж вентиляторов (радиальных, взрывозащищённых)"
+    assert estimate_name(source(name, 1)) == "Монтаж вентиляторов (радиальных)"
     works = [
         source("Монтаж воздуховодов 200х300 мм", 1),
         source("Монтаж воздуховодов 400х600 мм", 2),
@@ -70,7 +70,8 @@ def test_sizes_and_supplied_accessories_do_not_split_the_labour_line():
     assert len(rows) == 1 and len(rows[0]["sources"]) == 3
     assert rows[0]["quantity"] is None and rows[0]["issues"] and rows[0]["unit"] == "м²"
     # Square and linear metres can never be added together.
-    assert len(build_groups([*works, source("Монтаж воздуховодов", 4, unit="м")])) == 3
+    converted = build_groups([*works, source("Монтаж воздуховодов", 4, unit="м")])
+    assert len(converted) == 1 and converted[0]["quantity"] is None and converted[0]["unit"] == "м²"
 
 
 def test_merged_table_name_cells_provide_context_for_dimension_rows():
@@ -147,7 +148,7 @@ def test_native_cell_geometry_uses_text_coordinates_without_numeric_ocr(monkeypa
         verify_numbers=False,
     )
     assert "Строка 1:" in result["analysis_text"] and len(result["analysis_layout"]["lines"]) == 32
-    assert valid_record(
+    assert not valid_record(
         {"source": "hash", "engine": "docling-2.150.0-v2", "method": "docling+tesseract"}, "hash"
     )
     assert not valid_record({"source": "hash", "engine": "docling-2.150.0-v2"}, "hash")
@@ -195,5 +196,5 @@ def test_export_preserves_confirmed_edits_and_uses_the_working_journal_format():
     )
     sheet = openpyxl.load_workbook(io.BytesIO(updated)).active
     assert sheet["J3"].value.date().isoformat() == day and sheet["K1"].value == "Примечание"
-    assert "Правка мастера" in sheet["B5"].comment.text
+    assert sheet["B5"].comment.text == "стр. 20 — 1 упомин."
     assert openpyxl.load_workbook(io.BytesIO(updated), data_only=True).active["H5"].value == 6

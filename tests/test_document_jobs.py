@@ -138,8 +138,8 @@ def test_document_queue_ownership_ocr_ai_and_export(client, monkeypatch, tmp_pat
     assert book.active.title == "Работы · Кондиционирование"
     assert book.active["D5"].value == 10
     assert book.active["E5"].value is None
-    assert "Уточнить высоту" in book.active["B5"].comment.text
-    assert "Упоминаний: 1. стр. 1" in book.active["B5"].comment.text
+    assert "Уточнить высоту" not in book.active["B5"].comment.text
+    assert book.active["B5"].comment.text == "стр. 1 — 1 упомин."
     assert book["Источники PDF"]["C2"].value == 1
     cached = openpyxl.load_workbook(io.BytesIO(exported.content), data_only=True)
     assert cached.active["F5"].value in (None, "")

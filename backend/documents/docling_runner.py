@@ -9,24 +9,81 @@ import csv
 import hashlib
 import io
 import json
+import re
 import subprocess
 import sys
 import time
 from pathlib import Path
 
-ENGINE = "docling-2.150.0-v3"
+ENGINE = "docling-2.150.0-v4"
 
 
 def valid_record(value, signature):
-    # OCR cell geometry is unchanged in v3. Reuse the expensive OCR pass while
-    # applying the new table-only selection to it; native text needs new cells.
-    return value.get("source") == signature and (
-        value.get("engine") == ENGINE
-        or (
-            value.get("engine") == "docling-2.150.0-v2"
-            and value.get("method") == "docling+tesseract"
+    # Older OCR records are upgraded from their existing cell geometry below.
+    return value.get("source") == signature and value.get("engine") == ENGINE
+
+
+def calibrated(image, record, destination, signature):
+    if __package__:
+        from .dimension_glyphs import read_dimensions
+        from .glyph_numbers import calibrate
+        from .russian_cells import refine
+    else:
+        from dimension_glyphs import read_dimensions
+        from glyph_numbers import calibrate
+        from russian_cells import refine
+    profile_path = destination / "number-font.json"
+    profile = json.loads(profile_path.read_text(encoding="utf-8")) if profile_path.exists() else {}
+    fallback = profile.get("templates") if profile.get("source") == signature else None
+    if not record.get("russian_cells"):
+        record = refine(image, record)
+    result = calibrate(image, record, fallback=fallback)
+    templates = result.pop("digit_templates", None)
+    if templates:
+        dimensions, diameter = read_dimensions(
+            image,
+            result,
+            templates,
+            profile.get("diameter") if profile.get("source") == signature else None,
         )
-    )
+        result["dimensions"] = dimensions
+        write_json(
+            profile_path, {"source": signature, "templates": templates, "diameter": diameter}
+        )
+    return result
+
+
+def upgrade_ocr(source, number, destination, record, signature):
+    from PIL import Image
+
+    if not re.search(r"C\d+–C\d+=Наименован", record.get("analysis_text", ""), re.I):
+        return {**record, "digit_calibration": "not_applicable"}
+    prefix = destination / f"digits-{number}"
+    try:
+        subprocess.run(
+            [
+                "pdftoppm",
+                "-f",
+                str(number),
+                "-l",
+                str(number),
+                "-scale-to",
+                "3000",
+                "-singlefile",
+                "-gray",
+                "-png",
+                str(source),
+                str(prefix),
+            ],
+            check=True,
+            timeout=60,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        with Image.open(prefix.with_suffix(".png")) as image:
+            return calibrated(image, record, destination, signature)
+    finally:
+        prefix.with_suffix(".png").unlink(missing_ok=True)
 
 
 def write_json(path, value):
@@ -379,14 +436,19 @@ def ocr(source, page, destination):
                     }
                 )
             ordered += "\n"
-        return structured_table(
+        return calibrated(
             image,
-            {
-                "text": ordered,
-                "layout": {"width": width, "height": height, "lines": layout},
-                "confidence": sum(confidence) / len(confidence) if confidence else 0,
-                "method": "docling+tesseract",
-            },
+            structured_table(
+                image,
+                {
+                    "text": ordered,
+                    "layout": {"width": width, "height": height, "lines": layout},
+                    "confidence": sum(confidence) / len(confidence) if confidence else 0,
+                    "method": "docling+tesseract",
+                },
+            ),
+            destination,
+            hashlib.sha256(source.read_bytes()).hexdigest(),
         )
     finally:
         prefix.with_suffix(".png").unlink(missing_ok=True)
@@ -417,6 +479,14 @@ def convert(source, destination, signature, pages=None):
     for done, number in enumerate(selected):
         path = destination / f"page-{number}.json"
         cached = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+        if (
+            cached.get("source") == signature
+            and cached.get("engine") in {"docling-2.150.0-v2", "docling-2.150.0-v3"}
+            and cached.get("method") == "docling+tesseract"
+        ):
+            cached = upgrade_ocr(source, number, destination, cached, signature)
+            cached["engine"] = ENGINE
+            write_json(path, cached)
         if valid_record(cached, signature):
             write_json(
                 destination / "progress.json",
@@ -446,6 +516,11 @@ def convert(source, destination, signature, pages=None):
         )
         for number in range(1, total + 1)
     ):
+        for number in range(1, total + 1):
+            path = destination / f"page-{number}.json"
+            record = json.loads(path.read_text(encoding="utf-8"))
+            if record.get("digit_calibration") == "unavailable":
+                write_json(path, upgrade_ocr(source, number, destination, record, signature))
         temporary = destination / "document.md.tmp"
         with temporary.open("w", encoding="utf-8") as target:
             for number in range(1, total + 1):

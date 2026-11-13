@@ -5,6 +5,9 @@ from collections import defaultdict
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 from .aggregation import estimate_name, source_identity, source_summary, system_codes, work_key
+from .geometry import perimeter
+from .profile import load_template
+from .work_catalogue import ventilation_type
 
 UNIT_ALIASES = {
     "м": ("м", "1"),
@@ -34,6 +37,10 @@ UNIT_ALIASES = {
     "челч": ("чел·ч", "1"),
     "челчас": ("чел·ч", "1"),
     "челдн": ("чел·дн", "1"),
+    "сист": ("систем", "1"),
+    "систем": ("систем", "1"),
+    "система": ("систем", "1"),
+    "системы": ("систем", "1"),
 }
 
 
@@ -58,15 +65,75 @@ def decimal_value(value):
 
 
 def normalise(work):
-    measure, factor = unit_value(work.get("unit"))
+    original_unit = work.get("unit_cell") or work.get("unit")
+    raw_unit = original_unit
+    measure, factor = unit_value(original_unit)
     quantity = decimal_value(work.get("quantity"))
+    standard = ventilation_type(work)
+    cell = str(work.get("quantity_cell") or "").strip()
+    if standard:
+        definition = next(row for row in load_template()["works"] if row["id"] == standard[0])
+        pair = definition.get("composite_units", {}).get(
+            str(original_unit or "").replace(" ", "").casefold()
+        )
+        values = cell.replace(" ", "").split("/")
+        if pair and len(pair) == len(values) and standard[2] in pair and "[OCR" not in cell:
+            position = pair.index(standard[2])
+            original_unit = pair[position]
+            measure, factor = unit_value(original_unit)
+            cell = values[position]
+    compact_cell = re.sub(r"\s", "", cell)
+    if cell and "[OCR" not in cell and re.fullmatch(r"\d+(?:[.,]\d+)?", compact_cell):
+        quantity = decimal_value(compact_cell)
+    elif cell:
+        quantity = None
+    if (
+        standard
+        and standard[2] == "шт."
+        and re.fullmatch(r"w[iu]?m\.?", str(original_unit or ""), re.I)
+    ):
+        measure, factor = "шт.", Decimal(1)
+    if (
+        standard
+        and standard[2] == "м²"
+        and re.fullmatch(r"(?:2|2m|2м|м2|м²)", str(original_unit or "").casefold().strip())
+    ):
+        measure, factor = "м²", Decimal(1)
+    if standard and standard[2] == "шт." and measure in {"шт.", "компл."}:
+        measure = "шт."
+    geometry_factor = None
+    if standard and standard[0] == "duct" and measure == "м":
+        geometry_factor = perimeter(work.get("dimensions"), work.get("dimension_text", ""))
+        measure = "м²"
+        if geometry_factor is None:
+            quantity = None
+        elif quantity is not None:
+            quantity = (quantity * geometry_factor).quantize(
+                Decimal("0.0001"), rounding=ROUND_HALF_UP
+            )
+    bundle = bool(standard and standard[0] == "consumables")
+    if bundle:
+        measure, factor, quantity = "компл.", Decimal(1), Decimal(1)
+    evidence_warning = work.get("evidence_warning")
+    if standard and not bundle and factor is not None and measure != standard[2]:
+        evidence_warning = "Единица исходной строки отличается от единицы вида работ"
+    if measure == "шт." and quantity is not None and quantity != quantity.to_integral_value():
+        evidence_warning = "Дробное количество для штучной позиции: проверьте исходную ячейку"
+    if work.get("classification_warning"):
+        quantity = None
+    if work.get("quantity_warning"):
+        quantity = None
+        evidence_warning = "Цифры в исходной ячейке требуют проверки по PDF"
     return {
         **work,
-        "original_unit": work.get("unit"),
-        "original_quantity": work.get("quantity"),
+        **({"evidence_warning": evidence_warning} if evidence_warning else {}),
+        "original_unit": raw_unit,
+        "original_quantity": work.get("quantity_cell") or work.get("quantity"),
         "unit": measure or None,
         "quantity": str(quantity * factor) if quantity is not None and factor is not None else None,
         "conversion_factor": str(factor) if factor is not None else None,
+        "bundle": bundle,
+        "geometry_factor": str(geometry_factor) if geometry_factor is not None else None,
     }
 
 
@@ -148,12 +215,25 @@ def build_groups(works, previous=None):
         quote_pages = defaultdict(set)
         for work in items:
             quote_pages[canonical(work.get("quote"))].add(work.get("page"))
-        duplicate = any(len(pages) > 1 for pages in quote_pages.values())
+        # Identical specification wording on distinct pages is a legitimate
+        # additional occurrence. Only unlocated quotes need a duplicate warning.
+        duplicate = any(
+            len(pages) > 1
+            and any(
+                work.get("source_row") is None
+                for work in items
+                if canonical(work.get("quote")) == quote
+            )
+            for quote, pages in quote_pages.items()
+        )
         tag_pages = defaultdict(set)
         unlocated = defaultdict(int)
         for work in items:
-            for tag in system_codes(work.get("quote")):
-                tag_pages[canonical(tag).replace(" ", ""), work["quantity"]].add(work.get("page"))
+            if work.get("source_row") is None:
+                for tag in system_codes(work.get("quote")):
+                    tag_pages[canonical(tag).replace(" ", ""), work["quantity"]].add(
+                        work.get("page")
+                    )
             if source_identity(work)[1] is None:
                 unlocated[work.get("page"), work["quantity"]] += 1
         duplicate = (
@@ -166,6 +246,9 @@ def build_groups(works, previous=None):
             (Decimal(str(work["quantity"])) for work in items if work["quantity"] is not None),
             Decimal(0),
         )
+        bundle = all(work.get("bundle") for work in items)
+        if bundle:
+            total, missing, duplicate = Decimal(1), False, False
         row = {
             "id": ident,
             "name": items[0].get("work_name") or items[0]["name"],
@@ -185,7 +268,7 @@ def build_groups(works, previous=None):
             "notes": "\n".join(all_notes)[:1900],
             "mention_count": len(items),
             "source_summary": source_summary(items),
-            "quantity_mode": "sum",
+            "quantity_mode": "manual" if bundle else "sum",
             "sources": items,
             "duplicate_sources": copies,
             "issues": (
@@ -196,7 +279,10 @@ def build_groups(works, previous=None):
             + (["Не подтверждены объём или единица измерения"] if missing else [])
             + list(
                 dict.fromkeys(
-                    work["evidence_warning"] for work in items if work.get("evidence_warning")
+                    work[field]
+                    for work in items
+                    for field in ("evidence_warning", "classification_warning")
+                    if work.get(field)
                 )
             ),
             "confirmed": False,

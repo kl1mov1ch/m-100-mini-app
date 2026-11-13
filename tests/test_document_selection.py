@@ -133,7 +133,8 @@ def test_rebuild_keeps_only_confirmed_structure_and_respects_version_and_owner(
     response = client.post(endpoint, json={"version": repository.version(job.updated_at)})
     assert response.status_code == 200, response.text
     payload = response.json()["payload"]
-    assert response.json()["status"] == "queued" and not payload["groups"]
+    assert response.json()["status"] == "queued" and len(payload["groups"]) == 1
+    assert payload["groups"][0]["quantity"] == "70" and payload["groups"][0]["rate"] == "25"
     assert payload["selection_policy"] == "specifications"
     assert len(payload["learned_examples"]) == 1
     assert not {"quantity", "rate"} & payload["learned_examples"][0].keys()

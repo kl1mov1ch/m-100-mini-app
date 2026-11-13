@@ -1,12 +1,21 @@
 import { App, Button, Checkbox, Input, InputNumber, Modal, Select } from 'antd';
 import { ArrowLeft, Download, FileSearch } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { Money, countLabel, nf } from '../lib/format';
+import { Money, nf } from '../lib/format';
 import { headers, request } from '../lib/api';
 import { downloadReport } from '../lib/report-download';
 import type { DocumentJob, DocumentGroup, DocumentSource } from './document-types';
 import { DocumentPublishPanel } from './DocumentPublishPanel';
 import { CompactRow } from '../components/CompactRow';
+
+function pageMentions(row: DocumentGroup) {
+	const pages = new Map<number, number>();
+	row.sources.forEach((source) => pages.set(source.page, (pages.get(source.page) || 0) + 1));
+	return [...pages]
+		.sort(([a], [b]) => a - b)
+		.map(([page, count]) => `стр. ${page} — ${count} упомин.`)
+		.join('; ');
+}
 
 function SourcePreview({
 	jobId,
@@ -105,7 +114,7 @@ export function DocumentResultsPage({
 		[resolution, setResolution] = useState<string>(),
 		[acknowledge, setAcknowledge] = useState(false),
 		[saving, setSaving] = useState(false);
-	const { message, modal } = App.useApp();
+	const { message } = App.useApp();
 	const groups = job.payload.groups || [];
 	const categories = ['Все', ...new Set(groups.flatMap((row) => row.categories || [row.category]))];
 	const rows = groups.filter(
@@ -168,7 +177,7 @@ export function DocumentResultsPage({
 		setEditCategory(row.category);
 		setSection(row.section || '');
 		setSubsection(row.subsection || '');
-		setNotes(row.notes || '');
+		setNotes(pageMentions(row));
 		setResolution(row.quantity === null ? undefined : row.quantity_mode || 'manual');
 		setAcknowledge(false);
 	};
@@ -207,20 +216,7 @@ export function DocumentResultsPage({
 			message.error((error as Error).message);
 		}
 	};
-	const regroup = () =>
-		modal.confirm({
-			title: 'Объединить одинаковые работы?',
-			icon: null,
-			content:
-				'Соберём строки таблиц по видам работ. Размеры и страницы останутся в источниках, подтверждённые правки сохранятся.',
-			okText: 'Объединить',
-			cancelText: 'Отмена',
-			onOk: async () => {
-				refresh(
-					await request<DocumentJob>(`/documents/${job.id}/regroup`, { version: job.updated_at }),
-				);
-			},
-		});
+
 	return (
 		<div className="document-page document-results-page">
 			{!embedded && (
@@ -237,11 +233,6 @@ export function DocumentResultsPage({
 					)}
 					{!embedded && <small className="page-context document-filename">{job.name}</small>}
 				</div>
-				{!readOnly && (
-					<Button type="text" onClick={regroup}>
-						Объединить
-					</Button>
-				)}
 			</div>
 			<section className="document-result-summary">
 				<div>
@@ -330,18 +321,9 @@ export function DocumentResultsPage({
 						className="document-review-row"
 						title={row.name}
 						description={
-							<>
-								{countLabel(
-									row.mention_count ?? row.sources.length,
-									'упоминание',
-									'упоминания',
-									'упоминаний',
-								)}{' '}
-								·{' '}
-								{row.quantity === null
-									? 'Уточните объём'
-									: nf.format(Number(row.quantity)) + ' ' + row.unit}
-							</>
+							row.quantity === null
+								? 'Уточните объём'
+								: nf.format(Number(row.quantity)) + ' ' + row.unit
 						}
 						value={
 							row.rate !== null ? (
@@ -448,6 +430,7 @@ export function DocumentResultsPage({
 										Приведено к {source.unit}: {source.quantity}
 									</p>
 								)}
+								{source.geometry_factor && <p>Площадь поверхности: {source.quantity} м²</p>}
 							</section>
 						))}
 					</div>
@@ -472,7 +455,7 @@ export function DocumentResultsPage({
 								.filter(Boolean)
 								.join(' · ')}
 						</p>
-						{editing?.notes && <p>{editing.notes}</p>}
+						{editing && pageMentions(editing) && <p>{pageMentions(editing)}</p>}
 						<Button icon={<FileSearch size={16} />} onClick={() => setSources(editing)}>
 							Источники · {editing?.sources.length}
 						</Button>
@@ -557,12 +540,20 @@ export function DocumentResultsPage({
 										setUnit(value);
 										setResolution('manual');
 									}}
-									options={['м', 'м²', 'м³', 'шт.', 'кг', 'компл.', 'чел·ч', 'чел·дн'].map(
-										(value) => ({
-											value,
-											label: value,
-										}),
-									)}
+									options={[
+										'м',
+										'м²',
+										'м³',
+										'шт.',
+										'кг',
+										'компл.',
+										'систем',
+										'чел·ч',
+										'чел·дн',
+									].map((value) => ({
+										value,
+										label: value,
+									}))}
 								/>
 							</label>
 							<label>
@@ -591,26 +582,7 @@ export function DocumentResultsPage({
 								controls={false}
 							/>
 						</label>
-						<details className="document-details document-edit-details">
-							<summary>Примечания и упоминания</summary>
-							{editing?.source_summary && <p className="page-context">{editing.source_summary}</p>}
-							{editing?.previous_reviews?.map((previous, index) => (
-								<p className="page-context" key={index}>
-									Ранее подтверждено · {previous.name} · {previous.quantity} {previous.unit}
-									{previous.rate != null && ` · ${previous.rate} BYN за ед.`}
-									{previous.notes && ` · ${previous.notes}`}
-								</p>
-							))}
-							<label>
-								Примечания
-								<Input.TextArea
-									value={notes}
-									maxLength={2000}
-									autoSize={{ minRows: 2, maxRows: 5 }}
-									onChange={(event) => setNotes(event.target.value)}
-								/>
-							</label>
-						</details>
+						{notes && <p className="page-context">{notes}</p>}
 						{editing && (
 							<label>
 								Как посчитать объём

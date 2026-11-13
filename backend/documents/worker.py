@@ -20,12 +20,12 @@ from sqlalchemy import case, or_, select
 
 from .. import matcher, store, workspaces
 from ..runtime import configure_runtime
-from .conversion import convert_document, converted_page
+from .conversion import convert_document, converted_page, table_works
 from .examples import confirmed_examples
 from .execution import JobDeleted, cancellable, check_active, current_job, run
 from .extraction import classify, propose
 from .families import assign_work_names
-from .normalization import build_groups, financial_summary
+from .normalization import financial_summary
 from .page_cache import cache_page, cached_page, text_digest
 from .progress import recover_interrupted, worker_lock
 from .repository import DocumentJob, folder, session
@@ -223,12 +223,11 @@ def process_docling(ident, payload, path, total):
         payload.get("file_hash", ""),
         total,
         report,
-        batch_size=3 if payload.get("groups") else 1,
+        batch_size=8 if payload.get("conversion_done") else 1,
     )
     results = list(payload.get("page_results", []))
     known = {row["page"] for row in results}
     selected = list(payload.get("selected_specifications", []))
-    new_selected = False
     for number in range(1, total + 1):
         if number in known:
             continue
@@ -259,7 +258,6 @@ def process_docling(ident, payload, path, total):
         )
         if kind == "specification":
             selected.append(number)
-            new_selected = True
             cache_page(
                 path,
                 number,
@@ -300,12 +298,26 @@ def process_docling(ident, payload, path, total):
         ],
         "questions": list(dict.fromkeys(questions)),
     }
+    from .profile import profile_version
+    from .structured import candidates
+    from .workbook import estimate_rows
+
+    works, controls = candidates(path, payload)
+    payload = {
+        **payload,
+        "works": works,
+        "controls": controls,
+        "structured_extraction": True,
+        "profile_version": profile_version(),
+    }
+    groups = estimate_rows(payload)
+    payload = {**payload, "groups": groups, "summary": financial_summary(groups)}
     update(
         ident,
         pages=total,
         processed=len(results),
         payload=payload,
-        status="ai_queued" if new_selected or complete else "queued",
+        status="ai_queued" if complete else "queued",
     )
 
 
@@ -559,7 +571,9 @@ def analyse(ident, payload):
             },
         )
         return
-    works = list(payload.get("works", []))
+    from .intent import select_works
+
+    works = select_works(payload.get("works", []), payload.get("query", ""))
     questions = list(payload.get("questions", []))
     done = set(payload.get("analysed_chunks", []))
     pages = payload.get("selected_pages") or [
@@ -568,13 +582,20 @@ def analyse(ident, payload):
         if not page.get("duplicate_of") and not page["kind"].startswith("excluded_")
     ]
     ledger = []
-    for page in [] if payload.get("regroup_only") else pages:
+    for page in (
+        [] if payload.get("regroup_only") or payload.get("structured_extraction") else pages
+    ):
         text = (folder(ident) / f"page-{page}.txt").read_text(encoding="utf-8")
         for index, part in enumerate(chunks(text)):
             ledger.append(
                 (page, f"{page}:{index}:{hashlib.sha256(part.encode()).hexdigest()[:12]}", part)
             )
-    payload = {**payload, "analysis_total": len(ledger)}
+    type_total = (
+        len({work["name"] for work in works})
+        if payload.get("structured_extraction")
+        else len(ledger)
+    )
+    payload = {**payload, "analysis_total": type_total}
     update(ident, payload=payload)
     calls = int(payload.get("ai_calls", 0))
     budget = int(payload.get("call_budget", os.getenv("DOCUMENT_AI_CALL_LIMIT", "1000")))
@@ -606,8 +627,11 @@ def analyse(ident, payload):
             )
             return
         payload = {**payload, "works": works}
+        if payload.get("structured_extraction"):
+            remaining = len({work["name"] for work in works if not work.get("work_name")})
+            payload = {**payload, "analysis_done": type_total - remaining}
         update(ident, payload=payload)
-    if payload.get("regroup_only"):
+    if payload.get("regroup_only") or payload.get("structured_extraction"):
         from .workbook import estimate_rows
 
         groups = estimate_rows({**payload, "works": works})
@@ -618,10 +642,19 @@ def analyse(ident, payload):
                 **payload,
                 "regroup_only": False,
                 "works": works,
+                "analysis_done": type_total
+                if payload.get("structured_extraction")
+                else payload.get("analysis_done", 0),
                 "groups": groups,
                 "summary": financial_summary(groups),
                 "publication": None,
-                "notice": "Одинаковые работы объединены. Проверьте общий объём и расценку.",
+                "coverage": {
+                    "complete": bool(payload.get("selection_complete")) and not questions,
+                    "pages": len(payload.get("page_results", [])),
+                    "analysed": len(payload.get("selected_specifications", [])),
+                    "questions": len(questions),
+                },
+                "notice": "Выборка собрана по таблицам. Проверьте количество и расценки.",
             },
         )
         return
@@ -726,7 +759,14 @@ def analyse(ident, payload):
         works.extend(suggested)
         questions.extend(clarifications)
         done.add(key)
-        groups = build_groups(works, payload.get("groups"))
+        from .workbook import estimate_rows
+
+        selected_works = (
+            table_works(folder(ident), {**payload, "works": works})
+            if payload.get("engine") == "docling"
+            else works
+        )
+        groups = estimate_rows({**payload, "works": selected_works})
         payload = {
             **payload,
             "works": works,

@@ -1,34 +1,11 @@
 import re
+from collections import Counter
+from difflib import SequenceMatcher
 from functools import lru_cache
 
 import snowballstemmer
 
-VENTILATION_WORKS = (
-    (r"дроссель[ -]?клапан", "Монтаж дроссель-клапанов"),
-    (
-        r"(?:клапан.*(?:противопожар|огнезадерж)|(?:противопожар|огнезадерж).*клапан)",
-        "Монтаж противопожарных клапанов",
-    ),
-    (r"(?:клапан.*обратн|обратн.*клапан)", "Монтаж обратных клапанов"),
-    (r"заслонк.*взрывозащ", "Монтаж взрывозащищённых заслонок"),
-    (r"(?:шумоглушител|глушител)", "Монтаж шумоглушителей"),
-    (r"диффузор.*(?:вихрев|\bдпу\b)|\bдпу\b.*диффузор", "Монтаж вихревых диффузоров"),
-    (r"диффузор.*индустриальн", "Монтаж индустриальных диффузоров"),
-    (r"диффузор", "Монтаж диффузоров"),
-    (r"реш[её]тк.*нерегулируем", "Монтаж нерегулируемых решёток"),
-    (r"реш[её]тк.*регулируем", "Монтаж регулируемых решёток"),
-    (r"реш[её]тк", "Монтаж решёток"),
-    (r"лючк.*питометр|порт.*(?:замер|отбор проб)", "Монтаж измерительных портов"),
-    (r"дефлектор", "Монтаж дефлекторов"),
-    (r"зонт", "Монтаж зонтов"),
-    (r"(?:приточн|приточно[ -]вытяжн|вытяжн)\w* установ", "Монтаж приточно-вытяжных установок"),
-    (r"фильтр\w* рамн", "Монтаж рамных фильтров"),
-    (r"устройств\w* воздухоприемн|воздухоприемн\w* устройств", "Монтаж воздухоприёмных устройств"),
-    (r"переход\b|перехода\b", "Монтаж переходов воздуховодов"),
-    (r"быстрос[ъь]емн.*изоляц", "Монтаж быстросъёмной изоляции"),
-    (r"(?:теплоизоляц|изоляц).*мат|мат.*теплоизоляц", "Тепловая изоляция матами"),
-    (r"огнезащит", "Устройство огнезащитного покрытия"),
-)
+from .work_catalogue import ventilation_type
 
 
 def system_codes(value):
@@ -95,17 +72,36 @@ def work_label(name, candidate):
     candidate = str(candidate or "").strip()[:180]
     name_words = set(work_key(name).split())
     candidate_words = set(work_key(candidate).split())
-    generic = {"монтаж", "установк", "демонтаж", "работ", "систем"}
-    if (
-        candidate
-        and any(word.isalpha() and word not in generic for word in name_words & candidate_words)
-        and work_traits(name) <= work_traits(candidate)
-    ):
+    generic = {
+        "монтаж",
+        "установк",
+        "демонтаж",
+        "работ",
+        "систем",
+        "для",
+        "под",
+        "тип",
+        "из",
+        "воздух",
+    }
+    anchored = any(
+        word.isalpha() and len(word) >= 4 and word not in generic
+        for word in name_words & candidate_words
+    )
+    anchored = anchored or any(
+        min(len(left), len(right)) >= 6 and SequenceMatcher(None, left, right).ratio() >= 0.9
+        for left in name_words - generic
+        for right in candidate_words - generic
+    )
+    if candidate and anchored and work_traits(name) <= work_traits(candidate):
         return candidate
     return name
 
 
 def estimate_name(source):
+    standard = ventilation_type(source)
+    if standard:
+        return standard[1]
     name = source["name"]
     candidate = source.get("work_name")
     if candidate and candidate != name:
@@ -133,18 +129,7 @@ def estimate_name(source):
     value = name.casefold().replace("ё", "е")
     if re.match(r"^(?:тепловая изоляц|теплоизоляц|изоляц).*воздуховод", value):
         return "Тепловая изоляция воздуховодов"
-    if source.get("category") == "Вентиляция" and value.startswith(
-        ("монтаж ", "установка ", "устройство ")
-    ):
-        subject = value.split(" ", 1)[1]
-        if not subject.startswith(("узла", "креплен", "комплекта", "подключен")):
-            for pattern, label in VENTILATION_WORKS:
-                if re.match(pattern, subject):
-                    return label + (
-                        " (взрывозащищённые)"
-                        if "взрывозащ" in subject and "взрывозащ" not in label
-                        else ""
-                    )
+
     return work_label(name, name)
 
 
@@ -165,26 +150,9 @@ def source_identity(source):
 
 
 def source_summary(sources):
-    entries = {}
-    for source in sources:
-        code = source.get("item_code") or ", ".join(system_codes(source.get("quote")))
-        detail = str(source.get("name") or "").strip()[:160]
-        value = f"{code + ' · ' if code else ''}стр. {source['page']}"
-        if source.get("source_row") is not None:
-            value += f", строка {source['source_row']}"
-        if source.get("quantity") is not None:
-            value += f" — {source['quantity']} {source.get('unit') or ''}"
-        if detail:
-            value += " · " + detail
-        entries[value] = None
-    suffix = f"; ещё {len(entries) - 16} — в источниках" if len(entries) > 16 else ""
-    return (f"Упоминаний: {len(sources)}. " + "; ".join(list(entries)[:16]) + suffix)[:1900]
+    counts = Counter(source.get("page") for source in sources if source.get("page"))
+    return "; ".join(f"стр. {page} — {count} упомин." for page, count in sorted(counts.items()))
 
 
 def notes_with_sources(row):
-    return "\n".join(
-        filter(
-            None,
-            [row.get("notes"), row.get("source_summary") or source_summary(row.get("sources", []))],
-        )
-    )
+    return source_summary(row.get("sources", []))

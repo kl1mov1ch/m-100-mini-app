@@ -59,14 +59,16 @@ def estimate_table(record):
     kept = []
     for row in rows[max(0, start - 1) :]:
         cells = list(CELLS.finditer(row[2]))
-        if not cells or any(int(c[1]) < left or int(c[2]) > right for c in cells):
+        if not cells:
             continue
         values = " ".join(c[3] for c in cells)
         if re.search(
             r"(?:разраб\w*|проверил|нормоконтроль|стадия\s+лист|изм\.\s+кол)", values, re.I
         ):
             break
-        kept.append(row)
+        selected = [cell for cell in cells if int(cell[1]) >= left and int(cell[2]) <= right]
+        if selected:
+            kept.append((row, selected))
     if len(kept) < 3:
         return None
     layout = record.get("analysis_layout", record.get("layout", {}))
@@ -75,13 +77,9 @@ def estimate_table(record):
     )
     lines = []
     names, previous_name = {}, ""
-    for row in kept:
+    for row, cells in kept:
         name_cell = next(
-            (
-                cell[3].strip()
-                for cell in CELLS.finditer(row[2])
-                if (int(cell[1]), int(cell[2])) == name_column
-            ),
+            (cell[3].strip() for cell in cells if (int(cell[1]), int(cell[2])) == name_column),
             "",
         )
         if re.search(r"[а-яА-Яa-zA-Z]{3,}", name_cell) and not clean(name_cell).startswith(
@@ -90,18 +88,30 @@ def estimate_table(record):
             previous_name = name_cell
         if previous_name:
             names[int(row[1])] = previous_name
-        offset = len(selected_text) - row.start()
-        selected_text += row[0].rstrip() + "\n"
-        for line in layout.get("lines", []):
-            if row.start() <= line["start"] < row.end():
-                lines.append({**line, "start": line["start"] + offset, "end": line["end"] + offset})
+        selected_text += f"Строка {row[1]}: "
+        for cell in cells:
+            old_start = row.start(2) + cell.start()
+            old_end = row.start(2) + cell.end()
+            offset = len(selected_text) - old_start
+            segment = cell[0].rstrip(" |") + " | "
+            selected_text += segment
+            for line in layout.get("lines", []):
+                if old_start <= line["start"] < old_end:
+                    lines.append(
+                        {
+                            **line,
+                            "start": line["start"] + offset,
+                            "end": min(line["end"] + offset, len(selected_text)),
+                        }
+                    )
+        selected_text += "\n"
     return {
         "text": selected_text,
         "layout": {
             **layout,
             "lines": lines,
         },
-        "rows": [int(row[1]) for row in kept],
+        "rows": [int(row[1]) for row, _ in kept],
         "row_names": names,
         "headers": [int(rows[index][1]) for index, _, _ in headers],
     }

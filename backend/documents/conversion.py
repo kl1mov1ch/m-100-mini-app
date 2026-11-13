@@ -13,29 +13,63 @@ def table_works(path, payload):
     """Filter saved draft evidence without modifying a job or its source files."""
     if payload.get("engine") != "docling":
         return payload.get("works", [])
+    from .intent import select_works
+    from .table_context import document_rows
+
     tables = {}
-    for work in payload.get("works", []):
-        number = work.get("page")
-        if number not in tables:
-            cached = path / "docling" / f"page-{number}.json"
-            record = json.loads(cached.read_text(encoding="utf-8")) if cached.is_file() else {}
-            tables[number] = (
-                estimate_table(record) if record.get("source") == payload.get("file_hash") else None
-            )
+    for cached in (path / "docling").glob("page-*.json"):
+        record = json.loads(cached.read_text(encoding="utf-8"))
+        number = int(cached.stem.removeprefix("page-"))
+        tables[number] = (
+            estimate_table(record) if record.get("source") == payload.get("file_hash") else None
+        )
+    contexts = document_rows(tables)
     result = []
     for work in payload.get("works", []):
         table = tables.get(work.get("page"))
         if not table or work.get("source_row") not in table["rows"]:
             continue
+        context = contexts.get((work["page"], work["source_row"]), {})
+        if context.get("role") == "commissioning" and not re.search(
+            r"налад|пуск", payload.get("query", ""), re.I
+        ):
+            continue
+        if context.get("component"):
+            continue
+        work = {
+            **work,
+            "category": context.get("category") or work.get("category"),
+            "quantity_cell": context.get("quantity_cell"),
+            "unit_cell": context.get("unit_cell"),
+        }
+        if context.get("role") == "insulation_schedule":
+            work = {
+                **work,
+                "original_name": work.get("original_name") or work["name"],
+                "name": "Тепловая изоляция матами",
+                "work_name": work.get("work_name")
+                if work["name"] == "Тепловая изоляция матами"
+                else None,
+                "quantity_basis": "surface_schedule",
+                "unit_cell": "м²",
+                "quantity_cell": context.get("surface_cell"),
+            }
+        elif context.get("name"):
+            work = {
+                **work,
+                "original_name": work.get("original_name") or work["name"],
+                "name": context["name"],
+                "work_name": work.get("work_name") if work["name"] == context["name"] else None,
+            }
         if not re.search(
             r"[а-яА-Яa-zA-Z]{3,}", re.sub(r"\b(?:монтаж|установка)\b", "", work["name"], flags=re.I)
         ):
-            name = table["row_names"].get(work["source_row"])
+            name = context.get("name") or table["row_names"].get(work["source_row"])
             if not name:
                 continue
             work = {**work, "name": name, "original_name": work["name"], "work_name": name}
         result.append(work)
-    return result
+    return select_works(result, payload.get("query", ""))
 
 
 def converted_page(path, number, signature):

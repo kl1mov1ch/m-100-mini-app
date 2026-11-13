@@ -96,7 +96,7 @@ def test_ventilation_estimate_groups_by_work_and_keeps_source_locations():
     assert len(groups) == 2
     radial = next(row for row in groups if "радиальных" in row["name"])
     assert radial["quantity"] == "23" and radial["mention_count"] == 2
-    assert "В1 · стр. 80" in radial["source_summary"] and "В2 · стр. 81" in radial["source_summary"]
+    assert radial["source_summary"] == "стр. 80 — 1 упомин.; стр. 81 — 1 упомин."
     two_rows = build_groups([first, {**first, "source_row": 10}])[0]
     assert two_rows["quantity"] == "14" and two_rows["mention_count"] == 2
 

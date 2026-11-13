@@ -14,6 +14,7 @@ from ..workbook_journal import format_journal, is_journal, journal_row
 from .aggregation import notes_with_sources, source_identity
 from .extraction import CATEGORIES
 from .normalization import build_groups, canonical, unit_value
+from .work_catalogue import catalogue_order
 
 
 def estimate_rows(payload):
@@ -33,7 +34,18 @@ def estimate_rows(payload):
     accepted_sources = {
         source_key(source) for row in confirmed for source in row.get("sources", [])
     }
-    draft = [source for source in works if source_key(source) not in accepted_sources]
+    accepted_locations = {
+        source_identity(source)
+        for row in confirmed
+        for source in row.get("sources", [])
+        if source.get("source_row") is not None
+    }
+    draft = [
+        source
+        for source in works
+        if source_key(source) not in accepted_sources
+        and source_identity(source) not in accepted_locations
+    ]
     compacted = build_groups(draft, [row for row in groups if not row.get("confirmed")])
     accepted_ids = {row["id"] for row in confirmed}
     for row in compacted:
@@ -57,7 +69,12 @@ def category_for(row):
 def make_estimate(content, rows, *, draft=False):
     categories = {row["id"]: category_for(row) for row in rows}
     rows = sorted(
-        rows, key=lambda row: (CATEGORIES.index(categories[row["id"]]), row["name"].casefold())
+        rows,
+        key=lambda row: (
+            CATEGORIES.index(categories[row["id"]]),
+            catalogue_order(row["name"]),
+            row["name"].casefold(),
+        ),
     )
     positions = []
     by_id = {}
@@ -66,8 +83,6 @@ def make_estimate(content, rows, *, draft=False):
         category = categories[row["id"]]
         by_id[ident] = row
         notes = notes_with_sources(row)
-        if draft and row.get("issues"):
-            notes = "Проверить объём.\n" + notes + "\n" + "\n".join(row["issues"])
         positions.append(
             {
                 "id": ident,
@@ -97,6 +112,7 @@ def make_estimate(content, rows, *, draft=False):
     journals = [sheet for sheet in book if is_journal(sheet)]
     if positions and any(row.get("sources") for row in rows):
         sources = book.create_sheet("Источники PDF")
+        sources.sheet_state = "hidden"
         sources.append(
             [
                 "Лист",
