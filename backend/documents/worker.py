@@ -87,9 +87,9 @@ def ocr_page(source, number, destination):
         )
         phase("ocr", number)
         result = run(
-            ["tesseract", str(image), "stdout", "-l", "rus+eng", "tsv"],
+            ["tesseract", str(image), "stdout", "-l", "rus+eng", "--psm", "6", "tsv"],
             check=True,
-            timeout=120,
+            timeout=300,
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -160,7 +160,6 @@ def ocr_page(source, number, destination):
             "confidence": sum(confidence) / len(confidence) if confidence else 0,
         }
     except subprocess.SubprocessError:
-        image.unlink(missing_ok=True)
         raise
 
 
@@ -224,9 +223,13 @@ def process(ident, payload):
             check_active()
             phase("reading", index + 1)
             cached = cached_page(path, index + 1, payload.get("file_hash"))
-            text = cached if cached else reader.pages[index].extract_text() or ""
-            if isinstance(text, str) and len(text.strip()) >= 30:
-                text = text_page(path / "source.pdf", index + 1) or text
+            text = cached
+            if text is None:
+                native = text_page(path / "source.pdf", index + 1)
+                if native is not None:
+                    text = native if len(native["text"].strip()) >= 30 else ""
+                else:
+                    text = reader.pages[index].extract_text() or ""
             confidence = None
             layout = None
             if isinstance(text, str) and len(text.strip()) < 30:
@@ -505,11 +508,14 @@ def run_once():
         PdfReadError,
         httpx.HTTPError,
     ) as error:
-        notice = (
-            str(error)
-            if isinstance(error, ValueError)
-            else "Не удалось прочитать PDF. Проверьте файл и повторите загрузку."
-        )
+        if isinstance(error, ValueError):
+            notice = str(error)
+        elif isinstance(error, subprocess.TimeoutExpired):
+            notice = "Распознавание страницы заняло слишком долго. Файл и готовые страницы сохранены — продолжите обработку."
+        elif isinstance(error, httpx.HTTPError):
+            notice = "ИИ не ответил. Промежуточные данные сохранены — повторите обработку позже."
+        else:
+            notice = "Не удалось обработать страницу. Файл и промежуточные данные сохранены — повторите обработку."
         with session() as database:
             job = database.get(DocumentJob, ident)
             if job is not None:

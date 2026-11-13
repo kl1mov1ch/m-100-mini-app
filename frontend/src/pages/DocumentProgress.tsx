@@ -1,19 +1,12 @@
 import { Button, Progress } from 'antd';
 import { Check, LoaderCircle, TriangleAlert } from 'lucide-react';
-import { useEffect, useState } from 'react';
 import type { DocumentJob } from './document-types';
 
 export const documentActive = (status: string) =>
 	['uploading', 'queued', 'extracting', 'ai_queued', 'analysing'].includes(status);
 
 export function DocumentProgress({ job, resume }: { job: DocumentJob; resume: () => void }) {
-	const [now, setNow] = useState(Date.now());
 	const active = documentActive(job.status);
-	useEffect(() => {
-		if (!active) return;
-		const timer = window.setInterval(() => setNow(Date.now()), 1000);
-		return () => clearInterval(timer);
-	}, [active]);
 	const progress = job.payload.progress;
 	const stage = progress?.stage;
 	const page = progress?.page;
@@ -42,7 +35,6 @@ export function DocumentProgress({ job, resume }: { job: DocumentJob; resume: ()
 										: job.status === 'failed'
 											? 'Обработка остановлена'
 											: 'Страницы прочитаны';
-	const seconds = Math.max(0, Math.floor((now - Date.parse(job.updated_at)) / 1000));
 	const size = job.payload.file_bytes
 		? `${(job.payload.file_bytes / 1048576).toLocaleString('ru', { maximumFractionDigits: 1 })} МБ`
 		: '';
@@ -95,15 +87,6 @@ export function DocumentProgress({ job, resume }: { job: DocumentJob; resume: ()
 					<strong>{job.payload.groups.length}</strong>
 				</div>
 			) : null}
-			{active && (
-				<small className="document-progress-live">
-					{seconds > 45
-						? 'Обновление задерживается — проверяем обработку'
-						: ['queued', 'ai_queued'].includes(job.status)
-							? 'Запуск автоматический. Статус обновляется.'
-							: 'Обрабатываем · обновление каждые 2 секунды'}
-				</small>
-			)}
 			{paused && job.payload.notice && (
 				<p className="document-progress-notice">{job.payload.notice}</p>
 			)}

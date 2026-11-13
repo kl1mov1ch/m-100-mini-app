@@ -124,6 +124,22 @@ def test_cache_reuses_extraction_but_rejects_changed_or_truncated_text(tmp_path)
     assert page_cache.cached_page(tmp_path, 1, "source-hash") is None
 
 
+def test_native_pdf_text_is_used_before_ocr(client, monkeypatch, tmp_path):
+    monkeypatch.setattr(repository.store, "ROOT", tmp_path)
+    job = client.post("/api/documents", files={"file": ("project.pdf", sample_pdf())}).json()
+    text = "Спецификация: воздуховод Ø200 мм, количество 12 м."
+    monkeypatch.setattr(worker, "text_page", lambda *args: {"text": text, "confidence": None})
+
+    def reject_ocr(*args):
+        raise AssertionError("Native text must not be rasterized")
+
+    monkeypatch.setattr(worker, "ocr_page", reject_ocr)
+    assert worker.run_once()
+    saved = client.get(f"/api/documents/{job['id']}").json()
+    assert saved["processed"] == 1 and saved["status"] == "ai_queued"
+    assert (repository.folder(job["id"]) / "page-1.txt").read_text(encoding="utf-8") == text
+
+
 def test_restart_recovers_interrupted_job_and_metadata(client, monkeypatch, tmp_path):
     monkeypatch.setattr(repository.store, "ROOT", tmp_path)
     job = repository.create("local-admin", "progress.pdf")
