@@ -166,6 +166,7 @@ export function DocumentResultsPage({
 	};
 	const choose = (row: DocumentGroup) => {
 		setEditing(row);
+		setSources(null);
 		setQuantity(row.quantity === null ? null : String(row.quantity));
 		setRate(row.rate === null ? null : String(row.rate));
 		setUnit(row.unit || 'м');
@@ -411,15 +412,19 @@ export function DocumentResultsPage({
 			<DocumentPublishPanel job={job} refresh={refresh} openObject={openObject} />
 			<Modal
 				className="document-work-sheet"
-				title={editing?.name}
+				title={sources ? 'Источники позиции' : editing?.name}
 				open={!!editing}
-				onCancel={() => !saving && setEditing(null)}
+				onCancel={() => (sources ? setSources(null) : !saving && setEditing(null))}
 				confirmLoading={saving}
 				destroyOnHidden
-				{...(readOnly ? { footer: <Button onClick={() => setEditing(null)}>Готово</Button> } : {})}
+				{...(sources
+					? { footer: <Button onClick={() => setSources(null)}>К позиции</Button> }
+					: readOnly
+						? { footer: <Button onClick={() => setEditing(null)}>Готово</Button> }
+						: {})}
 				okText="Подтвердить"
 				cancelText="Отмена"
-				onOk={() => void confirm()}
+				onOk={() => !sources && void confirm()}
 				okButtonProps={{
 					disabled:
 						quantity === null ||
@@ -427,7 +432,26 @@ export function DocumentResultsPage({
 						((editing?.issues.length || 0) > 0 && !resolution),
 				}}
 			>
-				{readOnly ? (
+				{sources ? (
+					<div className="document-source">
+						{sources.sources.map((source, index) => (
+							<section key={index}>
+								<strong>
+									Страница {source.page} · {source.original_quantity ?? 'Не определено'}{' '}
+									{source.original_unit}
+								</strong>
+								<blockquote>{source.quote}</blockquote>
+								{source.question && <p className="document-question">{source.question}</p>}
+								<SourcePreview jobId={job.id} page={source.page} highlights={source.highlights} />
+								{source.conversion_factor && source.conversion_factor !== '1' && (
+									<p>
+										Приведено к {source.unit}: {source.quantity}
+									</p>
+								)}
+							</section>
+						))}
+					</div>
+				) : readOnly ? (
 					<div className="document-review-form">
 						<dl className="position-totals">
 							<div>
@@ -617,31 +641,6 @@ export function DocumentResultsPage({
 							)}
 					</div>
 				)}
-			</Modal>
-			<Modal
-				title="Источники позиции"
-				open={!!sources}
-				onCancel={() => setSources(null)}
-				footer={<Button onClick={() => setSources(null)}>Понятно</Button>}
-			>
-				<div className="document-source">
-					{sources?.sources.map((source, index) => (
-						<section key={index}>
-							<strong>
-								Страница {source.page} · {source.original_quantity ?? 'Не определено'}{' '}
-								{source.original_unit}
-							</strong>
-							<blockquote>{source.quote}</blockquote>
-							{source.question && <p className="document-question">{source.question}</p>}
-							<SourcePreview jobId={job.id} page={source.page} highlights={source.highlights} />
-							{source.conversion_factor && source.conversion_factor !== '1' && (
-								<p>
-									Приведено к {source.unit}: {source.quantity}
-								</p>
-							)}
-						</section>
-					))}
-				</div>
 			</Modal>
 		</div>
 	);

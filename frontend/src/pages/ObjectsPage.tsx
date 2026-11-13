@@ -40,15 +40,6 @@ export function ObjectsPage({ workspace }: { workspace: WorkspaceView }) {
 			</div>
 			{isAdmin && <AdminOverview workspace={workspace} />}
 			{!isAdmin && session.projects.length > 0 && <QuickReportComposer workspace={workspace} />}
-			<div className="status-legend">
-				<span>
-					<i />
-					Не отправлен
-				</span>
-				<span className="sent">
-					<i />В Битрикс24
-				</span>
-			</div>
 			<div className="object-grid compact-list">
 				{projects.map((p) => (
 					<CompactRow

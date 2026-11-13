@@ -137,28 +137,6 @@
 .compact-row-sent .compact-row-aside > span {
 	color: var(--ios-success);
 }
-.status-legend {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 12px;
-	margin: 0 0 8px;
-	color: var(--ios-secondary);
-	font-size: 11px;
-}
-.status-legend span {
-	display: inline-flex;
-	align-items: center;
-	gap: 5px;
-}
-.status-legend i {
-	width: 3px;
-	height: 12px;
-	border-radius: 2px;
-	background: #d6a537;
-}
-.status-legend .sent i {
-	background: var(--ios-success);
-}
 .sync-status.synced,
 .sync-status.imported {
 	color: var(--ios-success);

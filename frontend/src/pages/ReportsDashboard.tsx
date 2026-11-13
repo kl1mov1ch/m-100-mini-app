@@ -237,15 +237,6 @@ export function ReportsPage({ workspace }: { workspace: WorkspaceView }) {
 				</section>
 			)}
 			<Spin spinning={loading}>
-				<div className="status-legend">
-					<span>
-						<i />
-						Не отправлен
-					</span>
-					<span className="sent">
-						<i />В Битрикс24
-					</span>
-				</div>
 				<div className="history-list compact-list">
 					{data?.rows.map((row) => (
 						<CompactWorkEditor
