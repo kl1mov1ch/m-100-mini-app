@@ -239,7 +239,7 @@ def process_docling(ident, payload, path, total):
         kind = classify_page(record.get("raw_text", record["text"]))
         if kind == "uncertain":
             kind = classify_page(record["text"])
-        digest = text_digest(record["text"])
+        digest = text_digest(record.get("raw_text", record["text"]))
         duplicate = (
             next(
                 (
