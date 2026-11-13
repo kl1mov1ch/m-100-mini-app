@@ -11,7 +11,7 @@ import httpx
 import openpyxl
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
 
 from .. import bitrix, postgres, profile_webhooks, store, tables, workspaces
@@ -244,6 +244,7 @@ def create_object(database, job, target, webhook, parsed):
         "journal_note": "",
     }
     if postgres.enabled():
+        database.execute(select(func.set_config("journal.project_id", project.id, True)))
         for row in parsed["positions"]:
             database.add(
                 Position(
