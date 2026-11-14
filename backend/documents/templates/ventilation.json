@@ -83,7 +83,8 @@
       "unit": "шт.",
       "pattern": "(?=.*реш[её]тк)(?=.*регулируем)",
       "aggregation": "sum",
-      "exclude_pattern": "шибер|шидер|защитн"
+      "exclude_pattern": "шибер|шидер|защитн",
+      "continuation_pattern": "^жалюзи\\b"
     },
     {
       "id": "fireproof",

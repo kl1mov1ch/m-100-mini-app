@@ -609,6 +609,52 @@ def analyse(ident, payload):
         update(ident, payload=payload)
         return await cancellable(matcher.complete(*args))
 
+    if payload.get("structured_extraction") and not payload.get("visual_complete"):
+        from .visual import resolve
+
+        def visual_report(count, total, current):
+            nonlocal payload
+            phase("verifying", 0, done=count, total=total)
+            payload = {
+                **payload,
+                "works": current,
+                "visual_done": count,
+                "visual_total": total,
+                "analysis_done": count,
+                "analysis_total": total,
+            }
+            update(ident, payload=payload)
+
+        try:
+            works = asyncio.run(
+                resolve(
+                    folder(ident),
+                    {**payload, "works": works},
+                    settings,
+                    budgeted_complete,
+                    visual_report,
+                )
+            )
+        except BudgetExhausted:
+            update(
+                ident,
+                status="needs_budget",
+                payload={
+                    **payload,
+                    "notice": "Проверенные ячейки сохранены. Продолжите обработку.",
+                },
+            )
+            return
+        type_total = len({work["name"] for work in works})
+        payload = {
+            **payload,
+            "works": works,
+            "visual_complete": True,
+            "analysis_done": 0,
+            "analysis_total": type_total,
+        }
+        update(ident, payload=payload)
+
     while (payload.get("engine") == "docling" or payload.get("regroup_only")) and any(
         not work.get("work_name") for work in works
     ):

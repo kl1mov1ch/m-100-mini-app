@@ -36,6 +36,11 @@ def table_works(path, payload):
             continue
         if context.get("component"):
             continue
+        if work.get("visual_verified") and work.get("visual_source_hash") == payload.get(
+            "file_hash"
+        ):
+            result.append(work)
+            continue
         work = {
             **work,
             "category": context.get("category") or work.get("category"),

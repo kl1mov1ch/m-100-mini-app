@@ -72,13 +72,23 @@ def version(value):
     )
 
 
-def public(job):
+def public(job, *, progress_only=False):
     result = {
         key: getattr(job, key) for key in ("id", "name", "status", "pages", "processed", "payload")
     } | {"created_at": version(job.created_at), "updated_at": version(job.updated_at)}
     result["payload"] = {
         key: value for key, value in job.payload.items() if not key.startswith("_")
     }
+    if (
+        progress_only
+        and job.payload.get("engine") == "docling"
+        and job.status in {"queued", "extracting", "ai_queued", "analysing"}
+    ):
+        result["payload"] = {
+            key: value
+            for key, value in result["payload"].items()
+            if key not in {"works", "controls", "groups", "page_results", "learned_examples"}
+        }
     return result
 
 

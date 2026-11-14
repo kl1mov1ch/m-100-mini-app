@@ -288,7 +288,7 @@ async def upload(request: Request, background: BackgroundTasks):
 @router.get("/{ident}")
 def get_job(ident: str, request: Request):
     with session() as database:
-        return public(owned(database, ident, request.state.user["telegram_id"]))
+        return public(owned(database, ident, request.state.user["telegram_id"]), progress_only=True)
 
 
 class RebuildInput(BaseModel):

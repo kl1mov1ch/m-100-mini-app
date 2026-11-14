@@ -267,8 +267,13 @@ def provider(settings=None):
 async def complete(system, text, settings=None):
     cfg = provider(settings)
     output_limit = min(8000, max(2500, int((settings or {}).get("response_token_limit", 2500))))
+    cache_text = (
+        text
+        if isinstance(text, str)
+        else json.dumps(text, ensure_ascii=False, separators=(",", ":"))
+    )
     cache_key = hashlib.sha256(
-        (cfg["model"] + cfg["base"] + str(output_limit) + system + text).encode()
+        (cfg["model"] + cfg["base"] + str(output_limit) + system + cache_text).encode()
     ).hexdigest()
     cached = CACHE.get(cache_key)
     if cached and time.monotonic() - cached[0] < 300:

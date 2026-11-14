@@ -401,22 +401,24 @@ export function DocumentsPage({ workspace }: { workspace: WorkspaceView }) {
 						selected.status,
 					)) && <DocumentProgress job={selected} resume={() => void resume()} />}
 
-			{selected && !!selected.payload.groups?.length && (
-				<DocumentResultsPage
-					key={selected.id}
-					embedded
-					job={selected}
-					back={() => setSelected(null)}
-					refresh={(job) => {
-						setSelected(job);
-						void load();
-					}}
-					openObject={async (id) => {
-						await workspace.loadSession();
-						workspace.selectObject(id);
-					}}
-				/>
-			)}
+			{selected &&
+				['needs_review', 'ready', 'draft', 'published'].includes(selected.status) &&
+				!!selected.payload.groups?.length && (
+					<DocumentResultsPage
+						key={selected.id}
+						embedded
+						job={selected}
+						back={() => setSelected(null)}
+						refresh={(job) => {
+							setSelected(job);
+							void load();
+						}}
+						openObject={async (id) => {
+							await workspace.loadSession();
+							workspace.selectObject(id);
+						}}
+					/>
+				)}
 		</div>
 	);
 }

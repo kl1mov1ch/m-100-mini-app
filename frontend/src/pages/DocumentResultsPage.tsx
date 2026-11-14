@@ -374,7 +374,7 @@ export function DocumentResultsPage({
 					icon={<Download size={16} />}
 					onClick={() => void exportFile(['ready', 'published'].includes(job.status))}
 				>
-					{['ready', 'published'].includes(job.status) ? 'Скачать смету' : 'Скачать черновик сметы'}
+					Скачать Excel
 				</Button>
 			</div>
 			<small className="document-highlight-legend">
@@ -413,6 +413,9 @@ export function DocumentResultsPage({
 									{source.source_row != null && ` · строка ${source.source_row}`}
 								</strong>
 								<blockquote>{source.quote}</blockquote>
+								{source.visual_verified && (
+									<small className="page-context">Сверено с изображением PDF</small>
+								)}
 								<small className="page-context">
 									{source.item_code ? source.item_code + ' · ' : ''}
 									{source.name}

@@ -14,33 +14,35 @@ export function DocumentProgress({ job, resume }: { job: DocumentJob; resume: ()
 		job.status,
 	);
 	const title =
-		stage === 'grouping' && active
-			? 'Объединяем одинаковые работы'
-			: stage === 'converting' && active
-				? `Преобразуем в текст · страница ${page || '…'}`
-				: stage === 'indexing' && active
-					? 'Ищем ведомости и спецификации'
-					: job.status === 'uploading'
-						? 'Получаем файл'
-						: job.status === 'queued'
-							? job.processed
-								? 'Продолжаем чтение'
-								: 'Файл готов к обработке'
-							: job.status === 'ai_queued'
-								? 'Передаём страницы ИИ'
-								: job.status === 'analysing'
-									? `ИИ обрабатывает страницу ${page || '…'}`
-									: job.status === 'extracting'
-										? `${stage === 'rendering' ? 'Готовим' : stage === 'ocr' ? 'Распознаём' : stage === 'table_ocr' ? 'Читаем таблицы на' : 'Читаем'} страницу ${page || job.processed + 1}`
-										: job.status === 'needs_ai'
-											? 'Нужно подключить ИИ'
-											: job.status === 'needs_budget'
-												? 'Достигнут лимит обработки'
-												: job.status === 'needs_ocr'
-													? 'Нужно распознавание текста'
-													: job.status === 'failed'
-														? 'Обработка остановлена'
-														: 'Страницы прочитаны';
+		stage === 'verifying' && active
+			? 'ИИ сверяет ячейки с PDF'
+			: stage === 'grouping' && active
+				? 'Объединяем одинаковые работы'
+				: stage === 'converting' && active
+					? `Преобразуем в текст · страница ${page || '…'}`
+					: stage === 'indexing' && active
+						? 'Ищем ведомости и спецификации'
+						: job.status === 'uploading'
+							? 'Получаем файл'
+							: job.status === 'queued'
+								? job.processed
+									? 'Продолжаем чтение'
+									: 'Файл готов к обработке'
+								: job.status === 'ai_queued'
+									? 'Передаём страницы ИИ'
+									: job.status === 'analysing'
+										? `ИИ обрабатывает страницу ${page || '…'}`
+										: job.status === 'extracting'
+											? `${stage === 'rendering' ? 'Готовим' : stage === 'ocr' ? 'Распознаём' : stage === 'table_ocr' ? 'Читаем таблицы на' : 'Читаем'} страницу ${page || job.processed + 1}`
+											: job.status === 'needs_ai'
+												? 'Нужно подключить ИИ'
+												: job.status === 'needs_budget'
+													? 'Достигнут лимит обработки'
+													: job.status === 'needs_ocr'
+														? 'Нужно распознавание текста'
+														: job.status === 'failed'
+															? 'Обработка остановлена'
+															: 'Страницы прочитаны';
 	const size = job.payload.file_bytes
 		? `${(job.payload.file_bytes / 1048576).toLocaleString('ru', { maximumFractionDigits: 1 })} МБ`
 		: '';
@@ -67,40 +69,50 @@ export function DocumentProgress({ job, resume }: { job: DocumentJob; resume: ()
 			</div>
 			<div className="document-progress-counts">
 				<span>
-					{stage === 'converting'
-						? 'Преобразовано страниц'
-						: stage === 'indexing'
-							? 'Проверено страниц'
-							: job.payload.selection_complete
-								? 'Обработано страниц файла'
-								: 'Прочитано страниц'}
+					{stage === 'verifying'
+						? 'Проверено строк'
+						: stage === 'converting'
+							? 'Преобразовано страниц'
+							: stage === 'indexing'
+								? 'Проверено страниц'
+								: job.payload.selection_complete
+									? 'Обработано страниц файла'
+									: 'Прочитано страниц'}
 				</span>
 				<strong>
-					{stage === 'converting'
-						? job.payload.conversion_done || 0
-						: stage === 'indexing'
-							? job.payload.index_done || 0
-							: job.processed}{' '}
-					/ {job.pages || '…'}
+					{stage === 'verifying'
+						? done
+						: stage === 'converting'
+							? job.payload.conversion_done || 0
+							: stage === 'indexing'
+								? job.payload.index_done || 0
+								: job.processed}{' '}
+					/ {(stage === 'verifying' ? total : job.pages) || '…'}
 				</strong>
 			</div>
 			{job.pages > 0 && (
 				<Progress
 					size="small"
 					percent={
-						stage === 'converting'
-							? Math.round(((job.payload.conversion_done || 0) / Math.max(1, job.pages)) * 100)
-							: stage === 'indexing'
-								? Math.round(((job.payload.index_done || 0) / job.pages) * 100)
-								: percent
+						stage === 'verifying'
+							? Math.round((done / Math.max(1, total)) * 100)
+							: stage === 'converting'
+								? Math.round(((job.payload.conversion_done || 0) / Math.max(1, job.pages)) * 100)
+								: stage === 'indexing'
+									? Math.round(((job.payload.index_done || 0) / job.pages) * 100)
+									: percent
 					}
 					showInfo={false}
-					status={active && job.processed < job.pages ? 'active' : 'normal'}
+					status={
+						active && (stage === 'verifying' ? done < total : job.processed < job.pages)
+							? 'active'
+							: 'normal'
+					}
 				/>
 			)}
-			{(total > 0 || ['ai_queued', 'analysing'].includes(job.status)) && (
+			{stage !== 'verifying' && (total > 0 || ['ai_queued', 'analysing'].includes(job.status)) && (
 				<div className="document-progress-counts">
-					<span>Проверено ИИ фрагментов</span>
+					<span>Обработано видов работ</span>
 					<strong>
 						{done} / {total || '…'}
 					</strong>
@@ -112,7 +124,7 @@ export function DocumentProgress({ job, resume }: { job: DocumentJob; resume: ()
 					разбираются
 				</small>
 			)}
-			{job.payload.groups?.length ? (
+			{!active && job.payload.groups?.length ? (
 				<div className="document-progress-counts">
 					<span>Найдено позиций</span>
 					<strong>{job.payload.groups.length}</strong>

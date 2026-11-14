@@ -9,7 +9,15 @@ ROOT = Path(__file__).parent
 
 
 def load_prompt(name):
-    if name not in {"extract", "verify", "families", "template"}:
+    if name not in {
+        "extract",
+        "verify",
+        "families",
+        "template",
+        "visual",
+        "visual_verify",
+        "visual_dimensions",
+    }:
         raise ValueError("Unknown document prompt")
     return (ROOT / "prompts" / (name + ".md")).read_text(encoding="utf-8")
 

@@ -5,7 +5,7 @@ import json
 import re
 
 from .intent import requested_categories
-from .parsed_tables import ROWS, estimate_table
+from .parsed_tables import CELLS, ROWS, estimate_table
 from .table_context import document_rows
 from .work_catalogue import ventilation_type
 
@@ -50,6 +50,7 @@ def candidates(path, payload):
             not name
             or context.get("component")
             or context.get("ordinal")
+            or context.get("structural_note")
             or (not cell and not missing_primary)
         ):
             continue
@@ -63,7 +64,18 @@ def candidates(path, payload):
             continue
         start = row.start(2)
         layout = table["layout"]
-        quote = row[2].strip()
+        columns = {
+            context.get("name_column"),
+            context.get("unit_column"),
+            context.get("surface_column")
+            if context.get("role") == "insulation_schedule"
+            else context.get("quantity_column"),
+        }
+        quote = " | ".join(
+            cell[0].strip()
+            for cell in CELLS.finditer(row[2])
+            if f"C{cell[1]}–C{cell[2]}" in columns
+        )
         work = {
             "name": name,
             "category": category,
@@ -89,6 +101,8 @@ def candidates(path, payload):
             "dimensions": records[page].get("dimensions", {}).get(str(number))
             or records[page].get("dimensions", {}).get(number),
             "dimension_text": context.get("dimension_text", ""),
+            "name_locations": context.get("name_locations", ()),
+            "source_description": context.get("source_description", name),
             "section": context.get("section", ""),
             "subsection": "",
             "quantity_basis": "surface_schedule"
@@ -102,7 +116,9 @@ def candidates(path, payload):
                     "height": (line["bottom"] - line["top"]) / layout["height"] * 100,
                 }
                 for line in layout.get("lines", [])
-                if line["end"] > start and line["start"] < row.end()
+                if line["end"] > start
+                and line["start"] < row.end()
+                and table["text"][line["start"] : line["end"]].split("=", 1)[0] in columns
             ],
         }
         standard = ventilation_type(work)

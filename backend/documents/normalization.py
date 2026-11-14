@@ -103,7 +103,10 @@ def normalise(work):
         measure = "шт."
     geometry_factor = None
     if standard and standard[0] == "duct" and measure == "м":
-        geometry_factor = perimeter(work.get("dimensions"), work.get("dimension_text", ""))
+        geometry_factor = perimeter(
+            work.get("dimensions"),
+            "" if work.get("visual_dimensions_required") else work.get("dimension_text", ""),
+        )
         measure = "м²"
         if geometry_factor is None:
             quantity = None

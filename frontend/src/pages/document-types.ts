@@ -15,6 +15,7 @@ export type DocumentSource = {
 	original_unit: string | null;
 	conversion_factor: string | null;
 	geometry_factor?: string | null;
+	visual_verified?: boolean;
 	highlights?: { left: number; top: number; width: number; height: number }[];
 };
 export type DocumentGroup = {
