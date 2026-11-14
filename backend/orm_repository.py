@@ -33,6 +33,20 @@ def positions(database):
     return result
 
 
+def work_history(database, through):
+    positions = database.session.execute(
+        select(Position.id, Position.name, Position.unit, Position.planned, Position.baseline, Position.rate)
+        .where(Position.project_id == database.project)
+        .order_by(Position.source_row)
+    ).mappings().all()
+    entries = database.session.execute(
+        select(Entry.item_id, Entry.date, Entry.quantity)
+        .where(Entry.project_id == database.project, Entry.date <= through)
+        .order_by(Entry.date)
+    ).mappings()
+    return positions, entries
+
+
 def insert_position(database, values):
     fields = ("id", "name", "section", "unit", "planned", "rate", "source_row")
     item = Position(

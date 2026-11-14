@@ -1,17 +1,15 @@
-import io
 import math
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 
 from fastapi import APIRouter, HTTPException, Request
-from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
 from . import store, workspaces
-from .analytics_workbook import add_dashboard, report_filename
+from .analytics_workbook import export_workbook, report_filename
 from .report_downloads import report_export
-from .reporting import get_report, history
+from .reporting import history
 
 router = APIRouter()
 
@@ -137,123 +135,6 @@ def style_sheet(sheet, header, widths, money_columns=()):
     sheet.page_setup.fitToWidth = 1
     sheet.page_setup.fitToHeight = 0
     sheet.sheet_properties.pageSetUpPr.fitToPage = True
-
-
-def export_workbook(user, data):
-    workbook = Workbook()
-    sheet = workbook.active
-    sheet.title = "Общий отчёт"
-    sheet.merge_cells("A1:H1")
-    sheet["A1"] = "ЖУРНАЛ РАБОТ · СВОДНЫЙ ОТЧЁТ"
-    sheet["A1"].font = Font(size=19, bold=True, color="1D4ED8")
-    sheet.row_dimensions[1].height = 38
-    sheet.append(
-        [
-            "Общая выработка, BYN",
-            "Отчётов",
-            "Работ",
-            "Объектов",
-            "Дней",
-            "Человеко-дней",
-            "Средняя доля, BYN",
-            "Ожидают Битрикс",
-        ]
-    )
-    summary = data["summary"]
-    sheet.append(
-        [
-            summary[key]
-            for key in (
-                "amount",
-                "reports",
-                "positions",
-                "projects",
-                "days",
-                "worker_days",
-                "per_person",
-                "pending",
-            )
-        ]
-    )
-    for cell in sheet[2]:
-        cell.fill = PatternFill("solid", fgColor="DBEAFE")
-        cell.alignment = Alignment(wrap_text=True, vertical="center")
-        cell.font = Font(bold=True, color="1E40AF")
-    sheet.row_dimensions[2].height = 36
-    for column in (1, 7):
-        sheet.cell(3, column).number_format = '#,##0.00 "BYN"'
-    sheet.append([])
-    sheet.append(
-        [
-            "Дата",
-            "Объект",
-            "Мастер",
-            "Работ",
-            "Работников",
-            "Сумма, BYN",
-            "На человека, BYN",
-            "Состояние",
-        ]
-    )
-    statuses = {
-        "synced": "Отправлен в Битрикс",
-        "pending": "Ожидает Битрикс",
-        "error": "Ошибка отправки",
-        "imported": "Из таблицы",
-        "local": "Сохранён",
-    }
-    details = workbook.create_sheet("Выполненные работы")
-    details.append(
-        ["Дата", "Объект", "Мастер", "Работа", "Ед.", "Объём", "Расценка, BYN", "Стоимость, BYN"]
-    )
-    projects = {project["id"]: project for project in workspaces.visible(user)}
-    for row in data["rows"]:
-        sheet.append(
-            [
-                datetime_label(row["date"]),
-                row["project_name"],
-                row["owner_name"],
-                row["positions"],
-                row["crew_count"],
-                row["amount"],
-                row["per_person"] if row["crew_count"] else None,
-                statuses.get(row["sync_status"], row["sync_status"]),
-            ]
-        )
-        with store.connect(projects[row["project_id"]]["db_path"]) as database:
-            report = get_report(database, row["date"])
-            catalog = {position["id"]: position for position in store.positions(database)}
-            for line in report["lines"]:
-                position = catalog[line["item_id"]]
-                cost = (Decimal(str(line["quantity"])) * Decimal(str(position["rate"]))).quantize(
-                    Decimal(".01"), rounding=ROUND_HALF_UP
-                )
-                details.append(
-                    [
-                        datetime_label(row["date"]),
-                        row["project_name"],
-                        row["owner_name"],
-                        position["name"],
-                        position["unit"],
-                        line["quantity"],
-                        position["rate"],
-                        float(cost),
-                    ]
-                )
-    style_sheet(sheet, 5, [19, 36, 26, 12, 15, 21, 24, 27], (6, 7))
-    style_sheet(details, 1, [17, 30, 24, 65, 9, 15, 21, 23], (7, 8))
-    progress = add_dashboard(workbook, user, data)
-    style_sheet(progress, 1, [36, 21, 24, 21, 17, 22, 23, 18], (2, 3, 4, 6))
-    for row in range(2, progress.max_row + 1):
-        progress.cell(row, 5).number_format = "0.0%"
-        progress.cell(row, 8).number_format = "dd.mm.yyyy"
-    output = io.BytesIO()
-    workbook.save(output)
-    return output.getvalue()
-
-
-def datetime_label(value):
-    return date.fromisoformat(value).strftime("%d.%m.%Y")
 
 
 @router.get("/api/analytics/export.xlsx")

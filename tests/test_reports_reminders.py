@@ -1,5 +1,6 @@
 import io
 import uuid
+from datetime import date, timedelta
 from urllib.parse import parse_qs
 
 import httpx
@@ -97,8 +98,8 @@ def test_profile_updates_only_current_user(client):
 def test_analytics_filters_isolation_totals_and_styled_export(client):
     grant(client, "1001")
     grant(client, "1002")
-    first = create(client, "1001")
-    second = create(client, "1002")
+    first = create(client, "1001", name="Объект А")
+    second = create(client, "1002", name="Объект Б")
     for object_id, user, quantity in ((first, "1001", 10), (second, "1002", 20)):
         response = client.post(
             "/api/reports",
@@ -111,6 +112,15 @@ def test_analytics_filters_isolation_totals_and_styled_export(client):
             headers={"X-Preview-User": user, "X-Project-Id": object_id},
         )
         assert response.status_code == 200
+    first_day = date.fromisoformat(today()) - timedelta(days=1)
+    first_project = workspaces.project(workspaces.user("1001"), first)
+    with store.connect(first_project["db_path"]) as database:
+        database.execute("UPDATE positions SET planned=12,baseline=0 WHERE id=?", ("excel-17",))
+        database.execute("DELETE FROM entries WHERE item_id=? AND date<?", ("excel-17", today()))
+        database.execute(
+            "INSERT INTO entries(item_id,date,quantity) VALUES(?,?,?)",
+            ("excel-17", first_day.isoformat(), 3),
+        )
     query = f"?start={today()}&end={today()}"
     response = client.get("/api/analytics" + query).json()
     assert response["summary"]["amount"] == 300
@@ -125,15 +135,32 @@ def test_analytics_filters_isolation_totals_and_styled_export(client):
     )
     exported = client.get("/api/analytics/export.xlsx" + query)
     workbook = openpyxl.load_workbook(io.BytesIO(exported.content))
-    assert workbook.sheetnames[0] == "Сводка"
-    assert len(workbook["Сводка"]._charts) == 2
-    assert workbook["Сводка"]["A6"].value == 300
-    assert workbook["Прогресс объектов"].max_row == 4
-    assert all(0 <= workbook["Прогресс объектов"].cell(row, 5).value <= 1 for row in (2, 3))
-    assert workbook["Общий отчёт"]["A3"].value == 300
-    assert workbook["Общий отчёт"].freeze_panes == "A6"
-    assert workbook["Выполненные работы"]["D2"].alignment.wrap_text is True
-    assert workbook["Общий отчёт"]["A5"].fill.fgColor.rgb.endswith("2563EB")
+    assert workbook.sheetnames == ["Работы по дням", "Графики"]
+    sheet = workbook["Работы по дням"]
+    assert sheet.freeze_panes == "C5"
+    assert sheet["G4"].value.date().isoformat() == today()
+    assert sheet["E5"].value == sheet["G5"].value == 300
+    assert sheet["E6"].value == sheet["G6"].value == 10
+    actual = next(row for row in sheet if row[6].value == 10 and row[3].value == 12)
+    assert actual[4].value == 10 and actual[5].value == 1
+    assert actual[5].fill.fgColor.rgb.endswith("FCE2E3")
+    assert actual[6].font.color.rgb.endswith("9F2028")
+    charts = workbook["Графики"]
+    assert len(charts._charts) == 3
+    assert len({chart.anchor._from.row for chart in charts._charts}) == 3
+    assert all(chart.anchor.ext.cx >= 25 * 360_000 for chart in charts._charts)
+    assert charts["AB2"].value == 300 and charts["AC2"].value == 10
+    assert 0 <= charts["AD2"].value <= 1
+    wider = client.get(f"/api/analytics/export.xlsx?start={first_day}&end={today()}")
+    wider_book = openpyxl.load_workbook(io.BytesIO(wider.content))
+    assert wider_book.active["G4"].value.date() == first_day
+    assert wider_book.active["H4"].value.date().isoformat() == today()
+    assert wider_book.active["G6"].value is None
+    earlier_work = next(
+        row for row in wider_book.active if row[6].value == 3 and row[7].value == 10
+    )
+    assert not earlier_work[6].fill.fgColor.rgb.endswith("FCE2E3")
+    assert earlier_work[7].fill.fgColor.rgb.endswith("FCE2E3")
     headers = {"X-Preview-User": "1001"}
     ticket = client.get(
         "/api/analytics/export.xlsx" + query + "&prepare=true", headers=headers
@@ -146,7 +173,9 @@ def test_analytics_filters_isolation_totals_and_styled_export(client):
     assert "filename*=UTF-8''" in downloaded.headers["content-disposition"]
     assert downloaded.headers["access-control-allow-origin"] == "https://web.telegram.org"
     assert downloaded.headers["cache-control"] == "private, no-store"
-    assert openpyxl.load_workbook(io.BytesIO(downloaded.content))["Общий отчёт"]["A3"].value == 100
+    owned_sheet = openpyxl.load_workbook(io.BytesIO(downloaded.content)).active
+    assert owned_sheet["G6"].value == 100
+    assert "Объект Б" not in {row[0].value for row in owned_sheet}
     assert client.get(ticket["url"].replace(ticket["filename"], "other.xlsx")).status_code == 404
 
 

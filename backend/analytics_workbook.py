@@ -1,14 +1,27 @@
+import io
 import re
 from collections import defaultdict
 from datetime import date
 from decimal import Decimal
+from math import ceil
 
+from openpyxl import Workbook
 from openpyxl.chart import BarChart, LineChart, Reference
-from openpyxl.formatting.rule import DataBarRule
-from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.chart.axis import ChartLines, DateAxis
+from openpyxl.chart.data_source import NumData, NumVal
+from openpyxl.chart.shapes import GraphicalProperties
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.utils import get_column_letter
+from openpyxl.utils.datetime import to_excel
 
-from . import store, workspaces
+from . import orm_repository, postgres, store, workspaces
 from .clock import today
+
+NAVY = "21344A"
+BLUE = "266BD3"
+RED = "9F2028"
+MONEY = '#,##0.00 "BYN"'
+FIRST_DAY = 7
 
 
 def report_filename(data, project_name=None, start=None, end=None):
@@ -28,224 +41,312 @@ def report_filename(data, project_name=None, start=None, end=None):
     return f"Отчёт_{name}_{period}.xlsx"
 
 
-def add_dashboard(workbook, user, data):
-    rows = data["rows"]
-    visible = {project["id"]: project for project in workspaces.visible(user)}
-    selected = sorted(data.get("project_ids", {row["project_id"] for row in rows}))
-    days = sorted({row["date"] for row in rows})
-    final_day = data.get("period_end") or (days[-1] if days else today())
-    daily_amount = defaultdict(Decimal)
-    daily_workers = defaultdict(int)
-    for row in rows:
-        daily_amount[row["date"]] += Decimal(str(row["amount"]))
-        daily_workers[row["date"]] += row["crew_count"] or 0
-    projects = []
-    for ident in selected:
-        with store.connect(visible[ident]["db_path"]) as database:
-            positions = store.positions(database)
-            entries = [
-                dict(row) for row in database.execute("SELECT item_id,date,quantity FROM entries")
-            ]
-        projects.append((visible[ident], positions, entries))
-    planned_total = sum(
-        max(0, float(p["planned"])) * max(0, float(p["rate"]))
-        for _, positions, _ in projects
-        for p in positions
-    )
+def measure(value):
+    # Keep the journal's eight decimal places when reading older SQLite floats.
+    return Decimal(str(value or 0)).quantize(Decimal("0.00000001"))
 
-    def progress_on(day):
-        credited = 0
-        for _, positions, entries in projects:
-            completed = defaultdict(float)
-            for entry in entries:
-                if entry["date"] <= day:
-                    completed[entry["item_id"]] += float(entry["quantity"])
-            for position in positions:
-                quantity = float(position.get("baseline", 0)) + completed[position["id"]]
-                credited += min(max(0, quantity), max(0, float(position["planned"]))) * max(
-                    0, float(position["rate"])
+
+def baselines(user, project_ids, final_day):
+    through = date.fromisoformat(final_day)
+    for project in workspaces.visible(user):
+        if project["id"] not in project_ids:
+            continue
+        with store.connect(project["db_path"]) as database:
+            if postgres.enabled():
+                positions, recorded = orm_repository.work_history(database, through)
+            else:
+                positions = store.positions(database)
+                recorded = database.execute(
+                    "SELECT item_id,date,quantity FROM entries WHERE date<=? ORDER BY date",
+                    (final_day,),
                 )
-        return credited
+            entries = defaultdict(dict)
+            for item in recorded:
+                entries[item["item_id"]][str(item["date"])] = measure(item["quantity"])
+        yield project, positions, entries
 
-    credited = progress_on(final_day)
-    sheet = workbook.create_sheet("Сводка", 0)
-    sheet.sheet_view.showGridLines = False
-    for column in "ABCDEFGH":
-        sheet.column_dimensions[column].width = 15
-    sheet.merge_cells("A1:H1")
-    sheet["A1"] = "М100 · ОТЧЁТ ПО РАБОТАМ"
-    sheet["A1"].font = Font(name="Calibri", size=20, bold=True, color="17365D")
-    sheet.row_dimensions[1].height = 36
-    sheet.merge_cells("A2:H2")
-    sheet["A2"] = (
-        " · ".join(sorted({project["name"] for project, _, _ in projects}))
-        or "Нет отчётов за выбранный период"
+
+def band(sheet, row, fill, *, color=NAVY, bold=False):
+    for cell in row:
+        cell.font = Font(name="Calibri", size=11, color=color, bold=bold)
+        cell.fill = PatternFill("solid", fgColor=fill)
+        cell.alignment = Alignment(
+            vertical="center",
+            horizontal="left" if cell.column <= 2 else "right",
+            wrap_text=cell.column <= 2 or row[0].row == 4,
+        )
+        cell.border = Border(bottom=Side(style="hair", color="D6E2F0"))
+        if isinstance(cell.value, str):
+            cell.data_type = "s"
+
+
+def mark_overrun(cell):
+    cell.fill = PatternFill("solid", fgColor="FCE2E3")
+    cell.font = Font(name="Calibri", size=11, color=RED, bold=True)
+
+
+def write_totals(sheet, reports, days, *, combined=False):
+    amounts = defaultdict(Decimal)
+    crews = defaultdict(int)
+    for report in reports:
+        day = report["date"]
+        amounts[day] += Decimal(str(report["amount"]))
+        if report["positions"] and report["crew_count"]:
+            crews[day] += report["crew_count"]
+    sheet.append(
+        [None, "Выработка", "BYN", None, float(sum(amounts.values())), None]
+        + [float(amounts[day]) if day in amounts else None for day in days]
     )
-    sheet["A2"].data_type = "s"
-    sheet["A2"].alignment = Alignment(wrap_text=True, vertical="center")
-    sheet.row_dimensions[2].height = 32
-    sheet.merge_cells("A3:H3")
-    sheet["A3"] = (
-        f"Период: {days[0] if days else '—'} — {final_day} · Валюта: белорусский рубль (Br)"
+    for cell in sheet[sheet.max_row][4:]:
+        cell.number_format = MONEY
+    band(sheet, sheet[sheet.max_row], "E9F1FA", bold=True)
+    sheet.append(
+        [None, "Человек за день", "чел.", None, sum(crews.values()) or None, None]
+        + [crews.get(day) for day in days]
     )
-    metrics = [
-        ("A", "B", "Выработка за период", data["summary"]["amount"], '#,##0.00 "Br"'),
-        ("C", "D", "Смета объектов", planned_total, '#,##0.00 "Br"'),
-        (
-            "E",
-            "F",
-            "Прогресс по смете",
-            credited / planned_total if planned_total else None,
-            "0.0%",
-        ),
-        ("G", "H", "Человеко-дней", data["summary"]["worker_days"], "0"),
-    ]
-    for left, right, label, value, number_format in metrics:
-        sheet.merge_cells(f"{left}5:{right}5")
-        sheet.merge_cells(f"{left}6:{right}6")
-        sheet[f"{left}5"] = label
-        sheet[f"{left}6"] = value if value is not None else "Нет расценок"
-        for row in (5, 6):
-            cell = sheet[f"{left}{row}"]
-            cell.fill = PatternFill("solid", fgColor="EAF1FA")
-            cell.font = Font(
-                name="Calibri", size=12 if row == 5 else 19, bold=row == 6, color="17365D"
-            )
-            cell.alignment = Alignment(vertical="center", wrap_text=True)
-            cell.number_format = number_format
-    sheet.row_dimensions[5].height = 28
-    sheet.row_dimensions[6].height = 34
-    sheet.merge_cells("A8:H8")
-    sheet["A8"] = (
-        "Прогресс = стоимость выполненного в пределах сметы / стоимость сметы. Это не оценка загрузки бригады."
-    )
-    sheet["A8"].font = Font(size=10, color="617086")
-    sheet["A8"].alignment = Alignment(wrap_text=True)
-    sheet.row_dimensions[8].height = 30
-    sheet.merge_cells("A9:H9")
-    sheet["A9"] = (
-        "Учтены начальные объёмы из таблицы. Перерасход показан отдельно. Позиции без расценки не входят в процент."
-    )
-    sheet["A9"].font = Font(size=10, color="617086")
-    sheet["A9"].alignment = Alignment(wrap_text=True)
-    sheet.row_dimensions[9].height = 30
-    sheet.append([])
-    header = 29
-    for col, value in enumerate(
+    band(sheet, sheet[sheet.max_row], "E9F1FA", bold=True)
+    if combined:
+        sheet.cell(sheet.max_row - 1, 1, "Все объекты")
+        sheet.cell(sheet.max_row, 1, "Все объекты")
+    return amounts, crews
+
+
+def write_position(sheet, position, entries, days, credit_changes):
+    plan = max(Decimal(0), measure(position["planned"]))
+    rate = max(Decimal(0), Decimal(str(position["rate"] or 0)))
+    actual = measure(position.get("baseline"))
+    previous_credit = min(max(actual, 0), plan) * rate
+    initial_credit = previous_credit
+    red_days = set()
+    for day, quantity in entries.items():
+        actual += quantity
+        credit = min(max(actual, 0), plan) * rate
+        credit_changes[day] += credit - previous_credit
+        previous_credit = credit
+        if quantity > 0 and actual > plan:
+            red_days.add(day)
+
+    period_quantities = [entries.get(day) for day in days]
+    if not any(period_quantities):
+        return plan * rate, initial_credit
+    excess = max(Decimal(0), actual - plan)
+    sheet.append(
         [
-            "Дата",
-            "За день, Br",
-            "Накоплено за период, Br",
-            "Работников",
-            "Прогресс по смете",
-            "Выполнено по смете, Br",
-        ],
-        1,
-    ):
-        sheet.cell(header, col, value)
-    cumulative = Decimal(0)
-    for row_number, day in enumerate(days, header + 1):
-        cumulative += daily_amount[day]
-        completed = progress_on(day)
-        for col, value in enumerate(
-            [
-                date.fromisoformat(day),
-                float(daily_amount[day]),
-                float(cumulative),
-                daily_workers[day] or None,
-                completed / planned_total if planned_total else None,
-                completed,
+            None,
+            position["name"],
+            position["unit"],
+            float(plan),
+            float(sum(q for q in period_quantities if q is not None)),
+            float(excess) if excess else None,
+        ]
+        + [float(q) if q is not None else None for q in period_quantities]
+    )
+    row = sheet[sheet.max_row]
+    band(sheet, row, "F4F8FC" if sheet.max_row % 2 == 0 else "FFFFFF")
+    sheet.row_dimensions[sheet.max_row].height = min(
+        66, 17 * ceil(max(1, len(position["name"])) / 54)
+    )
+    for cell in row[3:]:
+        if cell.value is not None:
+            scale = max(0, -measure(cell.value).normalize().as_tuple().exponent)
+            cell.number_format = "#,##0" + ("." + "0" * scale if scale else "")
+    if excess:
+        mark_overrun(row[5])
+    for column, day in enumerate(days, FIRST_DAY):
+        if day in red_days:
+            mark_overrun(row[column - 1])
+    return plan * rate, initial_credit
+
+
+def chart_sheet(book, days, amounts, crews, plan, initial_credit, credit_changes):
+    sheet = book.create_sheet("Графики")
+    sheet.sheet_view.showGridLines = False
+    sheet.merge_cells("A1:Q1")
+    sheet["A1"] = "Выработка, бригада и прогресс"
+    sheet["A1"].font = Font(name="Calibri", size=20, bold=True, color=NAVY)
+    sheet.row_dimensions[1].height = 34
+    if not days:
+        sheet["A3"] = "За выбранный период отчётов нет."
+        return
+
+    data_column = 27
+    for col, label in enumerate(("Дата", "Выработка", "Человек", "Прогресс"), data_column):
+        sheet.cell(1, col, label)
+        sheet.column_dimensions[get_column_letter(col)].hidden = True
+    changes = iter(sorted(credit_changes.items()))
+    change = next(changes, None)
+    credited = initial_credit
+    for row, day in enumerate(days, 2):
+        while change and change[0] <= day:
+            credited += change[1]
+            change = next(changes, None)
+        sheet.cell(row, data_column, date.fromisoformat(day)).number_format = "dd.mm.yy"
+        sheet.cell(row, data_column + 1, float(amounts.get(day, 0))).number_format = MONEY
+        sheet.cell(row, data_column + 2, crews.get(day))
+        if plan:
+            sheet.cell(row, data_column + 3, float(credited / plan)).number_format = "0.0%"
+
+    for col in range(1, 25):
+        sheet.column_dimensions[get_column_letter(col)].width = 10
+    span = (date.fromisoformat(days[-1]) - date.fromisoformat(days[0])).days
+    definitions = [
+        (BarChart, 1, "Выработка по дням", "BYN", BLUE, "#,##0", "A3"),
+        (BarChart, 2, "Людей за день по заполненным отчётам", "Человек", "188A72", "0", "A26"),
+    ]
+    if plan:
+        definitions.append(
+            (
+                LineChart,
+                3,
+                "Накопленный прогресс в пределах сметы",
+                "Доля сметы",
+                "3E59A9",
+                "0%",
+                "A49",
+            )
+        )
+    for chart_type, offset, title, label, color, fmt, anchor in definitions:
+        chart = chart_type()
+        chart.title = title
+        chart.title.overlay = False
+        chart.style = 10
+        chart.width = 30
+        chart.height = 11.5
+        chart.legend = None
+        chart.display_blanks = "gap"
+        chart.visible_cells_only = False
+        chart.y_axis.title = label
+        chart.y_axis.title.overlay = False
+        chart.y_axis.axPos = "l"
+        chart.y_axis.delete = False
+        chart.y_axis.tickLblPos = "nextTo"
+        chart.y_axis.numFmt = fmt
+        chart.y_axis.majorGridlines = ChartLines(spPr=GraphicalProperties())
+        chart.y_axis.majorGridlines.spPr.line.solidFill = "D6E2F0"
+        chart.y_axis.scaling.min = 0
+        if chart_type is BarChart:
+            chart.type = "col"
+            chart.gapWidth = 90
+        else:
+            chart.y_axis.scaling.max = 1
+            chart.y_axis.majorUnit = 0.2
+        chart.x_axis = DateAxis(axId=500, crossAx=chart.y_axis.axId, axPos="b")
+        chart.y_axis.crossAx = 500
+        chart.x_axis.delete = False
+        chart.x_axis.tickLblPos = "low"
+        chart.x_axis.number_format = "dd.mm.yy"
+        chart.x_axis.majorTimeUnit = "days"
+        chart.x_axis.majorUnit = max(1, ceil(span / 12))
+        chart.add_data(
+            Reference(sheet, min_col=data_column + offset, min_row=1, max_row=len(days) + 1),
+            titles_from_data=True,
+        )
+        chart.set_categories(
+            Reference(sheet, min_col=data_column, min_row=2, max_row=len(days) + 1)
+        )
+        series = chart.series[0]
+        series.cat.numRef.numCache = NumData(
+            formatCode="dd.mm.yy",
+            ptCount=len(days),
+            pt=[
+                NumVal(idx=index, v=to_excel(date.fromisoformat(day)))
+                for index, day in enumerate(days)
             ],
-            1,
-        ):
-            sheet.cell(row_number, col, value)
-        sheet.cell(row_number, 1).number_format = "dd.mm.yyyy"
-        for col in (2, 3, 6):
-            sheet.cell(row_number, col).number_format = '#,##0.00 "Br"'
-        sheet.cell(row_number, 5).number_format = "0.0%"
-    if days:
-        for chart_class, column, title, anchor in [
-            (BarChart, 2, "Выработка по дням, Br", "A11"),
-            (LineChart, 5, "Прогресс относительно сметы", "E11"),
-        ]:
-            chart = chart_class()
-            chart.title = title
-            chart.style = 13
-            chart.width = 11.3
-            chart.height = 8.3
-            chart.legend = None
-            chart.add_data(
-                Reference(sheet, min_col=column, min_row=header, max_row=header + len(days)),
-                titles_from_data=True,
-            )
-            chart.set_categories(
-                Reference(sheet, min_col=1, min_row=header + 1, max_row=header + len(days))
-            )
-            chart.x_axis.title = "Дата"
-            chart.y_axis.title = "Br" if column == 2 else "Доля сметы"
-            chart.y_axis.numFmt = "#,##0" if column == 2 else "0%"
-            chart.y_axis.scaling.min = 0
-            if column == 5:
-                chart.y_axis.scaling.max = 1
-            sheet.add_chart(chart, anchor)
-    for row in sheet.iter_rows(min_row=header, max_row=max(header, sheet.max_row)):
-        sheet.row_dimensions[row[0].row].height = 36 if row[0].row == header else 25
-        for cell in row:
-            cell.alignment = Alignment(vertical="center", wrap_text=True)
-            if cell.row == header:
-                cell.fill = PatternFill("solid", fgColor="2563EB")
-                cell.font = Font(bold=True, color="FFFFFF")
-    sheet.freeze_panes = "B30"
-    if days:
-        sheet.auto_filter.ref = f"A29:F{29 + len(days)}"
+        )
+        values = [sheet.cell(row, data_column + offset).value for row in range(2, len(days) + 2)]
+        series.val.numRef.numCache = NumData(
+            formatCode=fmt,
+            ptCount=len(days),
+            pt=[
+                NumVal(idx=index, v=value)
+                for index, value in enumerate(values)
+                if value is not None
+            ],
+        )
+        if chart_type is BarChart:
+            series.graphicalProperties.solidFill = color
+            series.graphicalProperties.line.noFill = True
+        else:
+            series.smooth = False
+            series.graphicalProperties.line.solidFill = color
+            series.graphicalProperties.line.width = 28575
+            if len(days) < 20:
+                series.marker.symbol = "circle"
+                series.marker.size = 5
+                series.marker.graphicalProperties.solidFill = color
+                series.marker.graphicalProperties.line.noFill = True
+        sheet.add_chart(chart, anchor)
+    sheet.print_area = f"A1:Q{71 if plan else 48}"
     sheet.page_setup.orientation = "landscape"
-    sheet.page_setup.paperSize = sheet.PAPERSIZE_A4
     sheet.page_setup.fitToWidth = 1
     sheet.page_setup.fitToHeight = 0
     sheet.sheet_properties.pageSetUpPr.fitToPage = True
-    sheet.print_options.horizontalCentered = True
-    sheet.print_area = f"A1:H{max(29, sheet.max_row)}"
-    progress = workbook.create_sheet("Прогресс объектов")
-    progress.append(
-        [
-            "Объект",
-            "Смета, Br",
-            "В пределах сметы, Br",
-            "Осталось, Br",
-            "Прогресс",
-            "Перерасход, Br",
-            "Без расценки, позиций",
-            "На дату",
-        ]
+
+
+def export_workbook(user, data):
+    book = Workbook()
+    sheet = book.active
+    sheet.title = "Работы по дням"
+    sheet.sheet_view.showGridLines = False
+    sheet.freeze_panes = "C5"
+    sheet.merge_cells("A1:F1")
+    sheet["A1"] = "Журнал работ"
+    sheet["A1"].font = Font(name="Calibri", size=21, bold=True, color=NAVY)
+    sheet.row_dimensions[1].height = 34
+    sheet.merge_cells("A2:F2")
+    sheet["A2"] = (
+        "Красная ячейка дня означает, что после этих работ превышена смета. "
+        "В строке «Человек за день» итог за период указан в человеко-днях."
     )
-    for project, positions, entries in projects:
-        quantities = defaultdict(float)
-        for entry in entries:
-            if entry["date"] <= final_day:
-                quantities[entry["item_id"]] += float(entry["quantity"])
-        plan = done = excess = 0
-        for p in positions:
-            rate = max(0, float(p["rate"]))
-            volume = max(0, float(p["planned"]))
-            actual = max(0, float(p.get("baseline", 0)) + quantities[p["id"]])
-            plan += volume * rate
-            done += min(actual, volume) * rate
-            excess += max(0, actual - volume) * rate
-        progress.append(
-            [
-                project["name"],
-                plan,
-                done,
-                max(0, plan - done),
-                done / plan if plan else None,
-                excess,
-                sum(float(p["rate"]) <= 0 for p in positions),
-                date.fromisoformat(final_day),
-            ]
-        )
-    progress.conditional_formatting.add(
-        f"E2:E{max(2, progress.max_row)}",
-        DataBarRule(start_type="num", start_value=0, end_type="num", end_value=1, color="3D9970"),
-    )
-    workbook.active = 0
-    return progress
+    sheet["A2"].font = Font(name="Calibri", size=11, color="526781")
+    sheet["A2"].alignment = Alignment(wrap_text=True, vertical="center")
+    sheet.row_dimensions[2].height = 32
+    days = sorted({report["date"] for report in data["rows"] if report["positions"]})
+    for col, width in enumerate([24, 52, 9, 12, 16, 16] + [13] * len(days), 1):
+        sheet.column_dimensions[get_column_letter(col)].width = width
+    for col, label in enumerate(
+        ["Объект", "Работа", "Ед.", "По смете", "За период", "Сверх сметы"]
+        + [date.fromisoformat(day) for day in days],
+        1,
+    ):
+        cell = sheet.cell(4, col, label)
+        if col >= FIRST_DAY:
+            cell.number_format = "dd.mm.yy"
+    band(sheet, sheet[4], NAVY, color="FFFFFF", bold=True)
+    sheet.row_dimensions[4].height = 31
+    sheet.print_title_rows = "1:4"
+
+    reports = defaultdict(list)
+    for row in data["rows"]:
+        if row["positions"]:
+            reports[row["project_id"]].append(row)
+    plan = initial_credit = Decimal(0)
+    credit_changes = defaultdict(Decimal)
+    amounts, crews = {}, {}
+    if days:
+        if len(reports) > 1:
+            amounts, crews = write_totals(sheet, data["rows"], days, combined=True)
+        final_day = data.get("period_end") or days[-1]
+        for project, positions, entries in baselines(user, set(data["project_ids"]), final_day):
+            project_reports = reports.get(project["id"], [])
+            if project_reports:
+                sheet.append([project["name"]])
+                row = sheet.max_row
+                sheet.merge_cells(start_row=row, start_column=1, end_row=row, end_column=2)
+                band(sheet, sheet[row], "DCE9F8", bold=True)
+                sheet.row_dimensions[row].height = 26
+                totals = write_totals(sheet, project_reports, days)
+                if len(reports) == 1:
+                    amounts, crews = totals
+            for position in positions:
+                p_plan, p_credit = write_position(
+                    sheet, position, entries[position["id"]], days, credit_changes
+                )
+                plan += p_plan
+                initial_credit += p_credit
+    else:
+        sheet["A5"] = "Нет работ за выбранный период"
+    chart_sheet(book, days, amounts, crews, plan, initial_credit, credit_changes)
+    output = io.BytesIO()
+    book.save(output)
+    return output.getvalue()

@@ -338,7 +338,7 @@ export function DocumentsPage({ workspace }: { workspace: WorkspaceView }) {
 						<small>PDF до 50 МБ · все страницы</small>
 						{!!files.some((file) => file.state === 'pending') && (
 							<Button type="primary" loading={uploading} onClick={() => void start()}>
-								Собрать данные
+								Подобрать работы
 							</Button>
 						)}
 					</div>

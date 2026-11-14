@@ -1,4 +1,4 @@
-import { App, Button, Checkbox, Input, InputNumber, Modal, Select } from 'antd';
+import { App, Button, Checkbox, Input, InputNumber, Modal, Segmented, Select } from 'antd';
 import { ArrowLeft, Download, FileSearch } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Money, nf } from '../lib/format';
@@ -113,7 +113,8 @@ export function DocumentResultsPage({
 		[notes, setNotes] = useState(''),
 		[resolution, setResolution] = useState<string>(),
 		[acknowledge, setAcknowledge] = useState(false),
-		[saving, setSaving] = useState(false);
+		[saving, setSaving] = useState(false),
+		[download, setDownload] = useState<'excel' | 'pdf' | null>(null);
 	const { message } = App.useApp();
 	const groups = job.payload.groups || [];
 	const disciplines = [...new Set(groups.map((row) => row.category))].sort((left, right) => {
@@ -122,9 +123,10 @@ export function DocumentResultsPage({
 		return left.localeCompare(right, 'ru');
 	});
 	const categories = ['Все', ...disciplines];
+	const currentCategory = categories.includes(category) ? category : 'Все';
 	const rows = groups.filter(
 		(row) =>
-			(category === 'Все' || row.category === category) &&
+			(currentCategory === 'Все' || row.category === currentCategory) &&
 			(status === 'all' || (status === 'pending' ? !row.confirmed : row.confirmed)) &&
 			row.name.toLowerCase().includes(query.toLowerCase()),
 	);
@@ -214,11 +216,16 @@ export function DocumentResultsPage({
 			setSaving(false);
 		}
 	};
-	const exportFile = async (final = false) => {
+	const exportFile = async (kind: 'excel' | 'pdf') => {
+		setDownload(kind);
 		try {
-			await downloadReport('/documents/' + job.id + '/export.xlsx' + (final ? '?final=true' : ''));
+			const final = ['ready', 'published'].includes(job.status);
+			const file = kind === 'pdf' ? 'marked.pdf' : 'export.xlsx' + (final ? '?final=true' : '');
+			await downloadReport('/documents/' + job.id + '/' + file);
 		} catch (error) {
 			message.error((error as Error).message);
+		} finally {
+			setDownload(null);
 		}
 	};
 
@@ -238,6 +245,24 @@ export function DocumentResultsPage({
 					)}
 					{!embedded && <small className="page-context document-filename">{job.name}</small>}
 				</div>
+			</div>
+			<div className="document-export-actions" aria-label="Скачать результаты">
+				<Button
+					icon={<Download size={16} />}
+					loading={download === 'excel'}
+					disabled={download === 'pdf'}
+					onClick={() => void exportFile('excel')}
+				>
+					Скачать Excel
+				</Button>
+				<Button
+					icon={<FileSearch size={16} />}
+					loading={download === 'pdf'}
+					disabled={download === 'excel'}
+					onClick={() => void exportFile('pdf')}
+				>
+					PDF с выделением
+				</Button>
 			</div>
 			<section className="document-result-summary">
 				<div>
@@ -288,6 +313,16 @@ export function DocumentResultsPage({
 					</ul>
 				)}
 			</details>
+			{disciplines.length > 1 && (
+				<div className="document-category-switch">
+					<Segmented<string>
+						aria-label="Категория выборки"
+						value={currentCategory}
+						onChange={setCategory}
+						options={categories}
+					/>
+				</div>
+			)}
 			<div className="document-results-filters">
 				<Input.Search
 					placeholder="Найти работу"
@@ -296,35 +331,25 @@ export function DocumentResultsPage({
 						setQuery(event.target.value);
 					}}
 				/>
-				<div>
-					<Select
-						aria-label="Категория выборки"
-						value={category}
-						onChange={(value) => {
-							setCategory(value);
-						}}
-						options={categories.map((value) => ({ value, label: value }))}
-					/>
-					<Select
-						aria-label="Проверка строк"
-						value={status}
-						onChange={(value) => {
-							setStatus(value);
-						}}
-						options={[
-							{ value: 'all', label: 'Все строки' },
-							{ value: 'pending', label: 'Требуют проверки' },
-							{ value: 'confirmed', label: 'Подтверждены' },
-						]}
-					/>
-				</div>
+				<Select
+					aria-label="Проверка строк"
+					value={status}
+					onChange={(value) => {
+						setStatus(value);
+					}}
+					options={[
+						{ value: 'all', label: 'Все строки' },
+						{ value: 'pending', label: 'Требуют проверки' },
+						{ value: 'confirmed', label: 'Подтверждены' },
+					]}
+				/>
 			</div>
 			{disciplines.map((discipline) => {
 				const positions = rows.filter((row) => row.category === discipline);
 				if (!positions.length) return null;
 				return (
 					<section className="document-work-category" aria-label={discipline} key={discipline}>
-						{category === 'Все' && disciplines.length > 1 && <h3>{discipline}</h3>}
+						{currentCategory === 'Все' && disciplines.length > 1 && <h3>{discipline}</h3>}
 						<div className="document-works compact-list">
 							{positions.map((row) => (
 								<CompactRow
@@ -375,27 +400,6 @@ export function DocumentResultsPage({
 					</Button>
 				</section>
 			)}
-			<div className="document-export-actions">
-				<Button
-					icon={<FileSearch size={16} />}
-					onClick={() =>
-						void downloadReport(`/documents/${job.id}/marked.pdf`).catch((error) =>
-							message.error(error.message),
-						)
-					}
-				>
-					PDF с выделением
-				</Button>
-				<Button
-					icon={<Download size={16} />}
-					onClick={() => void exportFile(['ready', 'published'].includes(job.status))}
-				>
-					Скачать Excel
-				</Button>
-			</div>
-			<small className="document-highlight-legend">
-				Жёлтым в PDF отмечены использованные источники.
-			</small>
 			<DocumentPublishPanel job={job} refresh={refresh} openObject={openObject} />
 			<Modal
 				className="document-work-sheet"
