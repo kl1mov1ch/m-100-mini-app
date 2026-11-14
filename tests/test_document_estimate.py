@@ -198,3 +198,50 @@ def test_export_preserves_confirmed_edits_and_uses_the_working_journal_format():
     assert sheet["J3"].value.date().isoformat() == day and sheet["K1"].value == "Примечание"
     assert sheet["B5"].comment.text == "стр. 20 — 1 упомин."
     assert openpyxl.load_workbook(io.BytesIO(updated), data_only=True).active["H5"].value == 6
+
+
+def test_numbered_discipline_headers_own_their_rows_and_keep_commissioning_separate():
+    from backend.documents.table_context import document_rows
+
+    table = {
+        "headers": [1],
+        "text": "\n".join(
+            [
+                "Строка 1: C2–C3=Наименование | C4–C5=Единица измерения | C5–C6=Количество |",
+                "Строка 2: C1–C6=1. Отопление |",
+                "Строка 3: C2–C3=Монтажные работы |",
+                "Строка 4: C2–C3=1.Монтаж решёток | C4–C5=шт. | C5–C6=2 |",
+                "Строка 5: C1–C6=2. Вентиляция |",
+                "Строка 6: C2–C3=1.Монтаж решёток | C4–C5=шт. | C5–C6=3 |",
+                "Строка 7: C2–C3=Пусконаладочные работы |",
+                "Строка 8: C2–C3=Вентиляция |",
+                "Строка 9: C2–C3=1.Монтаж решёток | C4–C5=шт. | C5–C6=5 |",
+            ]
+        ),
+    }
+    rows = document_rows({1: table})
+    assert rows[1, 4]["category"] == "Отопление"
+    assert rows[1, 4]["subsection"] == "Монтажные работы"
+    assert rows[1, 6]["category"] == "Вентиляция"
+    assert rows[1, 9]["role"] == "commissioning"
+
+
+def test_procurement_requires_same_standard_coating_grade_and_nominal_size():
+    from backend.documents.pricing import material_rows
+
+    base = {
+        "name": "2.Труба стальная водогазопроводная оцинкованная обыкновенная",
+        "unit_cell": "м",
+        "quantity_cell": "7",
+        "item_code": "ГОСТ 3262-75*",
+        "dimension_text": "Ø15",
+        "page": 26,
+        "source_row": 10,
+    }
+    lighter = dict(base, name=base["name"].replace("обыкновенная", "лёгкая"), source_row=11)
+    items = material_rows([{"name": "Трубы", "category": "Отопление", "sources": [base, lighter]}])
+    assert items[0]["quantity"] == 7
+    assert items[0]["spec"] == "Ду 15 × 2,8 мм · ГОСТ 3262-75"
+    assert len(items[0]["offers"]) == 3
+    assert items[0]["offers"][0][0] < items[0]["offers"][1][0]
+    assert not items[1]["offers"]

@@ -14,6 +14,7 @@ def table_works(path, payload):
     if payload.get("engine") != "docling":
         return payload.get("works", [])
     from .intent import select_works
+    from .structured import insulation_name
     from .table_context import document_rows
 
     tables = {}
@@ -34,8 +35,18 @@ def table_works(path, payload):
             r"налад|пуск", payload.get("query", ""), re.I
         ):
             continue
-        if context.get("component"):
+        if context.get("component") or context.get("structural_note"):
             continue
+        work = {
+            **work,
+            "category": context.get("category") or work.get("category"),
+            "section": context.get("section") or work.get("section") or "",
+            "subsection": context.get("subsection") or work.get("subsection") or "",
+            "item_code": context.get("item_code") or work.get("item_code") or "",
+            "table_role": context.get("role"),
+            "source_description": context.get("source_description")
+            or work.get("source_description"),
+        }
         if work.get("visual_verified") and work.get("visual_source_hash") == payload.get(
             "file_hash"
         ):
@@ -43,18 +54,16 @@ def table_works(path, payload):
             continue
         work = {
             **work,
-            "category": context.get("category") or work.get("category"),
             "quantity_cell": context.get("quantity_cell"),
             "unit_cell": context.get("unit_cell"),
         }
         if context.get("role") == "insulation_schedule":
+            name = insulation_name(work.get("category"))
             work = {
                 **work,
                 "original_name": work.get("original_name") or work["name"],
-                "name": "Тепловая изоляция матами",
-                "work_name": work.get("work_name")
-                if work["name"] == "Тепловая изоляция матами"
-                else None,
+                "name": name,
+                "work_name": work.get("work_name") if work["name"] == name else None,
                 "quantity_basis": "surface_schedule",
                 "unit_cell": "м²",
                 "quantity_cell": context.get("surface_cell"),

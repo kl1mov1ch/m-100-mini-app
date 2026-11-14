@@ -5,15 +5,17 @@ from collections import Counter
 from copy import copy
 
 import openpyxl
+from openpyxl.comments import Comment
 from openpyxl.styles import PatternFill
 from openpyxl.worksheet.hyperlink import Hyperlink
 
 from ..analytics import style_sheet
 from ..workbook_calculation import cache_formulas
 from ..workbook_journal import format_journal, is_journal, journal_row
-from .aggregation import notes_with_sources, source_identity
+from .aggregation import notes_with_sources, source_identity, without_position_number
 from .extraction import CATEGORIES
 from .normalization import build_groups, canonical, unit_value
+from .pricing import labour_rates, material_rows
 from .work_catalogue import catalogue_order
 
 
@@ -66,12 +68,17 @@ def category_for(row):
     )
 
 
-def make_estimate(content, rows, *, draft=False):
+def make_estimate(content, rows, *, draft=False, download=False):
     categories = {row["id"]: category_for(row) for row in rows}
+    order = (
+        ["Отопление", *(category for category in CATEGORIES if category != "Отопление")]
+        if download
+        else CATEGORIES
+    )
     rows = sorted(
         rows,
         key=lambda row: (
-            CATEGORIES.index(categories[row["id"]]),
+            order.index(categories[row["id"]]),
             catalogue_order(row["name"]),
             row["name"].casefold(),
         ),
@@ -86,7 +93,7 @@ def make_estimate(content, rows, *, draft=False):
         positions.append(
             {
                 "id": ident,
-                "name": row["name"],
+                "name": without_position_number(row["name"]),
                 "section": " · ".join(
                     dict.fromkeys(
                         filter(None, [category, row.get("section"), row.get("subsection")])
@@ -110,6 +117,29 @@ def make_estimate(content, rows, *, draft=False):
         ):
             book.remove(sheet)
     journals = [sheet for sheet in book if is_journal(sheet)]
+    if download:
+        references = labour_rates()
+        for sheet in journals:
+            title = sheet["C2"].value
+            if title and title not in book:
+                sheet.title = title
+            sheet.column_dimensions["A"].hidden = True
+            sheet.freeze_panes = "A5"
+            for cell in sheet["A"]:
+                metadata = journal_row(cell)
+                if not metadata or metadata[0] not in by_id:
+                    continue
+                row = by_id[metadata[0]]
+                rate = references.get(
+                    (category_for(row), canonical(row["name"]), unit_value(row.get("unit"))[0])
+                )
+                if rate and row.get("rate") is None:
+                    sheet.cell(cell.row, 5).comment = Comment(
+                        f"Ориентир {rate[0]} BYN/{row['unit']}. {rate[1]}", "M100"
+                    )
+        materials = material_rows(rows)
+        if materials:
+            add_procurement(book, materials)
     if positions and any(row.get("sources") for row in rows):
         sources = book.create_sheet("Источники PDF")
         sources.sheet_state = "hidden"
@@ -133,6 +163,8 @@ def make_estimate(content, rows, *, draft=False):
                 row = by_id[metadata[0]]
                 if draft and row.get("issues"):
                     sheet.cell(cell.row, 4).fill = PatternFill("solid", fgColor="FFF2D8")
+                if download and row.get("issues"):
+                    sheet.cell(cell.row, 4).comment = Comment("\n".join(row["issues"]), "M100")
                 for source in row.get("sources", []):
                     quote = re.sub(r"\bC\d+–C\d+=", "", source.get("quote", ""))
                     sources.append(
@@ -164,3 +196,55 @@ def make_estimate(content, rows, *, draft=False):
     output = io.BytesIO()
     book.save(output)
     return cache_formulas(output.getvalue(), [], original=result)
+
+
+def add_procurement(book, materials):
+    sheet = book.create_sheet("Закупка")
+    sheet.append(
+        [
+            "Раздел",
+            "Материал",
+            "Размер и марка",
+            "Потребность",
+            "Ед. изм.",
+            "Цена за ед., BYN",
+            "Поставщик",
+            "Страница продавца",
+            "Телефон",
+            "Условия",
+            "Проверено",
+            "Стр. PDF",
+        ]
+    )
+    for item in materials:
+        published = item["offers"]
+        for index, offer in enumerate(
+            published or [(None, "", "", "", "Запросить цену и сверить характеристики", "")]
+        ):
+            price, seller, url, phone, terms, checked = offer
+            sheet.append(
+                [
+                    item["category"],
+                    item["name"],
+                    item["spec"],
+                    float(item["quantity"])
+                    if item["quantity"] is not None and index == 0
+                    else None,
+                    item["unit"],
+                    float(price) if price is not None else None,
+                    seller,
+                    ("Открыть предложение" if price is not None else "Запросить цену")
+                    if url
+                    else None,
+                    phone,
+                    terms,
+                    checked,
+                    ", ".join(map(str, sorted(item["pages"]))),
+                ]
+            )
+            if url:
+                sheet.cell(sheet.max_row, 8).hyperlink = url
+    style_sheet(sheet, 1, [17, 43, 37, 13, 10, 15, 15, 24, 23, 34, 15, 15], money_columns=(6,))
+    for cell in sheet["H"][1:]:
+        if cell.hyperlink:
+            cell.style = "Hyperlink"

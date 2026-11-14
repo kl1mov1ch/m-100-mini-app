@@ -161,7 +161,7 @@ def build_groups(works, previous=None):
     for raw in works:
         work = normalise(raw)
         work["work_name"] = estimate_name(work)
-        name_key = work_key(work["work_name"])
+        name_key = (work.get("category") or "Прочее", work_key(work["work_name"]))
         if work.get("conversion_factor") is not None:
             measures[name_key].add(work["unit"])
         prepared.append((name_key, work))
@@ -171,11 +171,11 @@ def build_groups(works, previous=None):
             measure = next(iter(measures[name_key]))
         elif work.get("conversion_factor") is None:
             measure = None
-        key = name_key + "|" + canonical(measure)
+        key = (*name_key, canonical(measure))
         grouped[key].append(work)
     result = []
     for key, items in grouped.items():
-        ident = hashlib.sha256(key.encode()).hexdigest()[:24]
+        ident = hashlib.sha256("|".join(key).encode()).hexdigest()[:24]
         all_notes = list(
             dict.fromkeys(
                 work.get("notes", "").strip() for work in items if work.get("notes", "").strip()

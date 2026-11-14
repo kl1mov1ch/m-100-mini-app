@@ -751,3 +751,9 @@
 .document-compose-toggle[aria-expanded='true'] svg {
 	transform: rotate(180deg);
 }
+.document-work-category > h3 {
+	margin: 0 0 0.45rem;
+	padding-inline: 0.25rem;
+	font-size: 0.875rem;
+	font-weight: 600;
+}

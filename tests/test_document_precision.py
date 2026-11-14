@@ -88,7 +88,6 @@ def test_ventilation_estimate_groups_by_work_and_keeps_source_locations():
             "В2: радиальные вентиляторы 16 шт.",
             "Установка вентиляторов радиальных №5",
         ),
-        "category": "Прочее",
         "source_row": 9,
     }
     distinct = item(81, 11, "шт.", "В3: вентиляторы 11 шт.", "Монтаж вентиляторов канальных")

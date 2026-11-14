@@ -61,7 +61,10 @@ def test_regroup_uses_saved_rows_without_running_ocr(client, monkeypatch):
     result = client.get(f"/api/documents/{job.id}").json()
     assert result["status"] == "needs_review"
     groups = result["payload"]["groups"]
-    assert len(groups) == 1 and groups[0]["quantity"] == "23"
+    assert {row["category"]: row["quantity"] for row in groups} == {
+        "Вентиляция": "7",
+        "Прочее": "16",
+    }
 
 
 def sample_pdf():
@@ -135,7 +138,9 @@ def test_document_queue_ownership_ocr_ai_and_export(client, monkeypatch, tmp_pat
     import openpyxl
 
     book = openpyxl.load_workbook(io.BytesIO(exported.content))
-    assert book.active.title == "Работы · Кондиционирование"
+    assert book.active.title == "Кондиционирование"
+    assert book.active.column_dimensions["A"].hidden
+    assert book.active.freeze_panes == "A5"
     assert book.active["D5"].value == 10
     assert book.active["E5"].value is None
     assert "Уточнить высоту" not in book.active["B5"].comment.text

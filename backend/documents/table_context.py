@@ -13,6 +13,29 @@ FOOTNOTE = re.compile(
     re.I,
 )
 CLAUSE = re.compile(r"^\s*(?:с(?:о)?|из|для|на|при|по|приводом|жалюзи)\b", re.I)
+SUBSECTION = re.compile(
+    r"^(?:(?:монтажные|строительно[ -]монтажные)\s+работы|обор[уи]дование"
+    r"|(?:теплоизоляционные|изоляционные|расходные)\s+материалы|изделия\s+и\s+материалы|материалы)\s*[.:]?$",
+    re.I,
+)
+
+
+def discipline_heading(value):
+    value = re.sub(
+        r"^\s*(?:(?:раздел|подраздел)\s+)?(?:\d+(?:\.\d+)*[.)]?\s*|[IVX]+[.)]\s*)",
+        "",
+        value,
+        flags=re.I,
+    )
+    value = re.sub(r"^\s*(?:раздел|подраздел|системы?)\s*[:.\-–—]?\s+", "", value, flags=re.I)
+    if not re.match(
+        r"^(?:вентил[яа]|отопл|теплоснаб|теплоснад|водоснаб|канализац|кондиционир|электроснаб|автоматик)[а-я\s:.,()№\d–—/-]*$",
+        value,
+        re.I,
+    ):
+        return None
+    detected = requested_categories(value)
+    return next(iter(detected)) if len(detected) == 1 else None
 
 
 def description_fragment(value):
@@ -50,6 +73,7 @@ def document_rows(tables):
     name_location = None
     name_locations = []
     name_texts = {}
+    subsection = ""
     for page, table in sorted(tables.items()):
         if not table:
             continue
@@ -72,6 +96,14 @@ def document_rows(tables):
         count_column = next(
             ((cell[1], cell[2]) for cell in cells if re.match(r"\s*кол", cell[3], re.I)), None
         )
+        model_column = next(
+            (
+                (cell[1], cell[2])
+                for cell in cells
+                if re.search(r"\bмарка\b|опросного листа", cell[3], re.I)
+            ),
+            None,
+        )
         surface_column = next(
             (
                 (cell[1], cell[2])
@@ -83,6 +115,7 @@ def document_rows(tables):
         shape = (name_column, unit_column, count_column)
         if previous_shape != shape:
             role = None
+            subsection = ""
             previous_name = ""
             previous_assembly = False
             previous_unit = ""
@@ -110,20 +143,44 @@ def document_rows(tables):
             )
             if ordinal:
                 continue
-            if not quantity and 0 < len(value) < 120:
-                detected = requested_categories(value)
-                heading = bool(
-                    re.match(
-                        r"^(?:вентиля|отоплен|теплоснаб|теплоснад|водоснаб|канализац|кондиционир|электроснаб|автоматика)[а-я\s:.,-]*$",
-                        short,
-                    )
+            if not quantity and not values.get(unit_column):
+                # Wide merged headings may start in the position column.
+                headings = [
+                    content
+                    for (left, right), content in values.items()
+                    if name_column
+                    and int(left) <= int(name_column[0]) < int(right)
+                    and 0 < len(content) < 120
+                ]
+                heading = next(
+                    ((label, found) for label in headings if (found := discipline_heading(label))),
+                    None,
                 )
-                if heading and len(detected) == 1:
-                    category = next(iter(detected))
-                    section = value
+                if heading:
+                    section, category = heading
+                    section = re.sub(r"([Тт]еплосна)д(жение)", r"\1б\2", section)
+                    if role not in {"insulation_schedule", "commissioning"}:
+                        role = None
+                    subsection = ""
                     name, unit, assembly = "", "", False
                     name_location, name_locations = None, []
                     continue
+                subheading = next(
+                    (label for label in headings if SUBSECTION.fullmatch(label)), None
+                )
+                if subheading:
+                    subsection = subheading.rstrip(".:")
+                    role = (
+                        "work"
+                        if re.search(r"работы", subheading, re.I)
+                        else ("equipment" if re.match(r"обор", subheading, re.I) else "materials")
+                    )
+                    if role == "equipment":
+                        subsection = "Оборудование"
+                    name, unit, assembly = "", "", False
+                    name_location, name_locations = None, []
+                    continue
+            if not quantity and 0 < len(value) < 120:
                 if re.search(r"пуск.?налад|пуско.?налад", short):
                     role = "commissioning"
                 elif re.search(r"^обор[уи]дован", short):
@@ -137,14 +194,17 @@ def document_rows(tables):
                     name, unit = "", ""
                     name_location, name_locations = None, []
                     continue
-            subject = re.sub(r"^\s*\d+[.\s)]*", "", short)
+            subject = re.sub(r"^\s*\d+[.,\s)]*", "", short)
             primary = bool(
                 re.match(
-                    r"(?:приточн|вентилятор|воздуховод|труб|клапан|кран|диффузор|дпу|реш[её]тк|заслонк|глушител|шумоглушител|люч|зонт|дефлектор|устройств|узел|изделия|изоляц|маты|огнезащ)",
+                    r"(?:приточн|вентилятор|воздуховод|труб|гильз|радиатор|клапан|кран|диффузор|дпу|реш[её]тк|заслонк|глушител|шумоглушител|люч|зонт|дефлектор|устройств|узел|изделия|изоляц|маты|огнезащ)",
                     subject,
                 )
             )
-            primary = primary or bool(re.match(r"^\d+[.)]?\s*[а-яa-z]{3,}", short))
+            primary = primary or bool(
+                re.match(r"^\d+[.,)]?\s*[а-яa-z]{3,}", short)
+                and not re.match(r"^\d+\s+секци", short)
+            )
             primary = primary or bool(
                 re.match(
                     r"^[#Øø⌀]\d+\s+\d*[.\s]*(?:диффузор|клапан|заслонк|воздуховод|реш[её]тк)", short
@@ -156,7 +216,7 @@ def document_rows(tables):
                     subject[:110],
                 )
             )
-            new_numbered = bool(re.match(r"^\s*\d+[.]?\s*[А-ЯA-Z]", value))
+            new_numbered = bool(re.match(r"^\s*\d+[.,]?\s*[А-ЯA-Z]", value))
             primary = primary or bool(ventilation_type({"name": value, "category": category}))
             if (
                 quantity
@@ -196,7 +256,9 @@ def document_rows(tables):
             if name_locations and not primary and not component and description_fragment(value):
                 name_locations.append((page, number))
                 name_texts[page, number] = value
-            effective_category = "Вентиляция" if re.search(r"воздуховод", name, re.I) else category
+            effective_category = category or (
+                "Вентиляция" if re.search(r"воздуховод", name, re.I) else None
+            )
             if values.get(unit_column) and not ordinal:
                 unit = values[unit_column]
             result[page, number] = {
@@ -214,6 +276,8 @@ def document_rows(tables):
                 else None,
                 "surface_cell": values.get(surface_column, ""),
                 "section": section,
+                "subsection": subsection,
+                "item_code": values.get(model_column, ""),
                 "ordinal": ordinal,
                 "dimension_text": value,
                 "named_primary": primary and not in_assembly,
@@ -244,4 +308,6 @@ def document_rows(tables):
         context["source_description"] = " ".join(
             clean_description(name_texts[location]) for location in context["name_locations"]
         )
+        anchor = result.get(context["name_location"], {})
+        context["item_code"] = context["item_code"] or anchor.get("item_code", "")
     return result

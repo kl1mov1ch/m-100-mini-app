@@ -10,6 +10,14 @@ from .table_context import document_rows
 from .work_catalogue import ventilation_type
 
 
+def insulation_name(category):
+    return (
+        "Тепловая изоляция матами"
+        if category == "Вентиляция"
+        else "Теплоизоляция трубопроводов и арматуры"
+    )
+
+
 def read_matrix(path, signature):
     records, tables = {}, {}
     for cached in (path / "docling").glob("page-*.json"):
@@ -43,8 +51,9 @@ def candidates(path, payload):
         name = context.get("name", "").strip()
         cell = context.get("quantity_cell", "").strip()
         unit = context.get("unit_cell", "").strip()
+        category = context.get("category") or "Прочее"
         if context.get("role") == "insulation_schedule":
-            name, cell, unit = "Тепловая изоляция матами", context.get("surface_cell", ""), "м²"
+            name, cell, unit = insulation_name(category), context.get("surface_cell", ""), "м²"
         missing_primary = context.get("named_primary") and context.get("unit_present")
         if (
             not name
@@ -56,7 +65,6 @@ def candidates(path, payload):
             continue
         # An unreadable unit stays visible for review, rather than silently
         # dropping a measured specification row from the estimate.
-        category = context.get("category") or "Прочее"
         if requested and category not in requested:
             continue
         row = next((row for row in ROWS.finditer(table["text"]) if int(row[1]) == number), None)
@@ -104,7 +112,9 @@ def candidates(path, payload):
             "name_locations": context.get("name_locations", ()),
             "source_description": context.get("source_description", name),
             "section": context.get("section", ""),
-            "subsection": "",
+            "subsection": context.get("subsection", ""),
+            "item_code": context.get("item_code", ""),
+            "table_role": context.get("role"),
             "quantity_basis": "surface_schedule"
             if context.get("role") == "insulation_schedule"
             else "specification",
@@ -121,6 +131,10 @@ def candidates(path, payload):
                 and table["text"][line["start"] : line["end"]].split("=", 1)[0] in columns
             ],
         }
+        if re.search(r"секц\s*/\s*квт", unit, re.I) and re.search(r"радиатор", name, re.I):
+            # Section count and thermal power summarize the same panel breakdown.
+            controls.append(work)
+            continue
         standard = ventilation_type(work)
         work["work_name"] = standard[1] if standard else None
         if context.get("role") == "commissioning" and not commissioning:
@@ -136,8 +150,11 @@ def candidates(path, payload):
     for work in works:
         standard = ventilation_type(work)
         if (
-            standard
-            and standard[0] == "insulation"
+            (
+                (standard and standard[0] == "insulation")
+                or work["subsection"].casefold().startswith("теплоизоляционные")
+                and re.search(r"минераловат|изоляцион|цилиндр|маты", work["name"], re.I)
+            )
             and work["category"] in surface_categories
             and work["quantity_basis"] != "surface_schedule"
         ):

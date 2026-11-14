@@ -692,7 +692,7 @@ def export(ident: str, request: Request, prepare: bool = False, final: bool = Fa
             )
         blank = io.BytesIO()
         Workbook().save(blank)
-        return make_estimate(blank.getvalue(), rows, draft=not final)
+        return make_estimate(blank.getvalue(), rows, draft=not final, download=True)
 
     with session() as database:
         job = owned(database, ident, request.state.user["telegram_id"])

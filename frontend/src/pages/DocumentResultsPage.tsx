@@ -116,10 +116,15 @@ export function DocumentResultsPage({
 		[saving, setSaving] = useState(false);
 	const { message } = App.useApp();
 	const groups = job.payload.groups || [];
-	const categories = ['Все', ...new Set(groups.flatMap((row) => row.categories || [row.category]))];
+	const disciplines = [...new Set(groups.map((row) => row.category))].sort((left, right) => {
+		if (left === 'Отопление') return -1;
+		if (right === 'Отопление') return 1;
+		return left.localeCompare(right, 'ru');
+	});
+	const categories = ['Все', ...disciplines];
 	const rows = groups.filter(
 		(row) =>
-			(category === 'Все' || (row.categories || [row.category]).includes(category)) &&
+			(category === 'Все' || row.category === category) &&
 			(status === 'all' || (status === 'pending' ? !row.confirmed : row.confirmed)) &&
 			row.name.toLowerCase().includes(query.toLowerCase()),
 	);
@@ -314,33 +319,44 @@ export function DocumentResultsPage({
 					/>
 				</div>
 			</div>
-			<div className="document-works compact-list" aria-label="Сводный список работ">
-				{rows.map((row) => (
-					<CompactRow
-						key={row.id}
-						className="document-review-row"
-						title={row.name}
-						description={
-							row.quantity === null
-								? 'Уточните объём'
-								: nf.format(Number(row.quantity)) + ' ' + row.unit
-						}
-						value={
-							row.rate !== null ? (
-								<>
-									<Money value={Number(row.rate)} /> / {row.unit}
-								</>
-							) : (
-								'Нет расценки'
-							)
-						}
-						meta={row.confirmed ? 'Проверено' : row.issues.length ? 'Нужна проверка' : 'Черновик'}
-						attention={!row.confirmed && !!row.issues.length}
-						onClick={() => choose(row)}
-					/>
-				))}
-				{!rows.length && <p className="compact-empty">Работ по этим фильтрам нет</p>}
-			</div>
+			{disciplines.map((discipline) => {
+				const positions = rows.filter((row) => row.category === discipline);
+				if (!positions.length) return null;
+				return (
+					<section className="document-work-category" aria-label={discipline} key={discipline}>
+						{category === 'Все' && disciplines.length > 1 && <h3>{discipline}</h3>}
+						<div className="document-works compact-list">
+							{positions.map((row) => (
+								<CompactRow
+									key={row.id}
+									className="document-review-row"
+									title={row.name}
+									description={
+										row.quantity === null
+											? 'Уточните объём'
+											: nf.format(Number(row.quantity)) + ' ' + row.unit
+									}
+									value={
+										row.rate !== null ? (
+											<>
+												<Money value={Number(row.rate)} /> / {row.unit}
+											</>
+										) : (
+											'Нет расценки'
+										)
+									}
+									meta={
+										row.confirmed ? 'Проверено' : row.issues.length ? 'Нужна проверка' : 'Черновик'
+									}
+									attention={!row.confirmed && !!row.issues.length}
+									onClick={() => choose(row)}
+								/>
+							))}
+						</div>
+					</section>
+				);
+			})}
+			{!rows.length && <p className="compact-empty">Работ по этим фильтрам нет</p>}
 			{eligible.length > 0 && (
 				<section className="document-batch-review">
 					<small>

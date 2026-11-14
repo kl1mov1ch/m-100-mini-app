@@ -98,15 +98,36 @@ def work_label(name, candidate):
     return name
 
 
+def without_position_number(name):
+    return re.sub(
+        r"^\s*(?:№\s*)?\d{1,3}(?:\.\d{1,3})*(?:[.,)]\s*(?=[А-ЯA-Zа-яa-z])|\s+(?=[А-ЯA-Zа-яa-z]))",
+        "",
+        name,
+    ).strip()
+
+
 def estimate_name(source):
     standard = ventilation_type(source)
     if standard:
         return standard[1]
+    if source.get("category") == "Отопление":
+        text = str(source.get("dimension_text") or "").casefold()
+        context = str(source.get("source_description") or "").casefold()
+        if re.search(r"радиатор.*чугунн.*секционн", context):
+            return "Радиаторы чугунные секционные"
+        if re.match(r"^(?:\d+[.,)]?\s*)?гильз", context):
+            return "Гильзы из стальных электросварных труб"
+        if re.search(r"^по\s+грунт", text):
+            return "Грунтование труб ГФ-021" if "021" in text else "Грунтование труб"
+        if re.search(r"антикорроз\w*\s+покрытие", text) and re.search(r"бт\s*[-–]\s*177", text):
+            return "Антикоррозийное покрытие труб краской БТ-177"
+        if re.search(r"окраска\s+неизолированн", text):
+            return "Окраска неизолированных труб"
     name = source["name"]
     candidate = source.get("work_name")
     if candidate and candidate != name:
         name = work_label(name, candidate)
-    name = re.sub(r"^\s*\d+[.)]?\s+", "", name)
+    name = without_position_number(name)
     # Only trim clearly identified equipment codes and technical suffixes.
     # Keep descriptive qualifiers, such as flange vs. threaded, in the name.
     code = str(source.get("item_code") or "").strip()

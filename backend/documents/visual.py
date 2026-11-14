@@ -21,7 +21,7 @@ from .geometry import perimeter
 from .glyph_numbers import components
 from .normalization import decimal_value, unit_value
 from .profile import load_prompt, load_template
-from .structured import read_matrix
+from .structured import insulation_name, read_matrix
 from .work_catalogue import ventilation_type
 
 
@@ -298,7 +298,7 @@ def apply_reading(work, item, signature):
         return {**work, "quantity_warning": True}
     name = str(item.get("name") or work["name"]).strip()[:500]
     if work.get("quantity_basis") == "surface_schedule":
-        name, unit = "Тепловая изоляция матами", "м²"
+        name, unit = insulation_name(work.get("category")), "м²"
     result = {
         **work,
         "original_name": work.get("original_name") or work["name"],
