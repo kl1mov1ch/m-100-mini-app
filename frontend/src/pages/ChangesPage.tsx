@@ -1,5 +1,5 @@
 import { Empty } from 'antd';
-import { ArrowLeft, ArrowRight } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import { CompactWorkEditor } from '../components/CompactRow';
 import dayjs from '../lib/date';
 import type { WorkspaceView } from '../App';
@@ -41,15 +41,11 @@ function SheetChanges({ sheet, rows }: { sheet: string; rows: CellChange[] }) {
 }
 
 export function ChangesPage({ workspace }: { workspace: WorkspaceView }) {
-	const { setPage, changes } = workspace;
+	const { changes } = workspace;
 	return (
 		<>
 			<div className="page-title">
 				<div>
-					<button className="back-link" onClick={() => setPage('history')}>
-						<ArrowLeft size={16} />
-						История
-					</button>
 					<h1>Изменения объекта</h1>
 					<small className="page-context">{workspace.active?.name}</small>
 				</div>

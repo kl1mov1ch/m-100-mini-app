@@ -187,6 +187,67 @@
 	gap: 8px;
 	margin-bottom: 0;
 }
+.report-toolbar .ant-btn {
+	flex: 1 1 0;
+	min-width: 0;
+}
+.report-toolbar .ant-btn.ant-btn-primary {
+	flex: 1.65 1 0;
+}
+.report-toolbar .ant-btn > span,
+.bottom-nav > button > span {
+	white-space: nowrap;
+}
+.object-page > h1,
+.page-title h1,
+.settings-menu b,
+.settings-menu small {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.page-title > div,
+.settings-menu > span:nth-child(2) {
+	min-width: 0;
+}
+.page-title > .ant-btn {
+	flex-shrink: 0;
+}
+
+@media (max-width: 440px) {
+	.object-page > h1,
+	.page-title h1 {
+		font-size: clamp(20px, 6vw, 26px);
+	}
+	.report-toolbar {
+		gap: 6px;
+	}
+	.report-toolbar .ant-btn {
+		gap: 4px;
+		padding-inline: 5px;
+		font-size: clamp(11px, 3.1vw, 13px);
+	}
+	.report-toolbar .ant-btn svg {
+		width: 15px;
+		height: 15px;
+	}
+	.bottom-nav > button > span {
+		font-size: clamp(10px, 2.9vw, 12px);
+	}
+	.report-metrics > div > span,
+	.earnings-total > span,
+	.earnings-person > span {
+		font-size: clamp(10px, 3vw, 13px);
+		white-space: nowrap;
+	}
+	.report-metrics > div > small {
+		min-width: 0;
+		max-width: 100%;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+}
 
 .object-page:has(.daily-team-summary) {
 	gap: 10px;

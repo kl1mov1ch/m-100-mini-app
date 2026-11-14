@@ -3,6 +3,20 @@ textarea,
 [contenteditable='true'] {
 	scroll-margin-block: 24px;
 }
+@media (pointer: coarse), (max-width: 900px) {
+	html {
+		-webkit-text-size-adjust: 100%;
+		text-size-adjust: 100%;
+	}
+	input:not([type='checkbox']):not([type='radio']),
+	textarea,
+	.ant-input-affix-wrapper > input.ant-input,
+	.ant-input-number .ant-input-number-input,
+	.ant-select .ant-select-selection-search-input,
+	[contenteditable='true'] {
+		font-size: 16px !important;
+	}
+}
 @media (max-width: 900px) {
 	html[data-keyboard-open='true'] .bottom-nav,
 	html[data-keyboard-open='true'] .confirm-bar {

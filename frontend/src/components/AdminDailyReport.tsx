@@ -1,8 +1,7 @@
-import { Button, Empty, Spin } from 'antd';
-import { History } from 'lucide-react';
+import { Empty, Spin } from 'antd';
 import { useReportDateSwipe } from '../hooks/useReportDateSwipe';
 import { DatePicker } from './ResponsiveDatePicker';
-import { Status } from './SyncStatus';
+import { reportStatus, Status } from './SyncStatus';
 import { Money, nf, unit } from '../lib/format';
 import { estimateBalance } from '../lib/position-volume';
 import { CompactWorkEditor } from './CompactRow';
@@ -12,7 +11,7 @@ import type { WorkspaceView } from '../App';
 
 export function AdminDailyReport({ workspace }: { workspace: WorkspaceView }) {
 	const dateSwipe = useReportDateSwipe(workspace);
-	const { data, active, day, changeDay, lines, byId, amount, report, setPage } = workspace;
+	const { data, active, day, changeDay, lines, byId, amount, report } = workspace;
 	if (!active) return <Empty description="Выберите объект" image={Empty.PRESENTED_IMAGE_SIMPLE} />;
 	if (!data) return <Spin />;
 	const current = data.history.find((item) => item.date === day);
@@ -62,12 +61,15 @@ export function AdminDailyReport({ workspace }: { workspace: WorkspaceView }) {
 				</div>
 				<div>
 					<span>Состояние</span>
-					<Status status={report?.sync_status || 'local'} />
+					<Status
+						state={reportStatus(
+							current?.sync_status,
+							!!current?.positions,
+							active.table?.read_connected,
+						)}
+					/>
 				</div>
 			</section>
-			<Button block icon={<History size={17} />} onClick={() => setPage('history')}>
-				История и выгрузка
-			</Button>
 			<WorkOverruns items={entries} confirmed={!!report?.revision} />
 			<div className="admin-work-list compact-list">
 				{lines.map((line) => {

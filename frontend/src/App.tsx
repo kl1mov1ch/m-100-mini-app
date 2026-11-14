@@ -3,7 +3,6 @@ import ruRU from 'antd/locale/ru_RU';
 import 'dayjs/locale/ru';
 import {
 	Building2,
-	Files,
 	Check,
 	ChevronDown,
 	ChevronRight,
@@ -46,6 +45,7 @@ import { telegramLightTheme } from './lib/telegram-theme';
 import { useInputVisibility } from './hooks/useInputVisibility';
 import { useStartupScreen } from './hooks/useStartupScreen';
 import { useAppRelease } from './hooks/useAppRelease';
+import { useTelegramNotifications } from './hooks/useTelegramNotifications';
 import type { HistoryRow, Project, Session } from './types';
 export type WorkspaceView = ReturnType<typeof useWorkspace> & {
 	session: Session;
@@ -97,6 +97,7 @@ export function WorkspaceApp() {
 		grant,
 	} = controller;
 	useStartupScreen(Boolean(failure || (session && (!session.projects.length || data))));
+	const notifications = useTelegramNotifications(session?.user.telegram_id);
 	useAppRelease(
 		!session ||
 			busy ||
@@ -149,7 +150,7 @@ export function WorkspaceApp() {
 						))}
 					{page === 'history' && <ReportsPage workspace={workspace} />}
 					{page === 'changes' && <ChangesPage workspace={workspace} />}
-					{page === 'more' && <SettingsPage workspace={workspace} />}
+					{page === 'more' && <SettingsPage workspace={workspace} notifications={notifications} />}
 					{page === 'team' && <TeamPage workspace={workspace} />}
 					{page === 'reminders' && <RemindersPage workspace={workspace} />}
 					{page === 'documents' && <DocumentsPage workspace={workspace} />}
@@ -160,7 +161,6 @@ export function WorkspaceApp() {
 					{ id: 'objects', label: 'Объекты', icon: Building2 },
 					...(!isAdmin ? [{ id: 'today', label: 'Отчёт', icon: Plus }] : []),
 					{ id: 'history', label: 'История', icon: History },
-					{ id: 'documents', label: 'PDF', icon: Files },
 					{ id: 'more', label: 'Настройки', icon: Settings2 },
 				].map((n) => (
 					<button
@@ -174,7 +174,7 @@ export function WorkspaceApp() {
 						className={
 							page === n.id ||
 							(n.id === 'today' && page === 'object') ||
-							(n.id === 'more' && page === 'team') ||
+							(n.id === 'more' && ['team', 'reminders', 'documents'].includes(page)) ||
 							(n.id === 'history' && page === 'changes')
 								? 'active'
 								: ''

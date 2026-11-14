@@ -45,7 +45,7 @@ def missing_reports(day):
             if not database.execute("SELECT 1 FROM positions LIMIT 1").fetchone():
                 continue
             submitted = database.execute(
-                "SELECT 1 FROM reports r WHERE r.date=? AND r.revision>0 AND EXISTS(SELECT 1 FROM entries e WHERE e.date=r.date)",
+                "SELECT 1 FROM entries WHERE date=? LIMIT 1",
                 (day,),
             ).fetchone()
         if not submitted:
@@ -112,7 +112,7 @@ async def deliver(day, run_key, selected_recipients=None, message_override=None)
                 if not payload.get("ok"):
                     status = "failed"
                     error = (
-                        "Мастер должен открыть бота и нажать «Старт»"
+                        "Мастер может разрешить уведомления в настройках приложения"
                         if response.status_code in (400, 403)
                         else "Telegram не принял сообщение; повторите отправку"
                     )

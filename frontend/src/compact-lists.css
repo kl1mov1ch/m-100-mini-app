@@ -83,7 +83,9 @@
 .compact-row-aside > strong {
 	font-size: 13px;
 	font-weight: 600;
-	overflow-wrap: anywhere;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 .compact-row-aside > span {
@@ -128,6 +130,9 @@
 .compact-row.compact-row-pending {
 	box-shadow: inset 3px 0 #d6a537;
 }
+.compact-row.compact-row-missing {
+	box-shadow: inset 3px 0 var(--ios-danger, #c03737);
+}
 .compact-row.compact-row-sent {
 	box-shadow: inset 3px 0 var(--ios-success);
 }
@@ -137,13 +142,28 @@
 .compact-row-sent .compact-row-aside > span {
 	color: var(--ios-success);
 }
-.sync-status.synced,
-.sync-status.imported {
+.sync-status.report-state-sent,
+.compact-row .sync-status.report-state-sent {
 	color: var(--ios-success);
 }
-.sync-status.error,
-.sync-status.pending {
+.sync-status.report-state-pending,
+.compact-row .sync-status.report-state-pending {
 	color: var(--ios-warning-text);
+}
+.sync-status.report-state-missing,
+.compact-row .sync-status.report-state-missing {
+	color: var(--ios-danger, #b42326);
+}
+.sync-status {
+	width: max-content;
+	max-width: 100%;
+	white-space: nowrap;
+}
+.sync-status > svg {
+	flex: none;
+}
+.compact-row-aside .sync-status {
+	margin-left: auto;
 }
 .report-detail-summary {
 	display: flex;

@@ -3,11 +3,18 @@ import { ProfileCard } from '../components/ProfileCard';
 import { ProfileWebhooks } from '../components/ProfileWebhooks';
 import { FieldHelp } from '../components/FieldHelp';
 import 'dayjs/locale/ru';
-import { Bell, ChevronRight, Sparkles, Users } from 'lucide-react';
+import { Bell, ChevronRight, Files, Sparkles, Users } from 'lucide-react';
 import { useId } from 'react';
+import type { useTelegramNotifications } from '../hooks/useTelegramNotifications';
 
 import type { WorkspaceView } from '../App';
-export function SettingsPage({ workspace }: { workspace: WorkspaceView }) {
+export function SettingsPage({
+	workspace,
+	notifications,
+}: {
+	workspace: WorkspaceView;
+	notifications: ReturnType<typeof useTelegramNotifications>;
+}) {
 	const aiKeyFieldId = useId();
 	const {
 		session,
@@ -27,6 +34,32 @@ export function SettingsPage({ workspace }: { workspace: WorkspaceView }) {
 				<h1>Настройки</h1>
 			</div>
 			<ProfileCard workspace={workspace} />
+			<button className="settings-menu" onClick={() => setPage('documents')}>
+				<span className="settings-icon">
+					<Files size={21} />
+				</span>
+				<span>
+					<b>Документы PDF</b>
+					<small>Выборка работ и закупка</small>
+				</span>
+				<ChevronRight size={18} />
+			</button>
+			{notifications.supported && !notifications.granted && (
+				<button
+					className="settings-menu"
+					disabled={notifications.requesting}
+					onClick={notifications.requestPermission}
+				>
+					<span className="settings-icon reminder-icon">
+						<Bell size={21} />
+					</span>
+					<span>
+						<b>Разрешить уведомления</b>
+						<small>Сообщения от бота в Telegram</small>
+					</span>
+					<ChevronRight size={18} />
+				</button>
+			)}
 			{isAdmin && (
 				<button
 					className="settings-menu"

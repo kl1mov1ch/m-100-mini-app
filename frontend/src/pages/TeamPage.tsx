@@ -1,6 +1,6 @@
 import { App, Button, Tag } from 'antd';
 import 'dayjs/locale/ru';
-import { ArrowLeft, Plus, Settings2, Trash2, TriangleAlert } from 'lucide-react';
+import { Plus, Settings2, Trash2, TriangleAlert } from 'lucide-react';
 
 import type { WorkspaceView } from '../App';
 import { CompactWorkEditor } from '../components/CompactRow';
@@ -9,8 +9,7 @@ import { request } from '../lib/api';
 import type { User } from '../types';
 export function TeamPage({ workspace }: { workspace: WorkspaceView }) {
 	const { modal, message } = App.useApp();
-	const { setPage, users, setUserForm, setUserId, setUserName, setUserRole, loadUsers, session } =
-		workspace;
+	const { users, setUserForm, setUserId, setUserName, setUserRole, loadUsers, session } = workspace;
 	const remove = (user: User) =>
 		modal.confirm({
 			title: 'Удалить пользователя?',
@@ -34,10 +33,6 @@ export function TeamPage({ workspace }: { workspace: WorkspaceView }) {
 		<>
 			<div className="page-title">
 				<div>
-					<button className="back-link" onClick={() => setPage('more')}>
-						<ArrowLeft size={15} />
-						Настройки
-					</button>
 					<h1>Команда</h1>
 				</div>
 				<Button

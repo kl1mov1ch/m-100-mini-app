@@ -1,5 +1,4 @@
 import { Alert, App, Button, Empty, Segmented, Spin } from 'antd';
-import { ChevronLeft } from 'lucide-react';
 import { useState } from 'react';
 import type { WorkspaceView } from '../App';
 import { ObjectActionDialog, type ObjectAction } from '../components/ObjectActionDialog';
@@ -25,8 +24,6 @@ export function ObjectPage({ workspace }: { workspace: WorkspaceView }) {
 		active,
 		project,
 		data,
-		day,
-		session,
 		allPositions,
 		positions,
 		objectSection,
@@ -35,7 +32,6 @@ export function ObjectPage({ workspace }: { workspace: WorkspaceView }) {
 		openObjectSection,
 		loadSession,
 		refresh,
-		changeDay,
 		setPreview,
 	} = workspace;
 	const [action, setAction] = useState<ObjectAction | null>(null);
@@ -180,12 +176,7 @@ export function ObjectPage({ workspace }: { workspace: WorkspaceView }) {
 	};
 	return (
 		<div className="object-page swipe-surface" {...sectionSwipe}>
-			<div className="object-page-nav">
-				<Button type="text" icon={<ChevronLeft size={17} />} onClick={() => setPage('objects')}>
-					Объекты
-				</Button>
-			</div>
-			<h1>{active.name}</h1>
+			<h1 title={active.name}>{active.name}</h1>
 			<Segmented<ObjectSection>
 				block
 				aria-label="Разделы объекта"
@@ -230,11 +221,6 @@ export function ObjectPage({ workspace }: { workspace: WorkspaceView }) {
 					onDelete={deleteObject}
 					loadingAction={loadingAction}
 				/>
-			)}
-			{objectSection === 'reports' && day !== session.today && (
-				<Button onClick={() => void changeDay(session.today)}>
-					Вернуться к сегодняшнему отчёту
-				</Button>
 			)}
 			{action && <ObjectActionDialog action={action} close={() => setAction(null)} />}
 			{viewPosition && workspace.byId[viewPosition] && (

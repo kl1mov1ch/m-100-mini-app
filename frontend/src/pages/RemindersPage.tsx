@@ -25,7 +25,7 @@ export function RemindersPage({ workspace }: { workspace: WorkspaceView }) {
 				request_id: crypto.randomUUID(),
 			});
 			if (result.sent) message.success('Проверочное сообщение отправлено вам в Telegram');
-			else message.warning('Сообщение не доставлено. Откройте бота и нажмите «Старт».');
+			else message.warning('Сообщение не доставлено. Разрешите уведомления в настройках.');
 			setData(await request<ReminderData>('/admin/reminders'));
 		} catch (error) {
 			message.error((error as Error).message);
@@ -142,7 +142,7 @@ export function RemindersPage({ workspace }: { workspace: WorkspaceView }) {
 					<Alert
 						type="info"
 						showIcon
-						message="Мастер должен открыть бота и нажать «Старт». Уведомление на телефоне зависит от настроек Telegram."
+						message="Разрешение на сообщения от бота можно дать при входе или в настройках приложения."
 					/>
 				</section>
 			)}

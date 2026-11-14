@@ -1,6 +1,6 @@
 import { Alert, Empty, Input } from 'antd';
 import { Check, FileSpreadsheet, LoaderCircle, Plus, Search } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { request } from '../lib/api';
 import { Money, shortName, unit } from '../lib/format';
 import { estimateStatus } from '../lib/position-volume';
@@ -23,6 +23,7 @@ export function LiveSearch({
 	const seq = useRef(0);
 	const searchContainer = useRef<HTMLDivElement>(null);
 	const [controlsHidden, setControlsHidden] = useState(false);
+	const normalize = (text: string) => text.toLowerCase().replaceAll('ё', 'е').trim();
 	useEffect(() => {
 		const scrollContainer = searchContainer.current?.closest('.ant-drawer-body');
 		if (!scrollContainer) return;
@@ -33,7 +34,12 @@ export function LiveSearch({
 			animationFrame = requestAnimationFrame(() => {
 				const currentScroll = scrollContainer.scrollTop;
 				const distance = currentScroll - previousScroll;
-				if (currentScroll < 24 || distance < -3) setControlsHidden(false);
+				if (
+					searchContainer.current?.contains(document.activeElement) ||
+					currentScroll < 24 ||
+					distance < -3
+				)
+					setControlsHidden(false);
 				else if (distance > 6) setControlsHidden(true);
 				previousScroll = currentScroll;
 			});
@@ -92,11 +98,16 @@ export function LiveSearch({
 			controller.abort();
 		};
 	}, [q, project]);
-	const map = Object.fromEntries(positions.map((p) => [p.id, p]));
+	const map = useMemo(() => Object.fromEntries(positions.map((p) => [p.id, p])), [positions]);
+	const words = normalize(q).split(/\s+/);
 	const options = q.trim()
-		? (result?.suggestions || []).flatMap((s) =>
-				map[s.item_id] ? [{ p: map[s.item_id], reason: s.reason }] : [],
-			)
+		? result
+			? result.suggestions.flatMap((s) =>
+					map[s.item_id] ? [{ p: map[s.item_id], reason: s.reason }] : [],
+				)
+			: positions
+					.filter((p) => words.every((word) => normalize(p.name + ' ' + p.section).includes(word)))
+					.map((p) => ({ p, reason: '' }))
 		: positions.map((p) => ({ p, reason: '' }));
 	return (
 		<div className="live-search" ref={searchContainer}>
@@ -104,10 +115,14 @@ export function LiveSearch({
 				<div className="search-field">
 					<Search size={20} />
 					<Input
-						autoFocus
 						value={q}
 						allowClear
-						onChange={(e) => setQ(e.target.value)}
+						onChange={(event) => {
+							if (event.target.value === q) return;
+							seq.current += 1;
+							setResult(null);
+							setQ(event.target.value);
+						}}
 						placeholder="Работа, материал, размер…"
 						aria-label="Поиск работ"
 					/>

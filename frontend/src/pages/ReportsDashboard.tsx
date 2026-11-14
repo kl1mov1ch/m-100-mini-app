@@ -1,9 +1,9 @@
 import { App, Button, Empty, Select, Spin, Modal } from 'antd';
 import { useEffect, useState } from 'react';
-import { ArrowDownToLine, History, RefreshCw, SlidersHorizontal } from 'lucide-react';
+import { ArrowDownToLine, History, SlidersHorizontal } from 'lucide-react';
 import { DatePicker } from '../components/ResponsiveDatePicker';
 import { HistoryReportDetails } from '../components/HistoryReportDetails';
-import { Status } from '../components/SyncStatus';
+import { reportStatus, Status } from '../components/SyncStatus';
 import { CompactWorkEditor } from '../components/CompactRow';
 import { request } from '../lib/api';
 import dayjs from '../lib/date';
@@ -38,7 +38,6 @@ export function ReportsPage({ workspace }: { workspace: WorkspaceView }) {
 	const [data, setData] = useState<Analytics>();
 	const [loading, setLoading] = useState(false);
 	const [downloading, setDownloading] = useState(false);
-	const [version, setVersion] = useState(0);
 	const [filtersOpen, setFiltersOpen] = useState(false);
 	const params = new URLSearchParams({ sort });
 	if (project !== 'all') params.set('project_id', project);
@@ -58,7 +57,7 @@ export function ReportsPage({ workspace }: { workspace: WorkspaceView }) {
 				if (!controller.signal.aborted) setLoading(false);
 			});
 		return () => controller.abort();
-	}, [query, version]);
+	}, [query]);
 	const exportReport = async () => {
 		setDownloading(true);
 		try {
@@ -70,14 +69,22 @@ export function ReportsPage({ workspace }: { workspace: WorkspaceView }) {
 		}
 	};
 	const summary = data?.summary;
+	const bitrixProjects = new Set(
+		session.projects.filter((item) => item.table?.read_connected).map((item) => item.id),
+	);
 	return (
 		<>
 			<div className="page-title">
 				<div>
 					<h1>История работ</h1>
 				</div>
-				<Button icon={<ArrowDownToLine size={17} />} loading={downloading} onClick={exportReport}>
-					Скачать Excel
+				<Button
+					aria-label="Скачать Excel"
+					icon={<ArrowDownToLine size={17} />}
+					loading={downloading}
+					onClick={exportReport}
+				>
+					Excel
 				</Button>
 			</div>
 			<section className="report-filter-compact">
@@ -93,12 +100,6 @@ export function ReportsPage({ workspace }: { workspace: WorkspaceView }) {
 				<Button icon={<SlidersHorizontal size={16} />} onClick={() => setFiltersOpen(true)}>
 					Фильтры
 				</Button>
-				<Button
-					aria-label="Обновить историю"
-					icon={<RefreshCw size={16} />}
-					loading={loading}
-					onClick={() => setVersion((value) => value + 1)}
-				/>
 				<small>
 					{start || end
 						? `${start ? dayjs(start).format('DD.MM.YYYY') : 'Начало'} — ${end ? dayjs(end).format('DD.MM.YYYY') : 'Сегодня'}`
@@ -153,15 +154,6 @@ export function ReportsPage({ workspace }: { workspace: WorkspaceView }) {
 							onChange={(date) => setEnd(date?.format('YYYY-MM-DD') || '')}
 						/>
 					</div>
-					<Select
-						aria-label="Объект в истории"
-						value={project}
-						onChange={setProject}
-						options={[
-							{ value: 'all', label: 'Все объекты' },
-							...session.projects.map((item) => ({ value: item.id, label: item.name })),
-						]}
-					/>
 					{isAdmin && (
 						<Select
 							aria-label="Мастер в истории"
@@ -189,13 +181,6 @@ export function ReportsPage({ workspace }: { workspace: WorkspaceView }) {
 						]}
 					/>
 					<div className="report-filter-actions">
-						<Button
-							icon={<RefreshCw size={15} />}
-							onClick={() => setVersion((value) => value + 1)}
-							loading={loading}
-						>
-							Обновить
-						</Button>
 						<Button icon={<History size={15} />} onClick={showChanges}>
 							Изменения объекта
 						</Button>
@@ -238,60 +223,66 @@ export function ReportsPage({ workspace }: { workspace: WorkspaceView }) {
 			)}
 			<Spin spinning={loading}>
 				<div className="history-list compact-list">
-					{data?.rows.map((row) => (
-						<CompactWorkEditor
-							key={row.project_id + row.date}
-							footer={
-								<Button
-									type="primary"
-									block
-									onClick={() => openHistoryReport(row.project_id, row.date)}
-								>
-									{isAdmin ? 'Посмотреть работы' : 'Открыть и изменить отчёт'}
-								</Button>
-							}
-							title={row.project_name}
-							description={
-								<>
-									{dayjs(row.date).format('D MMM YYYY')} ·{' '}
-									{countLabel(row.positions, 'работа', 'работы', 'работ')}
-									{row.crew_count ? ' · ' + row.crew_count + ' чел.' : ''}
-								</>
-							}
-							value={<Money value={row.amount} />}
-							meta={<Status status={row.sync_status} />}
-							status={['synced', 'imported'].includes(row.sync_status) ? 'sent' : 'pending'}
-							leading={
-								<span className="compact-date">
-									<b>{dayjs(row.date).format('DD')}</b>
-									<small>{dayjs(row.date).format('MMM').replace(/\.$/, '')}</small>
-								</span>
-							}
-						>
-							<p className="page-context">
-								{dayjs(row.date).format('D MMMM YYYY')} · {row.owner_name}
-							</p>
+					{data?.rows.map((row) => {
+						const state = reportStatus(
+							row.sync_status,
+							row.positions > 0,
+							bitrixProjects.has(row.project_id),
+						);
+						return (
+							<CompactWorkEditor
+								key={row.project_id + row.date}
+								footer={
+									<Button
+										type="primary"
+										block
+										onClick={() => openHistoryReport(row.project_id, row.date)}
+									>
+										{isAdmin ? 'Посмотреть работы' : 'Открыть и изменить отчёт'}
+									</Button>
+								}
+								title={row.project_name}
+								description={
+									<>
+										{countLabel(row.positions, 'работа', 'работы', 'работ')}
+										{row.crew_count ? ' · ' + row.crew_count + ' чел.' : ''}
+									</>
+								}
+								value={<Money value={row.amount} />}
+								meta={<Status state={state} />}
+								status={state}
+								leading={
+									<span className="compact-date">
+										<b>{dayjs(row.date).format('DD')}</b>
+										<small>{dayjs(row.date).format('MMM').replace(/\.$/, '')}</small>
+									</span>
+								}
+							>
+								<p className="page-context">
+									{dayjs(row.date).format('D MMMM YYYY')} · {row.owner_name}
+								</p>
 
-							<dl className="report-detail-summary">
-								<div>
-									<dt>За день</dt>
-									<dd>
-										<Money value={row.amount} />
-									</dd>
-								</div>
-								<div>
-									<dt>Бригада</dt>
-									<dd>{row.crew_count ? row.crew_count + ' чел.' : 'Не указана'}</dd>
-								</div>
-								<div>
-									<dt>На человека</dt>
-									<dd>{row.crew_count ? <Money value={row.per_person} /> : '—'}</dd>
-								</div>
-							</dl>
-							<Status status={row.sync_status} />
-							<HistoryReportDetails project={row.project_id} date={row.date} />
-						</CompactWorkEditor>
-					))}
+								<dl className="report-detail-summary">
+									<div>
+										<dt>За день</dt>
+										<dd>
+											<Money value={row.amount} />
+										</dd>
+									</div>
+									<div>
+										<dt>Бригада</dt>
+										<dd>{row.crew_count ? row.crew_count + ' чел.' : 'Не указана'}</dd>
+									</div>
+									<div>
+										<dt>На человека</dt>
+										<dd>{row.crew_count ? <Money value={row.per_person} /> : '—'}</dd>
+									</div>
+								</dl>
+								<Status state={state} />
+								<HistoryReportDetails project={row.project_id} date={row.date} />
+							</CompactWorkEditor>
+						);
+					})}
 				</div>
 				{!loading && !data?.rows.length && <Empty description="За выбранный период отчётов нет" />}
 			</Spin>

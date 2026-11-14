@@ -1,17 +1,23 @@
-import { useEffect } from 'react';
+import { useEffect, useEffectEvent } from 'react';
 
 export function useTelegramNavigation(back: (() => void) | undefined, unsaved: boolean): void {
+	const handleBack = useEffectEvent(() => back?.());
+	const canGoBack = Boolean(back);
 	useEffect(() => {
 		const app = window.Telegram?.WebApp;
 		if (!app?.initData || !app.isVersionAtLeast('6.1')) return;
-		if (!back) {
+		if (!canGoBack) {
 			app.BackButton.hide();
 			return;
 		}
 		app.BackButton.show();
-		app.BackButton.onClick(back);
-		return () => app.BackButton.offClick(back);
-	}, [back]);
+		const onBack = () => handleBack();
+		app.BackButton.onClick(onBack);
+		return () => {
+			app.BackButton.offClick(onBack);
+			app.BackButton.hide();
+		};
+	}, [canGoBack]);
 	useEffect(() => {
 		const app = window.Telegram?.WebApp;
 		if (!app?.initData || !app.isVersionAtLeast('6.2')) return;

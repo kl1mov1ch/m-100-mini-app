@@ -2,6 +2,7 @@ export type TelegramInset = { top: number; bottom: number; left: number; right: 
 
 export type TelegramWebApp = {
 	initData: string;
+	initDataUnsafe?: { user?: { allows_write_to_pm?: boolean } };
 	version: string;
 	viewportHeight: number;
 	safeAreaInset?: TelegramInset;
@@ -17,6 +18,7 @@ export type TelegramWebApp = {
 	openLink(url: string): void;
 	openTelegramLink?(url: string): void;
 	downloadFile?(params: { url: string; file_name: string }): void;
+	requestWriteAccess?(callback: (granted: boolean) => void): void;
 	onEvent(event: string, handler: () => void): void;
 	offEvent(event: string, handler: () => void): void;
 	BackButton: {

@@ -260,15 +260,6 @@ h3 {
 	font-size: 12px;
 }
 
-.report-toolbar .ant-btn:nth-child(2):enabled {
-	background: var(--ios-accent);
-	color: var(--ios-surface);
-}
-
-.report-toolbar .ant-btn:nth-child(2):enabled:hover {
-	background: #0058b8;
-}
-
 .earnings-total > span,
 .earnings-total > small,
 .crew-control > span,
@@ -296,8 +287,7 @@ h3 {
 	box-shadow: var(--ios-button-shadow);
 }
 
-.ant-btn.ant-btn-primary:not(:disabled, [aria-disabled='true'], .ant-btn-disabled),
-.report-toolbar .ant-btn:nth-child(2):enabled {
+.ant-btn.ant-btn-primary:not(:disabled, [aria-disabled='true'], .ant-btn-disabled) {
 	box-shadow: var(--ios-primary-button-shadow);
 }
 

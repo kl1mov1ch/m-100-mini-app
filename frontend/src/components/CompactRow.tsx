@@ -9,7 +9,7 @@ export type CompactRowProps = {
 	meta?: ReactNode;
 	leading?: ReactNode;
 	attention?: boolean;
-	status?: 'pending' | 'sent';
+	status?: 'missing' | 'pending' | 'sent';
 	className?: string;
 	dialog?: boolean;
 	onClick: () => void;

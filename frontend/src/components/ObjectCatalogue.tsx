@@ -166,7 +166,10 @@ export function ObjectCatalogue({
 		setCategory('all');
 	};
 	const filterCount =
-		Number(status !== 'all') + Number(section !== 'all') + Number(sort !== 'source');
+		Number(category !== 'all') +
+		Number(status !== 'all') +
+		Number(section !== 'all') +
+		Number(sort !== 'source');
 	const context = JSON.stringify([category, status, section, sort, query]);
 	if (!allPositions.length)
 		return (
@@ -181,7 +184,7 @@ export function ObjectCatalogue({
 		<section className="object-panel catalogue-panel">
 			<div className="catalogue-heading">
 				<h2>Смета</h2>
-				<small>{countLabel(allPositions.length, 'позиция', 'позиции', 'позиций')}</small>
+				<small>{countLabel(matching.length, 'позиция', 'позиции', 'позиций')}</small>
 			</div>
 			<BitrixReadStatus workspace={workspace} />
 			<div className="catalogue-controls">
@@ -201,40 +204,6 @@ export function ObjectCatalogue({
 				>
 					{filterCount || null}
 				</Button>
-			</div>
-			<div className="catalogue-categories" role="group" aria-label="Тип позиций сметы">
-				{catalogueCategories.map((item) => (
-					<button
-						key={item.value}
-						type="button"
-						aria-pressed={category === item.value}
-						title={item.title}
-						onClick={() => setCategory(item.value)}
-					>
-						<span>{item.label}</span>
-						<small>
-							{
-								allPositions.filter(
-									(position) => item.value === 'all' || catalogueCategory(position) === item.value,
-								).length
-							}
-						</small>
-					</button>
-				))}
-			</div>
-			<div className="catalogue-result-heading">
-				<small>
-					{countLabel(matching.length, 'позиция', 'позиции', 'позиций')}
-					{status !== 'all'
-						? ' · ' + statusOptions.find((item) => item.value === status)!.label
-						: ''}
-					{section !== 'all' ? ' · ' + section : ''}
-				</small>
-				{(filterCount > 0 || query || category !== 'all') && (
-					<Button type="text" size="small" onClick={reset}>
-						Сбросить
-					</Button>
-				)}
 			</div>
 			<div className="catalogue-groups">
 				{grouped.map(([key, group]) => (
@@ -269,6 +238,15 @@ export function ObjectCatalogue({
 			>
 				<div className="catalogue-filter-form">
 					<label>
+						Тип позиций
+						<Select
+							aria-label="Тип позиций сметы"
+							value={category}
+							onChange={setCategory}
+							options={catalogueCategories.map(({ value, title }) => ({ value, label: title }))}
+						/>
+					</label>
+					<label>
 						Состояние
 						<Select
 							aria-label="Состояние позиций"
@@ -300,10 +278,6 @@ export function ObjectCatalogue({
 							options={sortOptions}
 						/>
 					</label>
-					<small>
-						Объёмные работы, трудозатраты и прочие позиции разделены по единицам измерения.
-						Перерасход расположен в конце списка.
-					</small>
 				</div>
 			</Modal>
 		</section>

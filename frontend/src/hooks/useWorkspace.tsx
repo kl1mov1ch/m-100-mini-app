@@ -506,7 +506,14 @@ export function useWorkspace() {
 						: projectOpen
 							? () => setProjectOpen(false)
 							: page !== 'objects'
-								? () => setPage('objects')
+								? () =>
+										setPage(
+											page === 'changes'
+												? 'history'
+												: ['team', 'reminders', 'documents'].includes(page)
+													? 'more'
+													: 'objects',
+										)
 								: undefined;
 	useTelegramNavigation(telegramBack, (!!report && dirty) || (textOpen && !!freeText.trim()));
 	const valid =

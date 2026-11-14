@@ -36,6 +36,8 @@ export function installInputVisibility() {
 	};
 
 	const update = () => {
+		// Pinch zoom and the on-screen keyboard both resize VisualViewport.
+		if (viewport && Math.abs(viewport.scale - 1) > 0.01) return;
 		const element = activeInput();
 		const height = Math.min(
 			viewport?.height || window.innerHeight,

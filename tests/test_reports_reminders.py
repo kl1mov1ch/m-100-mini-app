@@ -4,18 +4,26 @@ from urllib.parse import parse_qs
 
 import httpx
 import openpyxl
+from test_workspaces import client as client
+from test_workspaces import create, grant
 
-from backend import notifications, report_downloads, workspaces
+from backend import notifications, report_downloads, store, workspaces
 from backend.clock import today
-from test_workspaces import client, create, grant
 
 
 def test_reminders_only_target_missing_reports_and_deduplicate(client, monkeypatch):
-    for user in ("1001", "1002", "1003"):
+    for user in ("1001", "1002", "1003", "1004"):
         grant(client, user)
     submitted = create(client, "1001")
-    missing = create(client, "1002")
+    create(client, "1002")
     create(client, "1003", sample=False)
+    imported = create(client, "1004")
+    source = workspaces.project(workspaces.user("1004"), imported)
+    with store.connect(source["db_path"]) as database:
+        database.execute(
+            "INSERT INTO entries(item_id,date,quantity) VALUES(?,?,?)",
+            ("excel-17", today(), 5),
+        )
     client.post(
         "/api/reports",
         json={"date": today(), "revision": 0, "lines": [{"item_id": "excel-17", "quantity": 15}]},

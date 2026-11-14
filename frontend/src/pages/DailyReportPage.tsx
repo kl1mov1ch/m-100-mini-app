@@ -8,7 +8,7 @@ import dayjs from '../lib/date';
 import type { WorkspaceView } from '../App';
 import { useConfirmWorkRemoval } from '../hooks/useConfirmWorkRemoval';
 import { useReportDateSwipe } from '../hooks/useReportDateSwipe';
-import { Status } from '../components/SyncStatus';
+import { reportStatus, Status } from '../components/SyncStatus';
 import { Money, countLabel, nf, shortName, unit } from '../lib/format';
 import { AdminDailyReport } from '../components/AdminDailyReport';
 import { QuickReportComposer } from '../components/QuickReportComposer';
@@ -75,6 +75,13 @@ function MasterDailyReport({ workspace }: { workspace: WorkspaceView }) {
 			<div className="page-title swipe-surface" {...dateSwipe}>
 				<div>
 					<h2>Дневной отчёт</h2>
+					<Status
+						state={reportStatus(
+							report?.sync_status,
+							Boolean(report?.lines.length),
+							data.config.source === 'bitrix',
+						)}
+					/>
 				</div>
 				<DatePicker
 					aria-label="Дата отчёта"
@@ -125,15 +132,7 @@ function MasterDailyReport({ workspace }: { workspace: WorkspaceView }) {
 			</section>
 			<div className="report-toolbar">
 				<Button
-					size="small"
-					icon={<TextCursorInput size={17} />}
-					aria-expanded={textVisible}
-					onClick={() => setTextVisible((visible) => !visible)}
-					disabled={!positions.length}
-				>
-					Текст
-				</Button>
-				<Button
+					type="primary"
 					size="small"
 					icon={<Plus size={18} />}
 					onClick={() => {
@@ -143,6 +142,15 @@ function MasterDailyReport({ workspace }: { workspace: WorkspaceView }) {
 					disabled={!positions.length}
 				>
 					Добавить работу
+				</Button>
+				<Button
+					size="small"
+					icon={<TextCursorInput size={17} />}
+					aria-expanded={textVisible}
+					onClick={() => setTextVisible((visible) => !visible)}
+					disabled={!positions.length}
+				>
+					Текст
 				</Button>
 				<Button
 					size="small"
@@ -290,13 +298,6 @@ function MasterDailyReport({ workspace }: { workspace: WorkspaceView }) {
 					>
 						Вернуть к началу дня
 					</Button>
-					<Status
-						status={
-							report.sync_status === 'pending' && !data.config.has_webhook
-								? 'local'
-								: report.sync_status
-						}
-					/>
 					{report.sync_status !== 'synced' &&
 						data.config.source === 'bitrix' &&
 						data.config.has_webhook && (

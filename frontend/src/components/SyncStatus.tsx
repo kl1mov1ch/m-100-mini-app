@@ -1,25 +1,19 @@
-import { CheckCheck, Clock3, TriangleAlert } from 'lucide-react';
-export function Status({ status }: { status: string }) {
+import { CheckCheck, Circle, Clock3 } from 'lucide-react';
+
+export function reportStatus(syncStatus?: string | null, hasReport = true, fromBitrix = false) {
+	if (!hasReport) return 'missing';
+	return syncStatus === 'synced' || (syncStatus === 'imported' && fromBitrix) ? 'sent' : 'pending';
+}
+
+const labels = { missing: 'Нет отчёта', pending: 'В приложении', sent: 'В Битрикс24' };
+const icons = { missing: Circle, pending: Clock3, sent: CheckCheck };
+
+export function Status({ state }: { state: ReturnType<typeof reportStatus> }) {
+	const Icon = icons[state];
 	return (
-		<span className={'sync-status ' + status}>
-			{status === 'synced' ? (
-				<CheckCheck size={13} />
-			) : status === 'error' ? (
-				<TriangleAlert size={13} />
-			) : (
-				<Clock3 size={13} />
-			)}
-			<span>
-				{status === 'synced'
-					? 'В Битрикс24'
-					: status === 'error'
-						? 'Ошибка отправки'
-						: status === 'pending'
-							? 'Ожидает отправки'
-							: status === 'imported'
-								? 'Из таблицы'
-								: 'В приложении'}
-			</span>
+		<span className={'sync-status report-state-' + state}>
+			<Icon size={13} aria-hidden />
+			<span>{labels[state]}</span>
 		</span>
 	);
 }
