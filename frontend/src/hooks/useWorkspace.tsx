@@ -96,6 +96,7 @@ export function useWorkspace() {
 		[ack, setAck] = useState<string[]>([]),
 		[mapping, setMapping] = useState<ImportSheet[]>([]);
 	const selectionVersion = useRef(0);
+	const documentBack = useRef<(() => void) | null>(null);
 	const sessionVersion = useRef(0);
 	const active = session?.projects.find((p) => p.id === project);
 	const allPositions = data?.project?.id === project ? data.positions : [];
@@ -506,14 +507,19 @@ export function useWorkspace() {
 						: projectOpen
 							? () => setProjectOpen(false)
 							: page !== 'objects'
-								? () =>
+								? () => {
+										if (page === 'documents' && documentBack.current) {
+											documentBack.current();
+											return;
+										}
 										setPage(
 											page === 'changes'
 												? 'history'
-												: ['team', 'reminders', 'documents'].includes(page)
+												: ['team', 'reminders'].includes(page)
 													? 'more'
 													: 'objects',
-										)
+										);
+									}
 								: undefined;
 	useTelegramNavigation(telegramBack, (!!report && dirty) || (textOpen && !!freeText.trim()));
 	const valid =
@@ -1154,6 +1160,7 @@ export function useWorkspace() {
 		mapping,
 		setMapping,
 		selectionVersion,
+		documentBack,
 		active,
 		positions,
 		allPositions,

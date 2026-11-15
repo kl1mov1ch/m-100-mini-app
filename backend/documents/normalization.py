@@ -33,6 +33,8 @@ UNIT_ALIASES = {
     "г": ("кг", "0.001"),
     "т": ("кг", "1000"),
     "компл": ("компл.", "1"),
+    "комп": ("компл.", "1"),
+    "квт": ("кВт", "1"),
     "комплект": ("компл.", "1"),
     "челч": ("чел·ч", "1"),
     "челчас": ("чел·ч", "1"),
@@ -69,7 +71,7 @@ def normalise(work):
     raw_unit = original_unit
     measure, factor = unit_value(original_unit)
     quantity = decimal_value(work.get("quantity"))
-    standard = ventilation_type(work)
+    standard = None if work.get("table_role") == "commissioning" else ventilation_type(work)
     cell = str(work.get("quantity_cell") or "").strip()
     if standard:
         definition = next(row for row in load_template()["works"] if row["id"] == standard[0])
@@ -161,7 +163,11 @@ def build_groups(works, previous=None):
     for raw in works:
         work = normalise(raw)
         work["work_name"] = estimate_name(work)
-        name_key = (work.get("category") or "Прочее", work_key(work["work_name"]))
+        category = work.get("category") or "Прочее"
+        key = work_key(work["work_name"])
+        if work.get("table_role") == "commissioning":
+            key = "пусконаладочные работы " + key
+        name_key = (category, key)
         if work.get("conversion_factor") is not None:
             measures[name_key].add(work["unit"])
         prepared.append((name_key, work))

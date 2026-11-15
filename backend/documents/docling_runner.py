@@ -13,9 +13,12 @@ import re
 import subprocess
 import sys
 import time
+from bisect import bisect_right
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from statistics import median
 
-ENGINE = "docling-2.150.0-v4"
+ENGINE = "docling-2.150.0-v6"
 
 
 def valid_record(value, signature):
@@ -159,8 +162,14 @@ def structured_table(image, record, *, verify_numbers=True):
                     for word in sorted(words, key=lambda w: (round(w["top"] / 8), w["left"]))
                 )
                 cells.append((row, left, top, right, bottom, value))
-    if len(cells) < 12 or max(c[4] for c in cells) - min(c[2] for c in cells) < image.height * 0.4:
+    if len(cells) < 12:
         return record
+    if max(c[4] for c in cells) - min(c[2] for c in cells) < image.height * 0.4:
+        header_rows = {}
+        for row, _, _, _, _, value in cells:
+            header_rows.setdefault(row, []).append(value)
+        if not any(has_specification_headers(" ".join(values)) for values in header_rows.values()):
+            return record
     # Read numeric cells in strips, not in one process per cell. Disagreement
     # remains explicit and blocks automatic use of that quantity downstream.
     import re
@@ -262,6 +271,126 @@ def structured_table(image, record, *, verify_numbers=True):
     }
 
 
+def has_specification_headers(text):
+    value = re.sub(r"[\s-]+", "", text.casefold())
+    return all(
+        re.search(pattern, value)
+        for pattern in (
+            r"наименован",
+            r"единиц|ед\.изм",
+            r"кол(?:иче|\.?во)",
+        )
+    )
+
+
+def native_coordinate_table(record):
+    """Read short tables by the nine printed column numbers and native PDF coordinates."""
+    layout = record["layout"]
+    text = record["text"]
+    if not has_specification_headers(text):
+        return record
+    entries = [
+        (line, text[line["start"] : line["end"]].strip())
+        for line in layout["lines"]
+        if line["bottom"] > line["top"]
+    ]
+    if not entries:
+        return record
+    char_height = median(line["bottom"] - line["top"] for line, _ in entries)
+    tolerance = char_height * 0.58
+    rows = []
+    for line, value in sorted(
+        entries, key=lambda entry: (entry[0]["top"] + entry[0]["bottom"]) / 2
+    ):
+        y = (line["top"] + line["bottom"]) / 2
+        if not rows or y - rows[-1][0] > tolerance:
+            rows.append((y, []))
+        rows[-1][1].append((line, value))
+    for index, (y, row) in enumerate(rows):
+        if y > layout["height"] * 0.4:
+            break
+        ordinal = sorted(row, key=lambda entry: entry[0]["left"])
+        if [value for _, value in ordinal] != list(map(str, range(1, 10))):
+            continue
+        above = [
+            value for py, cells in rows[:index] if py >= y - 10 * char_height for _, value in cells
+        ]
+        if not has_specification_headers(" ".join(above)):
+            continue
+        centers = [(line["left"] + line["right"]) / 2 for line, _ in ordinal]
+        boundaries = [(left + right) / 2 for left, right in zip(centers, centers[1:])]
+        headers = (
+            "Позиция",
+            "Наименование",
+            "Тип, марка",
+            "Код оборудования",
+            "Завод-изготовитель",
+            "Единица измерения",
+            "Количество",
+            "Масса",
+            "Примечание",
+        )
+        output = (
+            "Строка 1: "
+            + " | ".join(f"C{i}–C{i + 1}={label}" for i, label in enumerate(headers, 1))
+            + " |\n"
+        )
+        located, extracted = [], []
+        for py, cells in rows[index + 1 :]:
+            columns = {}
+            for line, value in cells:
+                # Left-aligned long titles can reach into the model column.
+                x = (
+                    line["left"]
+                    if line["right"] - line["left"] > (centers[2] - centers[1]) * 0.7
+                    else (line["left"] + line["right"]) / 2
+                )
+                column = bisect_right(boundaries, x) + 1
+                if (
+                    column == 1
+                    and line["left"] > centers[0] + 1.65 * char_height
+                    and not value.isdigit()
+                ):
+                    column = 2
+                columns.setdefault(column, []).append((line, value))
+            extracted.append((py, columns))
+        measured = [
+            py
+            for py, cells in extracted
+            if 7 in cells and any(re.fullmatch(r"\d+(?:[.,]\d+)?", value) for _, value in cells[7])
+        ]
+        if not measured:
+            continue
+        for number, (py, columns) in enumerate(extracted, 2):
+            if py > measured[-1] + 2 * char_height:
+                break
+            output += f"Строка {number}: "
+            for column, words in sorted(columns.items()):
+                words.sort(key=lambda entry: entry[0]["left"])
+                start = len(output)
+                output += (
+                    f"C{column}–C{column + 1}=" + " ".join(value for _, value in words) + " | "
+                )
+                located.append(
+                    {
+                        "start": start,
+                        "end": len(output),
+                        "left": min(line["left"] for line, _ in words),
+                        "right": max(line["right"] for line, _ in words),
+                        "top": min(line["top"] for line, _ in words),
+                        "bottom": max(line["bottom"] for line, _ in words),
+                    }
+                )
+            output += "\n"
+        return {
+            **record,
+            "native_column_grid": True,
+            "analysis_text": output,
+            "analysis_layout": {**layout, "lines": located},
+        }
+    return record
+
+
 def native_table(source, number, destination, record):
     """Parse ruled cells around native PDF text without OCRing its numbers."""
     from PIL import Image
@@ -322,7 +451,7 @@ def native_table(source, number, destination, record):
                 "analysis_text": result["analysis_text"],
                 "analysis_layout": result["analysis_layout"],
             }
-        return record
+        return native_coordinate_table(record)
     finally:
         image_path.unlink(missing_ok=True)
 
@@ -476,39 +605,65 @@ def convert(source, destination, signature, pages=None):
     # Specifications usually follow drawings. Make their text searchable first,
     # while the final archive always contains every page in document order.
     selected = pages or list(range(total, 0, -1))
-    for done, number in enumerate(selected):
-        path = destination / f"page-{number}.json"
-        cached = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
-        if (
-            cached.get("source") == signature
-            and cached.get("engine") in {"docling-2.150.0-v2", "docling-2.150.0-v3"}
-            and cached.get("method") == "docling+tesseract"
-        ):
-            cached = upgrade_ocr(source, number, destination, cached, signature)
-            cached["engine"] = ENGINE
-            write_json(path, cached)
-        if valid_record(cached, signature):
-            write_json(
-                destination / "progress.json",
-                {"done": done + 1, "total": len(selected), "page": number},
-            )
-            continue
+
+    def progress(done, number):
         write_json(
             destination / "progress.json", {"done": done, "total": len(selected), "page": number}
         )
-        result = converter.convert(source, page_range=(number, number))
-        document = result.document.export_to_dict()
-        page = native_lines(document, number)
+
+    def save_page(done, number, page):
         if len(page["text"].strip()) < 30:
             page = ocr(source, number, destination)
         else:
             page = native_table(source, number, destination, page)
         page.update(source=signature, engine=ENGINE)
-        write_json(path, page)
-        write_json(
-            destination / "progress.json",
-            {"done": done + 1, "total": len(selected), "page": number},
-        )
+        write_json(destination / f"page-{number}.json", page)
+        progress(done, number)
+
+    progress(0, selected[0])
+    # Keep a single raster/OCR slot. Docling can read the next page while it runs,
+    # and the digit calibration file remains ordered and has a single writer.
+    with ThreadPoolExecutor(max_workers=1) as worker:
+        pending = None
+        for done, number in enumerate(selected, 1):
+            path = destination / f"page-{number}.json"
+            cached = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+            refresh = cached.get("source") == signature and cached.get("engine") in {
+                "docling-2.150.0-v4",
+                "docling-2.150.0-v5",
+            }
+            upgrade = (
+                cached.get("source") == signature
+                and cached.get("engine") in {"docling-2.150.0-v2", "docling-2.150.0-v3"}
+                and cached.get("method") == "docling+tesseract"
+            )
+            if refresh or upgrade or valid_record(cached, signature):
+                if pending:
+                    pending.result()
+                    pending = None
+                if upgrade:
+                    cached = upgrade_ocr(source, number, destination, cached, signature)
+                    cached["engine"] = ENGINE
+                    write_json(path, cached)
+                if refresh:
+                    if (
+                        not cached.get("analysis_text")
+                        and cached.get("method") != "docling+tesseract"
+                        and has_specification_headers(cached.get("text", ""))
+                    ):
+                        cached = native_table(source, number, destination, cached)
+                    cached["engine"] = ENGINE
+                    write_json(path, cached)
+                progress(done, number)
+                continue
+            result = converter.convert(source, page_range=(number, number))
+            page = native_lines(result.document.export_to_dict(), number)
+            del result
+            if pending:
+                pending.result()
+            pending = worker.submit(save_page, done, number, page)
+        if pending:
+            pending.result()
     if all(
         (destination / f"page-{number}.json").is_file()
         and valid_record(

@@ -3,7 +3,34 @@ import json
 from test_workspaces import client as client
 
 from backend.documents import conversion, repository, retrieval, worker
-from backend.documents.docling_runner import ENGINE, native_lines
+from backend.documents.docling_runner import ENGINE, native_coordinate_table, native_lines
+from backend.documents.parsed_tables import estimate_table
+from backend.documents.table_context import document_rows
+
+
+def test_native_short_specification_uses_quantity_column_only():
+    layout = {"width": 600, "height": 800, "lines": []}
+    raw = ""
+    entries = [("Наименование", 160, 45), ("Единица", 356, 45), ("Количе-", 418, 41)]
+    entries += [(str(i), x, 95) for i, x in enumerate(range(60, 541, 60), 1)]
+    entries += [
+        ("Переход 500х400", 120, 128),
+        ("шт.", 358, 130),
+        ("1,5", 418, 127),
+        ("72", 478, 129),
+    ]
+    for value, x, y in entries:
+        start = len(raw)
+        raw += value + "\n"
+        layout["lines"].append(
+            {"start": start, "end": len(raw) - 1, "left": x, "right": x + 14, "top": y, "bottom": y + 10}
+        )
+    table = estimate_table(native_coordinate_table({"layout": layout, "text": raw}))
+    assert table and table["rows"] == [1, 2]
+    row = document_rows({8: table})[8, 2]
+    assert row["quantity_cell"] == "1,5"
+    assert row["unit_cell"] == "шт."
+    assert row["name"] == "Переход 500х400"
 
 
 def test_source_coordinates_and_cached_conversion_are_not_recomputed(tmp_path, monkeypatch):

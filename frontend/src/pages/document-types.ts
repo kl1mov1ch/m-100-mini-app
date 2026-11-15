@@ -17,6 +17,7 @@ export type DocumentSource = {
 	geometry_factor?: string | null;
 	visual_verified?: boolean;
 	highlights?: { left: number; top: number; width: number; height: number }[];
+	highlight_pages?: { page: number; highlights: NonNullable<DocumentSource['highlights']> }[];
 };
 export type DocumentGroup = {
 	categories?: string[];

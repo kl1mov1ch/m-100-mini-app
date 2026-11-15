@@ -198,6 +198,17 @@
 .bottom-nav > button > span {
 	white-space: nowrap;
 }
+.bottom-nav > button {
+	min-width: 0;
+}
+@media (max-width: 360px) {
+	.bottom-nav > button {
+		padding-inline: 3px;
+	}
+	.bottom-nav > button > span {
+		font-size: 9px;
+	}
+}
 .object-page > h1,
 .page-title h1,
 .settings-menu b,

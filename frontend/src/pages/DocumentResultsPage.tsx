@@ -1,6 +1,15 @@
 import { App, Button, Checkbox, Input, InputNumber, Modal, Segmented, Select } from 'antd';
-import { ArrowLeft, Download, FileSearch } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import {
+	ArrowLeft,
+	ChevronLeft,
+	ChevronRight,
+	Download,
+	FileSearch,
+	Images,
+	ZoomIn,
+	ZoomOut,
+} from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import { Money, nf } from '../lib/format';
 import { headers, request } from '../lib/api';
 import { downloadReport } from '../lib/report-download';
@@ -21,16 +30,18 @@ function SourcePreview({
 	jobId,
 	page,
 	highlights,
+	turn,
 }: {
 	jobId: string;
 	page: number;
 	highlights?: DocumentSource['highlights'];
+	turn: (direction: number) => void;
 }) {
-	const [open, setOpen] = useState(false),
-		[url, setUrl] = useState(''),
+	const [url, setUrl] = useState(''),
 		[error, setError] = useState('');
+	const [zoom, setZoom] = useState(false);
+	const swipe = useRef<{ x: number; y: number } | null>(null);
 	useEffect(() => {
-		if (!open) return;
 		const controller = new AbortController();
 		let objectUrl = '';
 		setError('');
@@ -52,35 +63,126 @@ function SourcePreview({
 			URL.revokeObjectURL(objectUrl);
 			setUrl('');
 		};
-	}, [open, jobId, page]);
+	}, [jobId, page]);
 	return (
 		<div className="document-page-preview">
-			<Button type="link" onClick={() => setOpen(!open)}>
-				{open ? 'Скрыть страницу' : 'Показать страницу PDF'}
-			</Button>
-			{open &&
-				(error ? (
-					<p>{error}</p>
-				) : url ? (
-					<div className="document-highlight-page">
-						<a href={url} target="_blank" rel="noreferrer">
-							<img src={url} alt={`Страница ${page} исходного PDF`} />
-						</a>
-						{highlights?.map((box, index) => (
-							<span
-								key={index}
-								style={{
-									left: `${box.left}%`,
-									top: `${box.top}%`,
-									width: `${box.width}%`,
-									height: `${box.height}%`,
-								}}
-							/>
-						))}
+			{error ? (
+				<p>{error}</p>
+			) : url ? (
+				<>
+					<div
+						className="document-gallery-canvas"
+						onTouchStart={(event) => {
+							const touch = event.touches[0];
+							swipe.current = !zoom && touch ? { x: touch.clientX, y: touch.clientY } : null;
+						}}
+						onTouchEnd={(event) => {
+							const start = swipe.current;
+							swipe.current = null;
+							const touch = event.changedTouches[0];
+							if (!start || !touch) return;
+							const x = touch.clientX - start.x;
+							if (Math.abs(x) > 45 && Math.abs(x) > 2 * Math.abs(touch.clientY - start.y))
+								turn(x < 0 ? 1 : -1);
+						}}
+					>
+						<div className={`document-highlight-page${zoom ? ' is-zoomed' : ''}`}>
+							<img src={url} alt={`Страница ${page} с выделениями выбранной работы`} />
+							{highlights?.map((box, index) => (
+								<span
+									key={index}
+									style={{
+										left: `${box.left}%`,
+										top: `${box.top}%`,
+										width: `${box.width}%`,
+										height: `${box.height}%`,
+									}}
+								/>
+							))}
+						</div>
 					</div>
-				) : (
-					<p>Загружаем страницу…</p>
-				))}
+					<Button
+						type="text"
+						icon={zoom ? <ZoomOut size={16} /> : <ZoomIn size={16} />}
+						onClick={() => setZoom(!zoom)}
+					>
+						{zoom ? 'Уменьшить' : 'Увеличить'}
+					</Button>
+				</>
+			) : (
+				<p role="status">Загружаем страницу…</p>
+			)}
+		</div>
+	);
+}
+
+function SourceGallery({ jobId, group }: { jobId: string; group: DocumentGroup }) {
+	const [selected, setSelected] = useState<number>();
+	const pages = new Map<number, NonNullable<DocumentSource['highlights']>>();
+	for (const source of group.sources) {
+		for (const evidence of [source, ...(source.highlight_pages || [])]) {
+			pages.set(evidence.page, [
+				...(pages.get(evidence.page) || []),
+				...(evidence.highlights || []),
+			]);
+		}
+	}
+	const numbers = [...pages.keys()].sort((a, b) => a - b);
+	const page = selected ?? numbers[0];
+	const index = numbers.indexOf(page);
+	const mentions = group.sources.filter((source) => source.page === page);
+	const highlights = [
+		...new Map((pages.get(page) || []).map((box) => [JSON.stringify(box), box])).values(),
+	];
+	if (!numbers.length) return <p>Источники для этой позиции не сохранены.</p>;
+	return (
+		<div className="document-source document-source-gallery">
+			<div className="document-gallery-nav">
+				<Button
+					type="text"
+					aria-label="Предыдущая страница"
+					icon={<ChevronLeft size={18} />}
+					disabled={index === 0}
+					onClick={() => setSelected(numbers[index - 1])}
+				/>
+				<Select
+					aria-label="Страница источника"
+					value={page}
+					onChange={setSelected}
+					options={numbers.map((number) => ({ value: number, label: `Страница ${number}` }))}
+				/>
+				<span aria-live="polite">
+					{index + 1} / {numbers.length}
+				</span>
+				<Button
+					type="text"
+					aria-label="Следующая страница"
+					icon={<ChevronRight size={18} />}
+					disabled={index === numbers.length - 1}
+					onClick={() => setSelected(numbers[index + 1])}
+				/>
+			</div>
+			<SourcePreview
+				key={page}
+				jobId={jobId}
+				page={page}
+				highlights={highlights}
+				turn={(direction) => setSelected(numbers[index + direction] ?? page)}
+			/>
+			{!mentions.length && (
+				<small className="page-context">На этой странице продолжается наименование работы.</small>
+			)}
+			{mentions.map((source, index) => (
+				<details key={index}>
+					<summary>
+						{source.source_row != null && `Строка ${source.source_row} · `}
+						{source.original_quantity ?? 'Объём не определён'} {source.original_unit}
+					</summary>
+					<blockquote>{source.quote}</blockquote>
+					{source.question && <p className="document-question">{source.question}</p>}
+					{source.geometry_factor && <p>Площадь поверхности: {source.quantity} м²</p>}
+				</details>
+			))}
 		</div>
 	);
 }
@@ -89,12 +191,14 @@ export function DocumentResultsPage({
 	job,
 	back,
 	refresh,
+	recheck,
 	embedded = false,
 	openObject,
 }: {
 	job: DocumentJob;
 	back: () => void;
 	refresh: (job: DocumentJob) => void;
+	recheck?: () => Promise<void>;
 	embedded?: boolean;
 	openObject?: (id: string) => void;
 }) {
@@ -114,6 +218,7 @@ export function DocumentResultsPage({
 		[resolution, setResolution] = useState<string>(),
 		[acknowledge, setAcknowledge] = useState(false),
 		[saving, setSaving] = useState(false),
+		[checking, setChecking] = useState(false),
 		[download, setDownload] = useState<'excel' | 'pdf' | null>(null);
 	const { message } = App.useApp();
 	const groups = job.payload.groups || [];
@@ -312,6 +417,22 @@ export function DocumentResultsPage({
 						))}
 					</ul>
 				)}
+				{recheck && (
+					<Button
+						type="link"
+						loading={checking}
+						onClick={async () => {
+							setChecking(true);
+							try {
+								await recheck();
+							} finally {
+								setChecking(false);
+							}
+						}}
+					>
+						Перепроверить PDF
+					</Button>
+				)}
 			</details>
 			{disciplines.length > 1 && (
 				<div className="document-category-switch">
@@ -403,7 +524,25 @@ export function DocumentResultsPage({
 			<DocumentPublishPanel job={job} refresh={refresh} openObject={openObject} />
 			<Modal
 				className="document-work-sheet"
-				title={sources ? 'Источники позиции' : editing?.name}
+				title={
+					sources
+						? sources.name
+						: editing && (
+								<div className="document-gallery-title">
+									<span>{editing.name}</span>
+									{!!editing.sources.length && (
+										<Button
+											type="text"
+											aria-label="Галерея источников PDF"
+											title="Галерея источников PDF"
+											icon={<Images size={19} />}
+											onClick={() => setSources(editing)}
+										/>
+									)}
+								</div>
+							)
+				}
+				width={sources ? 820 : undefined}
 				open={!!editing}
 				onCancel={() => (sources ? setSources(null) : !saving && setEditing(null))}
 				confirmLoading={saving}
@@ -424,39 +563,7 @@ export function DocumentResultsPage({
 				}}
 			>
 				{sources ? (
-					<div className="document-source">
-						{sources.sources.map((source, index) => (
-							<section key={index}>
-								<strong>
-									Страница {source.page} · {source.original_quantity ?? 'Не определено'}{' '}
-									{source.original_unit}
-									{source.source_row != null && ` · строка ${source.source_row}`}
-								</strong>
-								<blockquote>{source.quote}</blockquote>
-								{source.visual_verified && (
-									<small className="page-context">Сверено с изображением PDF</small>
-								)}
-								<small className="page-context">
-									{source.item_code ? source.item_code + ' · ' : ''}
-									{source.name}
-								</small>
-								{(source.section || source.subsection) && (
-									<small className="page-context">
-										{[source.section, source.subsection].filter(Boolean).join(' · ')}
-									</small>
-								)}
-								{source.notes && <p>{source.notes}</p>}
-								{source.question && <p className="document-question">{source.question}</p>}
-								<SourcePreview jobId={job.id} page={source.page} highlights={source.highlights} />
-								{source.conversion_factor && source.conversion_factor !== '1' && (
-									<p>
-										Приведено к {source.unit}: {source.quantity}
-									</p>
-								)}
-								{source.geometry_factor && <p>Площадь поверхности: {source.quantity} м²</p>}
-							</section>
-						))}
-					</div>
+					<SourceGallery jobId={job.id} group={sources} />
 				) : readOnly ? (
 					<div className="document-review-form">
 						<dl className="position-totals">
@@ -479,9 +586,6 @@ export function DocumentResultsPage({
 								.join(' · ')}
 						</p>
 						{editing && pageMentions(editing) && <p>{pageMentions(editing)}</p>}
-						<Button icon={<FileSearch size={16} />} onClick={() => setSources(editing)}>
-							Источники · {editing?.sources.length}
-						</Button>
 					</div>
 				) : (
 					<div className="document-review-form">
@@ -545,14 +649,10 @@ export function DocumentResultsPage({
 								{issue}
 							</p>
 						))}
-						{editing && (
-							<Button
-								type="text"
-								icon={<FileSearch size={16} />}
-								onClick={() => setSources(editing)}
-							>
-								Проверить источники
-							</Button>
+						{!!editing?.sources.length && (
+							<small className="page-context">
+								Упоминаний: {editing.mention_count ?? editing.sources.length}
+							</small>
 						)}
 						<div className="document-input-pair">
 							<label>
@@ -569,6 +669,7 @@ export function DocumentResultsPage({
 										'м³',
 										'шт.',
 										'кг',
+										'кВт',
 										'компл.',
 										'систем',
 										'чел·ч',
@@ -606,7 +707,7 @@ export function DocumentResultsPage({
 							/>
 						</label>
 						{notes && <p className="page-context">{notes}</p>}
-						{editing && (
+						{editing && (!!editing.issues.length || editing.quantity_mode === 'mentions') && (
 							<label>
 								Как посчитать объём
 								<Select

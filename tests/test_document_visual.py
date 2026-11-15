@@ -130,6 +130,76 @@ def test_conflicting_visual_readings_do_not_become_a_payable_quantity(tmp_path, 
     assert row["quantity"] is None and row["issues"]
 
 
+def test_calibrated_ocr_reads_counts_locally_and_preserves_decimal_uncertainty(tmp_path):
+    payload = fixture(tmp_path)
+    path = tmp_path / "docling/page-1.json"
+    record = json.loads(path.read_text(encoding="utf-8"))
+    record["digit_calibration"] = "header-glyphs-v1"
+    path.write_text(json.dumps(record), encoding="utf-8")
+    work = payload["works"][0]
+    work.update(quantity_warning=False, quantity_cell="11", unit_present=True)
+
+    async def unexpected(*args):
+        raise AssertionError("Clear calibrated count must not be sent to vision")
+
+    result = asyncio.run(visual.resolve(tmp_path, payload, {}, unexpected, lambda *args: None))
+    assert result[0]["local_verified"] and build_groups(result)[0]["quantity"] == "11"
+    assert not visual.local_reading(dict(work, unit_cell="м"), record)
+    assert visual.local_reading(dict(work, unit_cell="м", quantity_cell="1,1"), record)
+
+
+def test_pdf_marks_continued_names_only_on_selected_pages(tmp_path):
+    from io import BytesIO
+
+    from pypdf import PdfReader, PdfWriter
+
+    from backend.documents.annotations import annotated_pdf
+
+    source = tmp_path / "sample.pdf"
+    writer = PdfWriter()
+    for _ in range(3):
+        writer.add_blank_page(width=600, height=800)
+    writer.write(source)
+    box = {"left": 10, "top": 10, "width": 20, "height": 2}
+    evidence = {
+        "page": 3,
+        "highlights": [box],
+        "highlight_pages": [
+            {"page": 1, "highlights": [box]},
+            {"page": 2, "highlights": [box]},
+        ],
+    }
+    marked = annotated_pdf(source, [{"sources": [evidence, evidence]}], {2, 3})
+    pages = PdfReader(BytesIO(marked)).pages
+    assert [len(page.get("/Annots", [])) for page in pages] == [0, 1, 1]
+
+
+def test_recover_numeric_ocr_overwriting_a_name_without_moving_cell_boxes():
+    from backend.documents.russian_cells import restore_names
+
+    header = "Строка 1: C1–C2=Наименование |\n"
+    name = "C1–C2=110 [OCR расходится: 110; проверить] | "
+    quantity = "C2–C3=7 | "
+    start = len(header + "Строка 2: ")
+    record = {
+        "analysis_text": header + "Строка 2: " + name + quantity,
+        "analysis_layout": {
+            "lines": [
+                {"start": start, "end": start + len(name), "top": 20},
+                {"start": start + len(name), "end": start + len(name + quantity), "top": 20},
+            ]
+        },
+        "text_corrections": [
+            {"column": "C1–C2", "top": 20, "before": "1. Вентилятор радиальный до №10"}
+        ],
+    }
+    result = restore_names(record)
+    first, second = result["analysis_layout"]["lines"]
+    assert "Вентилятор радиальный" in result["analysis_text"][first["start"] : first["end"]]
+    assert result["analysis_text"][second["start"] : second["end"]] == quantity
+    assert first["top"] == second["top"] == 20
+
+
 def test_duplicate_or_out_of_batch_ids_and_nonliteral_numbers_are_rejected():
     rows = visual.response_rows(
         {

@@ -6,6 +6,7 @@ import {
 	Check,
 	ChevronDown,
 	ChevronRight,
+	Files,
 	History,
 	Plus,
 	Settings2,
@@ -153,7 +154,9 @@ export function WorkspaceApp() {
 					{page === 'more' && <SettingsPage workspace={workspace} notifications={notifications} />}
 					{page === 'team' && <TeamPage workspace={workspace} />}
 					{page === 'reminders' && <RemindersPage workspace={workspace} />}
-					{page === 'documents' && <DocumentsPage workspace={workspace} />}
+					<div hidden={page !== 'documents'}>
+						<DocumentsPage workspace={workspace} visible={page === 'documents'} />
+					</div>
 				</main>
 			</div>
 			<nav className="bottom-nav">
@@ -161,12 +164,15 @@ export function WorkspaceApp() {
 					{ id: 'objects', label: 'Объекты', icon: Building2 },
 					...(!isAdmin ? [{ id: 'today', label: 'Отчёт', icon: Plus }] : []),
 					{ id: 'history', label: 'История', icon: History },
+					{ id: 'documents', label: 'Документы', icon: Files },
 					{ id: 'more', label: 'Настройки', icon: Settings2 },
 				].map((n) => (
 					<button
 						key={n.id}
 						onClick={() => {
 							if (n.id === 'more') openSettings();
+							else if (n.id === 'documents' && page === 'documents')
+								controller.documentBack.current?.();
 							else if (n.id === 'today' && !isAdmin && active)
 								controller.openObjectSection('reports');
 							else setPage(n.id);
@@ -174,7 +180,7 @@ export function WorkspaceApp() {
 						className={
 							page === n.id ||
 							(n.id === 'today' && page === 'object') ||
-							(n.id === 'more' && ['team', 'reminders', 'documents'].includes(page)) ||
+							(n.id === 'more' && ['team', 'reminders'].includes(page)) ||
 							(n.id === 'history' && page === 'changes')
 								? 'active'
 								: ''

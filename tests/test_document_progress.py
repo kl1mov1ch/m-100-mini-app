@@ -3,6 +3,7 @@ import io
 import json
 import os
 import time
+from threading import Event
 
 import pytest
 from pypdf import PdfWriter
@@ -11,6 +12,38 @@ from test_document_jobs import sample_pdf
 from test_workspaces import client as client
 
 from backend.documents import metadata, page_cache, progress, repository, worker
+
+
+def test_queue_verifies_one_document_while_the_reader_processes_another(monkeypatch):
+    first_read = Event()
+    verification_started = Event()
+    second_read = Event()
+    read_attempts = 0
+    verified = False
+
+    def run_once(analysis_lane):
+        nonlocal read_attempts, verified
+        if analysis_lane:
+            if verified:
+                return False
+            assert first_read.wait(3)
+            verification_started.set()
+            assert second_read.wait(3)
+            verified = True
+            return True
+        read_attempts += 1
+        if read_attempts == 1:
+            first_read.set()
+            return True
+        if read_attempts == 2:
+            assert verification_started.wait(3)
+            second_read.set()
+            return True
+        return False
+
+    monkeypatch.setattr(worker, "run_once", run_once)
+    worker.run_queue(drain=True)
+    assert verified and second_read.is_set()
 
 
 def test_postgres_session_persists_changes_without_manual_flush(monkeypatch, tmp_path):

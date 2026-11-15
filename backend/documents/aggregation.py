@@ -107,6 +107,8 @@ def without_position_number(name):
 
 
 def estimate_name(source):
+    if source.get("table_role") == "commissioning":
+        return without_position_number(source["name"])
     standard = ventilation_type(source)
     if standard:
         return standard[1]

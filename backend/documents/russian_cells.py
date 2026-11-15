@@ -4,6 +4,64 @@ import csv
 import io
 import re
 import subprocess
+from bisect import bisect_left
+
+
+def restore_names(record):
+    """Recover a name if an older numeric pass replaced its text with digits."""
+    text = record.get("analysis_text", "")
+    layout = record.get("analysis_layout", {})
+    titles = set(re.findall(r"(C\d+–C\d+)=Наименован", text, re.I))
+    if not titles:
+        return record
+    original = {
+        (row.get("column"), row.get("top")): row["before"]
+        for row in record.get("text_corrections", [])
+        if re.search(r"[а-яё]{3,}", row["before"].split(" [OCR")[0], re.I)
+    }
+    replacements = []
+    for line in layout.get("lines", []):
+        match = re.match(r"(C\d+–C\d+)=(.*?)\s*\|\s*$", text[line["start"] : line["end"]], re.S)
+        if not match or match[1] not in titles:
+            continue
+        if re.search(r"[а-яё]{3,}", match[2].split(" [OCR")[0], re.I):
+            continue
+        value = original.get((match[1], line["top"]))
+        if value:
+            replacements.append((line, f"{match[1]}={value} | "))
+    if not replacements:
+        return record
+    return remap_text(record, replacements)
+
+
+def remap_text(record, replacements):
+    text = record["analysis_text"]
+    original_layout = record["analysis_layout"]
+    by_start = {cell["start"]: (cell["end"], value) for cell, value in replacements}
+    offsets = sorted(by_start)
+    cumulative = [0]
+    for start in offsets:
+        end, replacement = by_start[start]
+        cumulative.append(cumulative[-1] + len(replacement) - (end - start))
+    chunks, cursor = [], 0
+    for start in offsets:
+        end, replacement = by_start[start]
+        chunks.extend((text[cursor:start], replacement))
+        cursor = end
+    chunks.append(text[cursor:])
+    lines = [
+        {
+            **line,
+            "start": line["start"] + cumulative[bisect_left(offsets, line["start"])],
+            "end": line["end"] + cumulative[bisect_left(offsets, line["end"])],
+        }
+        for line in original_layout.get("lines", [])
+    ]
+    return {
+        **record,
+        "analysis_text": "".join(chunks),
+        "analysis_layout": {**original_layout, "lines": lines},
+    }
 
 
 def refine(image, record):
@@ -30,7 +88,7 @@ def refine(image, record):
         cell["column"]
         for cell in cells
         if re.match(r"кол|поверх|объем|объём|длин", cell["value"], re.I)
-    }
+    } - (names | units)
     numbers = [
         cell
         for cell in cells
@@ -141,20 +199,8 @@ def refine(image, record):
                         "confidence": round(confidence, 1),
                     }
                 )
-    lines = [dict(line) for line in layout.get("lines", [])]
-    for cell, replacement in sorted(replacements, key=lambda pair: pair[0]["start"], reverse=True):
-        delta = len(replacement) - (cell["end"] - cell["start"])
-        text = text[: cell["start"]] + replacement + text[cell["end"] :]
-        for line in lines:
-            if line["start"] >= cell["end"]:
-                line["start"] += delta
-                line["end"] += delta
-            elif line["start"] == cell["start"]:
-                line["end"] += delta
     return {
-        **record,
-        "analysis_text": text,
-        "analysis_layout": {**layout, "lines": lines},
+        **remap_text(record, replacements),
         "russian_cells": "rus-columns-v1",
         "text_corrections": corrections,
     }

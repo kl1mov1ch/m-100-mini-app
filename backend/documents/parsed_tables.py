@@ -1,6 +1,7 @@
 """Select estimate tables by their parsed column headers, never drawing text."""
 
 import re
+from bisect import bisect_left
 
 ROWS = re.compile(r"Строка\s+(\d+)\s*:\s*(.*?)(?=\nСтрока\s+\d+\s*:|\Z)", re.S)
 CELLS = re.compile(r"C(\d+)[–-]C(\d+)=(.*?)(?=\s*\|\s*C\d+[–-]C\d+=|\s*\|\s*$|\Z)", re.S)
@@ -10,6 +11,15 @@ def clean(value):
     value = value.casefold().replace("ё", "е")
     value = value.translate(str.maketrans("acekmoptx", "асекмортх"))
     return re.sub(r"[\s\-–.,:]+", "", value)
+
+
+def quantity_rank(value):
+    label = clean(value)
+    if label.startswith("кол") and len(label) < 24:
+        return 1
+    if re.match(r"^(?:длина|поверх.*ност|объем|площад)", label):
+        return 2
+    return 0
 
 
 def estimate_table(record):
@@ -27,14 +37,7 @@ def estimate_table(record):
         cells = [(int(cell[1]), int(cell[2]), cell[3].strip()) for cell in CELLS.finditer(row[2])]
         short = [(left, right, clean(value)) for left, right, value in cells if len(value) < 170]
         names = [cell for cell in short if cell[2].startswith("наименован")]
-        amounts = [
-            cell
-            for cell in short
-            if (cell[2].startswith("кол") and len(cell[2]) < 24)
-            or re.match(
-                r"^(?:длина|длинавы|длина,|длинавыс|длина.*м$|поверх.*ност|объем|площад)", cell[2]
-            )
-        ]
+        amounts = [cell for cell in short if quantity_rank(cell[2])]
         units = [
             cell
             for cell in short
@@ -69,9 +72,11 @@ def estimate_table(record):
         selected = [cell for cell in cells if int(cell[1]) >= left and int(cell[2]) <= right]
         if selected:
             kept.append((row, selected))
-    if len(kept) < 3:
+    if len(kept) < (2 if record.get("native_column_grid") else 3):
         return None
     layout = record.get("analysis_layout", record.get("layout", {}))
+    original_lines = sorted(layout.get("lines", []), key=lambda line: line["start"])
+    offsets = [line["start"] for line in original_lines]
     selected_text = (
         "Таблица: ячейки по строкам и колонкам. Номера строк — служебные, не количества.\n"
     )
@@ -95,15 +100,16 @@ def estimate_table(record):
             offset = len(selected_text) - old_start
             segment = cell[0].rstrip(" |") + " | "
             selected_text += segment
-            for line in layout.get("lines", []):
-                if old_start <= line["start"] < old_end:
-                    lines.append(
-                        {
-                            **line,
-                            "start": line["start"] + offset,
-                            "end": min(line["end"] + offset, len(selected_text)),
-                        }
-                    )
+            first = bisect_left(offsets, old_start)
+            last = bisect_left(offsets, old_end, lo=first)
+            lines.extend(
+                {
+                    **line,
+                    "start": line["start"] + offset,
+                    "end": min(line["end"] + offset, len(selected_text)),
+                }
+                for line in original_lines[first:last]
+            )
         selected_text += "\n"
     return {
         "text": selected_text,

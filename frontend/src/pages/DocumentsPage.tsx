@@ -1,18 +1,10 @@
 import { App, Button, Empty, Input, Spin, Upload } from 'antd';
-import {
-	ChevronDown,
-	ChevronRight,
-	FilePlus2,
-	FileText,
-	LoaderCircle,
-	RefreshCw,
-	X,
-} from 'lucide-react';
+import { ChevronRight, FilePlus2, FileText, LoaderCircle, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { WorkspaceView } from '../App';
 import { request } from '../lib/api';
 import { DocumentResultsPage } from './DocumentResultsPage';
-import { DocumentProgress, documentActive } from './DocumentProgress';
+import { DocumentProgress, documentActive, documentMeter } from './DocumentProgress';
 import type { DocumentJob } from './document-types';
 import './documents.css';
 
@@ -36,23 +28,34 @@ const labels: Record<string, string> = {
 	publish_retry: 'Проверьте запись',
 	published: 'Объект создан',
 };
-export function DocumentsPage({ workspace }: { workspace: WorkspaceView }) {
+export function DocumentsPage({
+	workspace,
+	visible,
+}: {
+	workspace: WorkspaceView;
+	visible: boolean;
+}) {
 	const { message, modal } = App.useApp();
 	const [jobs, setJobs] = useState<DocumentJob[]>([]),
 		[selected, setSelected] = useState<DocumentJob | null>(null),
 		[query, setQuery] = useState(''),
+		[search, setSearch] = useState(''),
 		[files, setFiles] = useState<PendingFile[]>([]),
-		[loading, setLoading] = useState(false),
+		[loading, setLoading] = useState(true),
 		[uploading, setUploading] = useState(false),
-		[composerOpen, setComposerOpen] = useState(true),
 		[error, setError] = useState(''),
 		[deleting, setDeleting] = useState<string[]>([]);
+	const openRequest = useRef<AbortController | null>(null);
 	const transfers = useRef(new Map<string, Transfer>()),
 		removed = useRef(new Set<string>()),
 		loadingList = useRef(false);
 	useEffect(() => {
-		setComposerOpen(!selected);
-	}, [selected?.id]);
+		workspace.documentBack.current = visible && selected ? () => setSelected(null) : null;
+		return () => {
+			workspace.documentBack.current = null;
+			openRequest.current?.abort();
+		};
+	}, [selected?.id, visible, workspace.documentBack]);
 	const load = async () => {
 		if (loadingList.current) return;
 		loadingList.current = true;
@@ -72,7 +75,7 @@ export function DocumentsPage({ workspace }: { workspace: WorkspaceView }) {
 		(!!selected && documentActive(selected.status));
 	const selectedVersion = jobs.find((job) => job.id === selected?.id)?.updated_at;
 	useEffect(() => {
-		setLoading(true);
+		if (!visible) return;
 		void load();
 		const timer = setInterval(
 			() => {
@@ -88,9 +91,9 @@ export function DocumentsPage({ workspace }: { workspace: WorkspaceView }) {
 			clearInterval(timer);
 			document.removeEventListener('visibilitychange', onVisible);
 		};
-	}, [workspace.session.user.telegram_id, processing]);
+	}, [workspace.session.user.telegram_id, processing, visible]);
 	useEffect(() => {
-		if (!selected) return;
+		if (!visible || !selected) return;
 		const brief = jobs.find((job) => job.id === selected.id);
 		if (!brief || brief.updated_at === selected.updated_at) return;
 		const controller = new AbortController();
@@ -104,9 +107,8 @@ export function DocumentsPage({ workspace }: { workspace: WorkspaceView }) {
 					setError(failure.message);
 			});
 		return () => controller.abort();
-	}, [selectedVersion, selected?.id, selected?.updated_at]);
+	}, [selectedVersion, selected?.id, selected?.updated_at, visible]);
 	const add = (file: File) => {
-		setComposerOpen(true);
 		if (!file.name.toLowerCase().endsWith('.pdf') || file.size > 50 * 1024 * 1024) {
 			message.error('Выберите PDF до 50 МБ');
 			return false;
@@ -142,57 +144,77 @@ export function DocumentsPage({ workspace }: { workspace: WorkspaceView }) {
 	const start = async () => {
 		setUploading(true);
 		setError('');
-		for (const item of files.filter((file) => file.state === 'pending')) {
-			const transfer = transfers.current.get(item.uid);
-			if (!transfer || transfer.cancelled) continue;
-			setFiles((current) =>
-				current.map((file) => (file.uid === item.uid ? { ...file, state: 'uploading' } : file)),
-			);
-			try {
-				const reserved = await request<DocumentJob>('/documents/reserve', {
-					name: item.file.name,
-					query: query.trim(),
-					selection_policy: 'specifications',
-					engine: 'docling',
-				});
-				transfer.job = reserved.id;
-				if (transfer.cancelled) {
-					await request('/documents/' + reserved.id + '/delete', {});
-					removed.current.add(reserved.id);
-					continue;
-				}
-				const form = new FormData();
-				form.append('file', item.file);
-				const job = await request<DocumentJob>(
-					'/documents/' + reserved.id + '/file',
-					form,
-					undefined,
-					transfer.controller.signal,
+		const pending = files.filter((file) => file.state === 'pending');
+		let next = 0;
+		const uploadNext = async () => {
+			while (next < pending.length) {
+				const item = pending[next++];
+				const transfer = transfers.current.get(item.uid);
+				if (!transfer || transfer.cancelled) continue;
+				setFiles((current) =>
+					current.map((file) => (file.uid === item.uid ? { ...file, state: 'uploading' } : file)),
 				);
-				if (!transfer.cancelled) setSelected(job);
-			} catch (failure) {
-				if (!transfer.cancelled) setError((failure as Error).message);
-				if (transfer.job) {
-					try {
-						await request('/documents/' + transfer.job + '/delete', {});
-						removed.current.add(transfer.job);
-					} catch {
-						if (!transfer.cancelled)
-							setError('Загрузка не завершена. Удалите её из списка документов.');
+				try {
+					const reserved = await request<DocumentJob>('/documents/reserve', {
+						name: item.file.name,
+						query: query.trim(),
+						selection_policy: 'specifications',
+						engine: 'docling',
+					});
+					transfer.job = reserved.id;
+					if (transfer.cancelled) {
+						await request('/documents/' + reserved.id + '/delete', {});
+						removed.current.add(reserved.id);
+						continue;
 					}
+					const form = new FormData();
+					form.append('file', item.file);
+					const job = await request<DocumentJob>(
+						'/documents/' + reserved.id + '/file',
+						form,
+						undefined,
+						transfer.controller.signal,
+					);
+					if (!transfer.cancelled) {
+						setJobs((current) => [job, ...current.filter((candidate) => candidate.id !== job.id)]);
+					}
+				} catch (failure) {
+					if (!transfer.cancelled) setError((failure as Error).message);
+					if (transfer.job) {
+						try {
+							await request('/documents/' + transfer.job + '/delete', {});
+							removed.current.add(transfer.job);
+						} catch {
+							if (!transfer.cancelled)
+								setError('Загрузка не завершена. Удалите её из списка документов.');
+						}
+					}
+				} finally {
+					setFiles((current) => current.filter((file) => file.uid !== item.uid));
+					await load();
 				}
-			} finally {
-				setFiles((current) => current.filter((file) => file.uid !== item.uid));
-				await load();
 			}
+		};
+		try {
+			await Promise.all([uploadNext(), uploadNext()]);
+		} finally {
+			setUploading(false);
 		}
-		setUploading(false);
 	};
 	const open = async (id: string) => {
+		openRequest.current?.abort();
+		const controller = new AbortController();
+		openRequest.current = controller;
 		try {
-			setSelected(await request<DocumentJob>('/documents/' + id));
+			const job = await request<DocumentJob>(
+				'/documents/' + id,
+				undefined,
+				undefined,
+				controller.signal,
+			);
+			if (!controller.signal.aborted && !removed.current.has(job.id)) setSelected(job);
 		} catch (failure) {
-			message.error((failure as Error).message);
+			if (!controller.signal.aborted) message.error((failure as Error).message);
 		}
 	};
 	const remove = async (job: DocumentJob) => {
@@ -246,11 +268,11 @@ export function DocumentsPage({ workspace }: { workspace: WorkspaceView }) {
 			okButtonProps: { danger: true },
 			onOk: () => cancel(file),
 		});
-	const resume = async () => {
+	const resume = async (recheck = false) => {
 		if (!selected) return;
 		try {
 			const action =
-				selected.status === 'needs_review' && !selected.payload.groups?.length
+				recheck || (selected.status === 'needs_review' && !selected.payload.groups?.length)
 					? 'rebuild'
 					: ['needs_ai', 'needs_budget', 'text_ready'].includes(selected.status)
 						? 'analyse'
@@ -266,133 +288,159 @@ export function DocumentsPage({ workspace }: { workspace: WorkspaceView }) {
 			message.error((failure as Error).message);
 		}
 	};
-	const visibleJobs = jobs.filter(
-		(job) => !files.some((file) => transfers.current.get(file.uid)?.job === job.id),
-	);
+	const visibleJobs = jobs
+		.filter(
+			(job) =>
+				!files.some((file) => transfers.current.get(file.uid)?.job === job.id) &&
+				job.name.toLocaleLowerCase('ru').includes(search.trim().toLocaleLowerCase('ru')),
+		)
+		.sort(
+			(left, right) => Number(documentActive(right.status)) - Number(documentActive(left.status)),
+		);
+	const tone = (job: DocumentJob) =>
+		documentActive(job.status)
+			? 'active'
+			: ['ready', 'published'].includes(job.status)
+				? 'ready'
+				: ['failed', 'needs_ai', 'needs_ocr', 'needs_budget'].includes(job.status)
+					? 'blocked'
+					: 'review';
 	return (
 		<div className="document-page document-workspace">
-			<div className="page-title">
-				<div>
-					<h1>Документы</h1>
-					<small className="page-context">PDF → данные → таблица объекта</small>
-				</div>
-				<Button
-					type="text"
-					aria-label="Обновить документы"
-					icon={<RefreshCw size={18} />}
-					onClick={() => void load()}
-				/>
-			</div>
-			<section className="document-upload">
-				<div className="document-upload-heading">
-					<button
-						className="document-compose-toggle"
-						aria-expanded={composerOpen}
-						onClick={() => setComposerOpen((current) => !current)}
-					>
-						{composerOpen ? 'Что найти в проекте?' : 'Новая выборка'}
-						<ChevronDown size={14} />
-					</button>
-					<Upload accept=".pdf" multiple beforeUpload={add} showUploadList={false}>
-						<Button type="text" icon={<FilePlus2 size={17} />}>
-							Добавить PDF
-						</Button>
-					</Upload>
-				</div>
-				<div hidden={!composerOpen && !files.length}>
-					<Input.TextArea
-						value={query}
-						onChange={(event) => setQuery(event.target.value)}
-						maxLength={2000}
-						autoSize={{ minRows: 2, maxRows: 4 }}
-						aria-label="Что найти в PDF"
-						placeholder="Например: только вентиляция. Пустое поле — все работы."
-					/>
+			{!selected ? (
+				<>
+					<div className="page-title">
+						<h1>Документы</h1>
+						<Upload accept=".pdf" multiple beforeUpload={add} showUploadList={false}>
+							<Button type="primary" icon={<FilePlus2 size={17} />}>
+								Добавить PDF
+							</Button>
+						</Upload>
+					</div>
 					{!!files.length && (
-						<div className="document-pending-files">
-							{files.map((file) => (
-								<div key={file.uid}>
-									<FileText size={17} />
-									<span>
-										<strong>{file.file.name}</strong>
-										<small>
-											{file.state === 'pending'
-												? (file.file.size / 1024 / 1024).toFixed(1) + ' МБ'
-												: file.state === 'cancelling'
-													? 'Отменяем…'
-													: 'Загружаем…'}
-										</small>
-									</span>
+						<section className="document-upload">
+							<details className="document-checks">
+								<summary>Что найти в документе</summary>
+								<Input.TextArea
+									value={query}
+									onChange={(event) => setQuery(event.target.value)}
+									maxLength={2000}
+									autoSize={{ minRows: 2, maxRows: 4 }}
+									aria-label="Что найти в PDF"
+									placeholder="Например: только вентиляция. Пустое поле — все работы."
+								/>
+							</details>
+							{!!files.length && (
+								<div className="document-pending-files">
+									{files.map((file) => (
+										<div key={file.uid}>
+											<FileText size={17} />
+											<span>
+												<strong>{file.file.name}</strong>
+												<small>
+													{file.state === 'pending'
+														? (file.file.size / 1024 / 1024).toFixed(1) + ' МБ'
+														: file.state === 'cancelling'
+															? 'Отменяем…'
+															: 'Загружаем…'}
+												</small>
+											</span>
+											<Button
+												type="text"
+												aria-label={'Убрать ' + file.file.name}
+												loading={file.state === 'cancelling'}
+												icon={<X size={17} />}
+												onClick={() => askCancel(file)}
+											/>
+										</div>
+									))}
+								</div>
+							)}
+							<div className="document-upload-actions">
+								<small>PDF до 50 МБ · все страницы</small>
+								{!!files.some((file) => file.state === 'pending') && (
+									<Button type="primary" loading={uploading} onClick={() => void start()}>
+										Подобрать работы
+									</Button>
+								)}
+							</div>
+						</section>
+					)}
+					{error && (
+						<p className="document-notice" role="alert">
+							{error}
+							<Button type="link" onClick={() => void load()}>
+								Обновить список
+							</Button>
+						</p>
+					)}
+					{(jobs.length > 5 || search) && (
+						<Input
+							aria-label="Найти документ"
+							placeholder="Найти документ"
+							allowClear
+							value={search}
+							onChange={(event) => setSearch(event.target.value)}
+						/>
+					)}
+					{search && !visibleJobs.length && <p className="compact-empty">Документы не найдены</p>}
+					<Spin spinning={loading}>
+						<div className="document-jobs">
+							{visibleJobs.map((job) => (
+								<div className="document-job" data-tone={tone(job)} key={job.id}>
+									<button className="document-job-open" onClick={() => void open(job.id)}>
+										<span className="document-file-icon">
+											{documentActive(job.status) ? (
+												<LoaderCircle size={19} className="spinning" />
+											) : (
+												<FileText size={19} />
+											)}
+										</span>
+										<span className="document-job-label">
+											<strong>{job.name}</strong>
+											<small>
+												{labels[job.status] || job.status}
+												{job.pages ? ` · ${job.processed}/${job.pages} стр.` : ''}
+											</small>
+											{documentActive(job.status) && (
+												<progress
+													aria-label={labels[job.status]}
+													className="document-job-progress"
+													max={100}
+													value={documentMeter(job)}
+												/>
+											)}
+										</span>
+										<ChevronRight size={16} />
+									</button>
 									<Button
 										type="text"
-										aria-label={'Убрать ' + file.file.name}
-										loading={file.state === 'cancelling'}
+										aria-label={'Удалить ' + job.name}
+										loading={deleting.includes(job.id)}
+										disabled={job.status === 'publishing'}
 										icon={<X size={17} />}
-										onClick={() => askCancel(file)}
+										onClick={() => askRemove(job)}
 									/>
 								</div>
 							))}
 						</div>
+					</Spin>
+					{!jobs.length && !files.length && !loading && !error && (
+						<Empty
+							image={Empty.PRESENTED_IMAGE_SIMPLE}
+							description="Добавьте PDF — найденные работы появятся здесь"
+						/>
 					)}
-					<div className="document-upload-actions">
-						<small>PDF до 50 МБ · все страницы</small>
-						{!!files.some((file) => file.state === 'pending') && (
-							<Button type="primary" loading={uploading} onClick={() => void start()}>
-								Подобрать работы
-							</Button>
-						)}
-					</div>
+				</>
+			) : (
+				<div className="page-title document-detail-heading">
+					{!window.Telegram?.WebApp?.initData && (
+						<Button type="text" onClick={() => setSelected(null)}>
+							Все документы
+						</Button>
+					)}
+					<span title={selected.name}>{selected.name}</span>
 				</div>
-			</section>
-			{error && (
-				<p className="document-notice" role="alert">
-					{error}
-				</p>
-			)}
-			<Spin spinning={loading}>
-				<div className="document-jobs">
-					{visibleJobs.map((job) => (
-						<div
-							className={'document-job' + (selected?.id === job.id ? ' selected' : '')}
-							key={job.id}
-						>
-							<button
-								className="document-job-open"
-								onClick={() => (selected?.id === job.id ? setSelected(null) : void open(job.id))}
-							>
-								<span className="document-file-icon">
-									{documentActive(job.status) ? (
-										<LoaderCircle size={19} className="spinning" />
-									) : (
-										<FileText size={19} />
-									)}
-								</span>
-								<span className="document-job-label">
-									<strong>{job.name}</strong>
-									<small>
-										{labels[job.status] || job.status}
-										{job.pages ? ` · ${job.processed}/${job.pages} стр.` : ''}
-									</small>
-								</span>
-								{selected?.id === job.id ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-							</button>
-							<Button
-								type="text"
-								aria-label={'Удалить ' + job.name}
-								loading={deleting.includes(job.id)}
-								disabled={job.status === 'publishing'}
-								icon={<X size={17} />}
-								onClick={() => askRemove(job)}
-							/>
-						</div>
-					))}
-				</div>
-			</Spin>
-			{!jobs.length && !files.length && !loading && !error && (
-				<Empty
-					image={Empty.PRESENTED_IMAGE_SIMPLE}
-					description="Добавьте PDF — найденные работы появятся здесь"
-				/>
 			)}
 			{selected &&
 				(documentActive(selected.status) ||
@@ -409,6 +457,7 @@ export function DocumentsPage({ workspace }: { workspace: WorkspaceView }) {
 						embedded
 						job={selected}
 						back={() => setSelected(null)}
+						recheck={selected.status === 'published' ? undefined : () => resume(true)}
 						refresh={(job) => {
 							setSelected(job);
 							void load();

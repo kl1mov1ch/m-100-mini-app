@@ -8,8 +8,11 @@ from pypdf.generic import ArrayObject, FloatObject, NameObject
 
 def bands(boxes):
     rows = []
-    for box in sorted(boxes, key=lambda item: (item["top"], item["left"])):
-        values = [float(box.get(key, 0)) for key in ("left", "top", "width", "height")]
+    unique = {
+        tuple(float(box.get(key, 0)) for key in ("left", "top", "width", "height"))
+        for box in boxes
+    }
+    for values in sorted(unique, key=lambda item: (item[1] + item[3] / 2, item[0])):
         if not all(math.isfinite(value) for value in values):
             continue
         left, top, width, height = values
@@ -19,14 +22,12 @@ def bands(boxes):
             continue
         height = min(bottom - top, 1.8)
         center = (top + bottom) / 2
-        row = next(
-            (row for row in rows if abs(row[1] - center) <= min(row[3], height) * 0.45), None
-        )
-        if row is None:
-            rows.append([left, center, right, height])
-        else:
+        row = rows[-1] if rows else None
+        if row and abs(row[1] - center) <= min(row[3], height) * 0.38:
             row[0], row[2] = min(row[0], left), max(row[2], right)
             row[3] = max(row[3], height)
+        else:
+            rows.append([left, center, right, height])
     return rows
 
 
@@ -37,9 +38,10 @@ def annotated_pdf(source, groups, allowed_pages=None):
     marked = {}
     for group in groups:
         for item in group.get("sources", []):
-            if allowed_pages is not None and item["page"] not in allowed_pages:
-                continue
-            marked.setdefault(item["page"], []).extend(item.get("highlights", []))
+            for evidence in [item, *item.get("highlight_pages", [])]:
+                page = evidence["page"]
+                if allowed_pages is None or page in allowed_pages:
+                    marked.setdefault(page, []).extend(evidence.get("highlights", []))
     for number, boxes in marked.items():
         if not 1 <= number <= len(writer.pages):
             continue

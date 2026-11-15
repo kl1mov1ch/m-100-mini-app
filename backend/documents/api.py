@@ -1,13 +1,14 @@
 import hashlib
 import io
 import shutil
+import subprocess
 from datetime import UTC, datetime
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from starlette.concurrency import run_in_threadpool
@@ -181,6 +182,8 @@ def list_jobs(request: Request):
                 DocumentJob.payload["progress"].label("progress"),
                 DocumentJob.payload["analysis_done"].label("analysis_done"),
                 DocumentJob.payload["analysis_total"].label("analysis_total"),
+                DocumentJob.payload["conversion_done"].label("conversion_done"),
+                DocumentJob.payload["text_complete"].label("text_complete"),
                 DocumentJob.payload["file_bytes"].label("file_bytes"),
             )
             .where(DocumentJob.owner_id == request.state.user["telegram_id"])
@@ -203,6 +206,8 @@ def list_jobs(request: Request):
                         "progress",
                         "analysis_done",
                         "analysis_total",
+                        "conversion_done",
+                        "text_complete",
                         "file_bytes",
                     )
                     if row[name] is not None
@@ -395,6 +400,37 @@ def preview_page(ident: str, page: int, request: Request):
     if not path.is_file():
         path = folder(ident) / "docling" / f"page-{page}.jpg"
     if not path.is_file():
+        source = folder(ident) / "source.pdf"
+        if source.is_file() and shutil.which("pdftoppm"):
+            try:
+                image = subprocess.run(
+                    [
+                        "pdftoppm",
+                        "-f",
+                        str(page),
+                        "-l",
+                        str(page),
+                        "-scale-to",
+                        "1800",
+                        "-singlefile",
+                        "-jpeg",
+                        str(source),
+                    ],
+                    capture_output=True,
+                    check=True,
+                    timeout=15,
+                ).stdout
+            except (OSError, subprocess.SubprocessError):
+                image = b""
+            if image.startswith(b"\xff\xd8"):
+                return Response(
+                    image,
+                    media_type="image/jpeg",
+                    headers={
+                        "Cache-Control": "private, no-store",
+                        "X-Content-Type-Options": "nosniff",
+                    },
+                )
         raise HTTPException(404, "Для этой страницы доступны текстовые источники")
     return FileResponse(
         path,
@@ -416,12 +452,15 @@ def marked_pdf(ident: str, request: Request, prepare: bool = False):
     def render(user):
         with session() as database:
             current = owned(database, ident, user["telegram_id"])
-            groups = current.payload.get("groups", [])
+            groups = download_rows(
+                ident, current.payload, final=current.status in {"ready", "published"}
+            )
             allowed = (
                 set(current.payload.get("selected_specifications", []))
                 if current.payload.get("selection_policy") == "specifications"
                 else None
             )
+            groups = [*groups, {"sources": download_controls(current.payload)}]
         return annotated_pdf(folder(ident) / "source.pdf", groups, allowed)
 
     return report_export(request.state.user, filename, "application/pdf", render, prepare)
@@ -669,6 +708,16 @@ def review_batch(ident: str, request: Request, body: BatchReview):
     )
 
 
+def download_rows(ident, payload, *, final=False):
+    if final or not payload.get("works"):
+        return payload.get("groups", [])
+    return estimate_rows({**payload, "works": table_works(folder(ident), payload)})
+
+
+def download_controls(payload):
+    return [row for row in payload.get("controls", []) if row.get("table_role") != "commissioning"]
+
+
 @router.get("/{ident}/export.xlsx")
 def export(ident: str, request: Request, prepare: bool = False, final: bool = False):
     def render(user):
@@ -680,19 +729,13 @@ def export(ident: str, request: Request, prepare: bool = False, final: bool = Fa
                 raise HTTPException(
                     409, "Для итогового отчёта подтвердите все объёмы, расценки и полноту выборки"
                 )
-            rows = (
-                job.payload.get("groups", [])
-                if final
-                else estimate_rows(
-                    {
-                        **job.payload,
-                        "works": table_works(folder(ident), job.payload),
-                    }
-                )
-            )
+            rows = download_rows(ident, job.payload, final=final)
+            controls = download_controls(job.payload)
         blank = io.BytesIO()
         Workbook().save(blank)
-        return make_estimate(blank.getvalue(), rows, draft=not final, download=True)
+        return make_estimate(
+            blank.getvalue(), rows, draft=not final, download=True, controls=controls
+        )
 
     with session() as database:
         job = owned(database, ident, request.state.user["telegram_id"])

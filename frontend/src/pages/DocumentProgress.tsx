@@ -5,6 +5,17 @@ import type { DocumentJob } from './document-types';
 export const documentActive = (status: string) =>
 	['uploading', 'queued', 'extracting', 'ai_queued', 'analysing'].includes(status);
 
+export function documentMeter(job: DocumentJob) {
+	const { analysis_done, analysis_total, conversion_done, text_complete, progress } = job.payload;
+	if (progress?.stage === 'grouping' && analysis_total)
+		return Math.min(99, 85 + ((analysis_done || 0) * 14) / analysis_total);
+	if (job.status === 'analysing' && analysis_total)
+		return Math.min(85, 60 + ((analysis_done || 0) * 25) / analysis_total);
+	if (text_complete || job.status === 'ai_queued') return 60;
+	if (job.pages) return Math.min(60, ((conversion_done ?? job.processed) * 60) / job.pages);
+	return undefined;
+}
+
 export function DocumentProgress({ job, resume }: { job: DocumentJob; resume: () => void }) {
 	const active = documentActive(job.status);
 	const progress = job.payload.progress;
@@ -15,7 +26,9 @@ export function DocumentProgress({ job, resume }: { job: DocumentJob; resume: ()
 	);
 	const title =
 		stage === 'verifying' && active
-			? 'ИИ сверяет ячейки с PDF'
+			? page
+				? `Сверены строки на стр. ${page}`
+				: 'Сверяем ячейки с PDF'
 			: stage === 'grouping' && active
 				? 'Объединяем одинаковые работы'
 				: stage === 'converting' && active
@@ -48,7 +61,8 @@ export function DocumentProgress({ job, resume }: { job: DocumentJob; resume: ()
 		: '';
 	const done = job.payload.analysis_done || 0;
 	const total = job.payload.analysis_total || 0;
-	const percent = Math.round((job.processed / Math.max(1, job.pages)) * 100);
+	const percent = documentMeter(job);
+	const step = stage === 'grouping' ? 2 : ['ai_queued', 'analysing'].includes(job.status) ? 1 : 0;
 	return (
 		<section className="document-analysis document-live-progress" role="status" aria-live="polite">
 			<div className="document-section-title">
@@ -67,6 +81,20 @@ export function DocumentProgress({ job, resume }: { job: DocumentJob; resume: ()
 				{job.pages ? `${job.pages} стр.` : 'Определяем число страниц'}
 				{size && ` · ${size}`}
 			</div>
+			{active && (
+				<ol className="document-stage-list">
+					{['Читаем PDF', 'Сверяем строки', 'Собираем смету'].map((label, index) => (
+						<li
+							key={label}
+							data-state={index < step ? 'done' : index === step ? 'current' : 'waiting'}
+							aria-current={index === step ? 'step' : undefined}
+						>
+							{index < step && <Check size={13} />}
+							{label}
+						</li>
+					))}
+				</ol>
+			)}
 			<div className="document-progress-counts">
 				<span>
 					{stage === 'verifying'
@@ -90,25 +118,8 @@ export function DocumentProgress({ job, resume }: { job: DocumentJob; resume: ()
 					/ {(stage === 'verifying' ? total : job.pages) || '…'}
 				</strong>
 			</div>
-			{job.pages > 0 && (
-				<Progress
-					size="small"
-					percent={
-						stage === 'verifying'
-							? Math.round((done / Math.max(1, total)) * 100)
-							: stage === 'converting'
-								? Math.round(((job.payload.conversion_done || 0) / Math.max(1, job.pages)) * 100)
-								: stage === 'indexing'
-									? Math.round(((job.payload.index_done || 0) / job.pages) * 100)
-									: percent
-					}
-					showInfo={false}
-					status={
-						active && (stage === 'verifying' ? done < total : job.processed < job.pages)
-							? 'active'
-							: 'normal'
-					}
-				/>
+			{active && percent !== undefined && (
+				<Progress size="small" percent={Math.round(percent)} status="active" />
 			)}
 			{stage !== 'verifying' && (total > 0 || ['ai_queued', 'analysing'].includes(job.status)) && (
 				<div className="document-progress-counts">

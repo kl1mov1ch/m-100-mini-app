@@ -31,17 +31,17 @@ def requested_categories(query):
 
 def select_works(works, query):
     categories = requested_categories(query)
-    commissioning = bool(re.search(r"налад|пуск", str(query or ""), re.I))
     return [
         work
         for work in works
         if (not categories or work.get("category") in categories)
-        and (
-            commissioning
-            or not re.search(
-                r"пуск.?налад|пуско.?налад|^настройк|^статическ\w*\s+балансиров",
-                " ".join([work.get("section", ""), work.get("subsection", ""), work["name"]]),
-                re.I,
-            )
-        )
+        and (include_commissioning(query) or work.get("table_role") != "commissioning")
     ]
+
+
+def include_commissioning(query):
+    return not re.search(
+        r"\b(?:без|кроме)\s+пуско?[\s-]*налад|\bтолько\s+монтаж",
+        str(query or ""),
+        re.I,
+    )

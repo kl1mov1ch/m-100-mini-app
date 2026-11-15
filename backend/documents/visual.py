@@ -10,6 +10,8 @@ import hashlib
 import io
 import json
 import re
+from bisect import bisect_right
+from collections import defaultdict
 
 import httpx
 from PIL import Image, ImageDraw, ImageFont
@@ -20,6 +22,7 @@ from .execution import check_active, run
 from .geometry import perimeter
 from .glyph_numbers import components
 from .normalization import decimal_value, unit_value
+from .parsed_tables import ROWS
 from .profile import load_prompt, load_template
 from .structured import insulation_name, read_matrix
 from .work_catalogue import ventilation_type
@@ -27,13 +30,15 @@ from .work_catalogue import ventilation_type
 
 def cells(record):
     text = record.get("analysis_text", "")
+    rows = [(row.start(), int(row[1])) for row in ROWS.finditer(text)]
+    starts = [offset for offset, _ in rows]
     result = []
     for line in record.get("analysis_layout", {}).get("lines", []):
         matched = re.match(r"(C\d+–C\d+)=(.*?)\s*\|\s*$", text[line["start"] : line["end"]], re.S)
-        rows = re.findall(r"Строка (\d+):", text[: line["start"]])
-        if matched and rows:
+        row = bisect_right(starts, line["start"]) - 1
+        if matched and row >= 0:
             result.append(
-                {**line, "column": matched[1], "value": matched[2].strip(), "row": int(rows[-1])}
+                {**line, "column": matched[1], "value": matched[2].strip(), "row": rows[row][1]}
             )
     return result
 
@@ -145,22 +150,28 @@ def raster(path, page):
     return target
 
 
-def cell_crop(path, page, record, field):
+def cell_crop(path, page, record, field, images):
     if not field:
         return Image.new("L", (120, 60), "white")
     layout = record.get("analysis_layout", record.get("layout", {}))
-    with Image.open(raster(path, page)) as original:
-        sx, sy = original.width / layout["width"], original.height / layout["height"]
-        box = (
-            max(0, int(field["left"] * sx) - 2),
-            max(0, int(field["top"] * sy) - 2),
-            min(original.width, int(field["right"] * sx) + 3),
-            min(original.height, int(field["bottom"] * sy) + 3),
-        )
-        return original.crop(box).convert("L")
+    if page not in images:
+        if len(images) == 2:
+            images.pop(next(iter(images))).close()
+        with Image.open(raster(path, page)) as original:
+            images[page] = original.convert("L")
+    original = images[page]
+    sx, sy = original.width / layout["width"], original.height / layout["height"]
+    box = (
+        max(0, int(field["left"] * sx) - 2),
+        max(0, int(field["top"] * sy) - 2),
+        min(original.width, int(field["right"] * sx) + 3),
+        min(original.height, int(field["bottom"] * sy) + 3),
+    )
+    return original.crop(box)
 
 
-def evidence(path, work, records, contexts, page_cells):
+def evidence(path, work, records, contexts, page_cells, images=None):
+    images = {} if images is None else images
     page, row = work["page"], work["source_row"]
     record, context = records[page], contexts[page, row]
     data = page_cells[page]
@@ -196,12 +207,12 @@ def evidence(path, work, records, contexts, page_cells):
         else next((item for item in data if item["column"] == quantity_column), None)
     )
     panels = {
-        "NAME": cell_crop(path, page, record, name),
-        "UNIT": cell_crop(path, page, record, unit),
-        "QTY": cell_crop(path, page, record, quantity),
+        "NAME": cell_crop(path, page, record, name, images),
+        "UNIT": cell_crop(path, page, record, unit, images),
+        "QTY": cell_crop(path, page, record, quantity, images),
     }
     if dim_header:
-        panels["DIM"] = cell_crop(path, page, record, find(dim_header["column"]))
+        panels["DIM"] = cell_crop(path, page, record, find(dim_header["column"]), images)
     if work.get("quantity_basis") != "surface_schedule":
         fragments = []
         for anchor_page, anchor_row in context.get("name_locations", ())[:4]:
@@ -217,7 +228,7 @@ def evidence(path, work, records, contexts, page_cells):
                 None,
             )
             if anchor:
-                crop = cell_crop(path, anchor_page, records[anchor_page], anchor)
+                crop = cell_crop(path, anchor_page, records[anchor_page], anchor, images)
                 crop.thumbnail((1200, 72))
                 fragments.append(crop)
         if fragments:
@@ -309,7 +320,7 @@ def apply_reading(work, item, signature):
         "unit_cell": unit,
         "unit": unit,
         "quantity_warning": False,
-        "work_name": None,
+        "work_name": name if work.get("table_role") == "commissioning" else None,
         "visual_verified": True,
         "visual_source_hash": signature,
         "visual_reading": item,
@@ -317,8 +328,8 @@ def apply_reading(work, item, signature):
     dimensions = item.get("dimensions")
     if isinstance(dimensions, dict) and perimeter(dimensions) is not None:
         result["dimensions"] = dimensions
-    standard = ventilation_type(result)
-    if not standard and work.get("continuation_of"):
+    standard = None if work.get("table_role") == "commissioning" else ventilation_type(result)
+    if not standard and work.get("continuation_of") and work.get("table_role") != "commissioning":
         parent = ventilation_type({**work, "name": work["continuation_of"]})
         rule = next(
             (
@@ -340,10 +351,51 @@ def apply_reading(work, item, signature):
         )
         result["visual_dimensions_required"] = True
     result.pop("classification_warning", None)
+    if work.get("name_warning") and not re.search(r"[а-яё]{3,}", str(item.get("name") or ""), re.I):
+        result["classification_warning"] = "Уточните наименование по строке PDF"
     return result
 
 
-async def resolve(path, payload, settings, complete, report):
+def local_reading(work, record):
+    raw = str(work.get("quantity_cell") or "").strip()
+    value = literal(raw)
+    unit, factor = unit_value(work.get("unit_cell"))
+    if (
+        record.get("digit_calibration") != "header-glyphs-v1"
+        or work.get("quantity_warning")
+        or work.get("name_warning")
+        or not value
+        or "/" in value
+        or not re.fullmatch(r"(?:\d+|\d{1,3}(?:[ \u00a0]\d{3})+)(?:[,.]\d+)?", raw)
+        or not factor
+        or not (work.get("unit_present") or work.get("quantity_basis") == "surface_schedule")
+        or not re.search(r"[а-яё]{3,}", work["name"], re.I)
+    ):
+        return False
+    # A missing comma can change reported length/area by orders of magnitude.
+    if unit == "шт.":
+        return bool(re.fullmatch(r"0|[1-9]\d*", value))
+    if "," not in value:
+        return False
+    if needs_dimensions(work):
+        dimensions = work.get("dimensions")
+        return bool(
+            dimension_key(dimensions)
+            and perimeter(dimensions) == perimeter(None, work.get("dimension_text", ""))
+        )
+    return True
+
+
+def page_batches(items):
+    pages = defaultdict(list)
+    for item in items:
+        pages[item[1]["page"]].append(item)
+    for rows in pages.values():
+        for start in range(0, len(rows), 8):
+            yield rows[start : start + 8]
+
+
+async def resolve(path, payload, settings, complete, report, *, page_report=None):
     records, _, contexts = read_matrix(path, payload.get("file_hash"))
     works = [dict(work) for work in payload.get("works", [])]
     candidates = [
@@ -358,7 +410,6 @@ async def resolve(path, payload, settings, complete, report):
         context = contexts[work["page"], work["source_row"]]
         if not context.get("named_primary") and context.get("name_location"):
             work["continuation_of"] = context["name"]
-    page_cells = {page: cells(record) for page, record in records.items()}
     cfg = matcher.provider(settings)
     stamp = cache_signature(payload["file_hash"], cfg, records)
     cache_path = path / "visual-rows.json"
@@ -378,9 +429,14 @@ async def resolve(path, payload, settings, complete, report):
             index = by_location[work["page"], work["source_row"]]
             works[index] = apply_reading(work, cache[ident], payload["file_hash"])
             done += 1
+        elif local_reading(work, records[work["page"]]):
+            index = by_location[work["page"], work["source_row"]]
+            works[index] = {**work, "local_verified": True}
+            done += 1
         else:
             pending.append((ident, work))
     report(done, len(candidates), works)
+    page_cells = {page: cells(record) for page, record in records.items()} if pending else {}
 
     async def request(prompt, content, limit):
         for attempt in range(3):
@@ -400,12 +456,13 @@ async def resolve(path, payload, settings, complete, report):
                 check_active()
                 await asyncio.sleep(0.5 * (attempt + 1))
 
-    async def batch(part):
+    def prepare(part):
         items = []
         notes = {}
+        images = {}
         for ident, work in part:
             check_active()
-            panels = evidence(path, work, records, contexts, page_cells)
+            panels = evidence(path, work, records, contexts, page_cells, images)
             if panels:
                 if (
                     work.get("continuation_of")
@@ -416,6 +473,15 @@ async def resolve(path, payload, settings, complete, report):
                     notes[ident] = {"structural_note_only": True}
                     continue
                 items.append({"id": ident, "work": work, "panels": panels})
+        for image in images.values():
+            image.close()
+        return items, notes
+
+    preparation = asyncio.Lock()
+
+    async def batch(part):
+        async with preparation:
+            items, notes = await asyncio.to_thread(prepare, part)
         if not items:
             return notes, part
         metadata = [
@@ -442,7 +508,9 @@ async def resolve(path, payload, settings, complete, report):
             if item["id"] in first
             and (
                 item["work"].get("quantity_warning")
+                or not item["work"].get("unit_present")
                 or needs_dimensions(item["work"])
+                or literal(item["work"].get("quantity_cell")) is None
                 or literal(item["work"].get("quantity_cell")) != first[item["id"]].get("quantity")
             )
         ]
@@ -506,18 +574,25 @@ async def resolve(path, payload, settings, complete, report):
         async with limiter:
             return await batch(part)
 
-    batches = [limited(pending[index : index + 8]) for index in range(0, len(pending), 8)]
-    for future in asyncio.as_completed(batches):
-        result, part = await future
-        for ident, work in part:
-            answer = result.get(ident, {"readable": False, "quantity": None})
-            cache[ident] = answer
-            index = by_location[work["page"], work["source_row"]]
-            works[index] = apply_reading(work, answer, payload["file_hash"])
-            done += 1
-        check_active()
-        write_json(cache_path, {"signature": stamp, "rows": cache})
-        report(done, len(candidates), works)
+    tasks = [asyncio.create_task(limited(part)) for part in page_batches(pending)]
+    try:
+        for future in asyncio.as_completed(tasks):
+            result, part = await future
+            for ident, work in part:
+                answer = result.get(ident, {"readable": False, "quantity": None})
+                cache[ident] = answer
+                index = by_location[work["page"], work["source_row"]]
+                works[index] = apply_reading(work, answer, payload["file_hash"])
+                done += 1
+            check_active()
+            write_json(cache_path, {"signature": stamp, "rows": cache})
+            if page_report:
+                page_report(part[0][1]["page"])
+            report(done, len(candidates), works)
+    finally:
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
 
     # A broader reading can get the number right and still miss a size.
     # Re-read just the dimension cell before sending a duct to manual review.
@@ -536,6 +611,8 @@ async def resolve(path, payload, settings, complete, report):
             and saved.get("dimension_repair_revision") != revision
         ):
             sizes.append((ident, index, original))
+    if sizes and not page_cells:
+        page_cells = {page: cells(record) for page, record in records.items()}
     for start in range(0, len(sizes), 8):
         items = []
         for ident, index, original in sizes[start : start + 8]:

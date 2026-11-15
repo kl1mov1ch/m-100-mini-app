@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import time
 import xml.etree.ElementTree as ET
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from datetime import UTC, datetime, timedelta
 
 import httpx
@@ -612,9 +613,15 @@ def analyse(ident, payload):
     if payload.get("structured_extraction") and not payload.get("visual_complete"):
         from .visual import resolve
 
+        verified_page = 0
+
+        def page_report(page):
+            nonlocal verified_page
+            verified_page = page
+
         def visual_report(count, total, current):
             nonlocal payload
-            phase("verifying", 0, done=count, total=total)
+            phase("verifying", verified_page, done=count, total=total)
             payload = {
                 **payload,
                 "works": current,
@@ -633,6 +640,7 @@ def analyse(ident, payload):
                     settings,
                     budgeted_complete,
                     visual_report,
+                    page_report=page_report,
                 )
             )
         except BudgetExhausted:
@@ -875,14 +883,19 @@ def analyse(ident, payload):
     )
 
 
-def run_once():
+def run_once(analysis_lane=None):
+    queued = ["queued", "ai_queued"]
+    running = ["extracting", "analysing"]
+    if analysis_lane is not None:
+        queued = [queued[int(analysis_lane)]]
+        running = [running[int(analysis_lane)]]
     with session() as database:
         job = database.scalar(
             select(DocumentJob)
             .where(
                 or_(
-                    DocumentJob.status.in_(["queued", "ai_queued"]),
-                    (DocumentJob.status.in_(["extracting", "analysing"]))
+                    DocumentJob.status.in_(queued),
+                    (DocumentJob.status.in_(running))
                     & (DocumentJob.updated_at < datetime.now(UTC) - timedelta(minutes=20)),
                 )
             )
@@ -935,6 +948,37 @@ def run_once():
     return True
 
 
+def run_queue(drain):
+    # One reader limits concurrent PDF raster memory. The other lane can verify
+    # an earlier document while the reader converts the next one.
+    with ThreadPoolExecutor(max_workers=2, thread_name_prefix="pdf") as executor:
+        lanes = (False, True)
+        active = {}
+        idle_until = {}
+        while True:
+            now = time.monotonic()
+            for lane in lanes:
+                if lane not in active and now >= idle_until.get(lane, 0):
+                    active[lane] = executor.submit(run_once, lane)
+            if not active:
+                if drain:
+                    return
+                time.sleep(1)
+                continue
+            complete, _ = wait(active.values(), timeout=0.5, return_when=FIRST_COMPLETED)
+            for lane, future in list(active.items()):
+                if future in complete:
+                    del active[lane]
+                    idle_until[lane] = 0 if future.result() else time.monotonic() + 1
+            if drain and not active and all(idle_until.get(lane, 0) > now for lane in lanes):
+                # A reader can enqueue analysis just after the verifier found
+                # its lane empty. Give both lanes one last fresh look.
+                if any(list(executor.map(run_once, lanes))):
+                    idle_until.clear()
+                else:
+                    return
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--drain", action="store_true")
@@ -946,11 +990,7 @@ def main():
         return
     with lock:
         recover_interrupted()
-        while True:
-            if not run_once():
-                if args.drain:
-                    return
-                time.sleep(3)
+        run_queue(args.drain)
 
 
 if __name__ == "__main__":

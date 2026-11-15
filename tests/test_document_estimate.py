@@ -201,7 +201,11 @@ def test_export_preserves_confirmed_edits_and_uses_the_working_journal_format():
 
 
 def test_numbered_discipline_headers_own_their_rows_and_keep_commissioning_separate():
-    from backend.documents.table_context import document_rows
+    from backend.documents.table_context import discipline_heading, document_rows
+
+    assert discipline_heading("Система приточной вентиляции") == "Вентиляция"
+    assert discipline_heading("Сплит система кондиционирования") == "Кондиционирование"
+    assert discipline_heading("Дренаж кондиционирования") == "Кондиционирование"
 
     table = {
         "headers": [1],
@@ -213,9 +217,11 @@ def test_numbered_discipline_headers_own_their_rows_and_keep_commissioning_separ
                 "Строка 4: C2–C3=1.Монтаж решёток | C4–C5=шт. | C5–C6=2 |",
                 "Строка 5: C1–C6=2. Вентиляция |",
                 "Строка 6: C2–C3=1.Монтаж решёток | C4–C5=шт. | C5–C6=3 |",
-                "Строка 7: C2–C3=Пусконаладочные работы |",
-                "Строка 8: C2–C3=Вентиляция |",
-                "Строка 9: C2–C3=1.Монтаж решёток | C4–C5=шт. | C5–C6=5 |",
+                "Строка 7: C2–C3=автоматики В комплекте со щитом наружного исполнения |",
+                "Строка 8: C2–C3=Монтаж вентиляторов | C4–C5=шт. | C5–C6=3 |",
+                "Строка 9: C2–C3=Пуско-наладочные радоты |",
+                "Строка 10: C2–C3=Вентиляция |",
+                "Строка 11: C2–C3=1.Монтаж решёток | C4–C5=шт. | C5–C6=5 |",
             ]
         ),
     }
@@ -223,7 +229,32 @@ def test_numbered_discipline_headers_own_their_rows_and_keep_commissioning_separ
     assert rows[1, 4]["category"] == "Отопление"
     assert rows[1, 4]["subsection"] == "Монтажные работы"
     assert rows[1, 6]["category"] == "Вентиляция"
-    assert rows[1, 9]["role"] == "commissioning"
+    assert rows[1, 8]["category"] == "Вентиляция"
+    assert rows[1, 11]["role"] == "commissioning"
+    assert rows[1, 11]["subsection"] == "Пусконаладочные работы"
+
+
+def test_procurement_shows_one_supplier_contact_and_wraps_all_materials():
+    from backend.documents.workbook import add_procurement
+
+    book = openpyxl.Workbook()
+    offer = (4.25, "Поставщик", "https://example.com/material", "+375 00 123 45 67", "", "")
+    item = {
+        "category": "Вентиляция",
+        "name": "Клапан с длинным названием " * 10,
+        "spec": "1200 × 300 мм",
+        "quantity": 2,
+        "unit": "шт.",
+        "pages": {23, 24},
+        "offers": [offer],
+    }
+    add_procurement(book, [item, {**item, "name": "Решётка"}])
+    sheet = book["Закупка"]
+    assert [cell.value for cell in sheet["G"]].count(offer[3]) == 1
+    assert sheet["A2"].value == "Поставщик"
+    assert sheet["B3"].value == item["name"] and sheet["B4"].value == "Решётка"
+    assert sheet["G3"].hyperlink.target == offer[2] and sheet["F3"].value == 4.25
+    assert sheet["B3"].alignment.wrap_text and sheet.row_dimensions[3].height > 65
 
 
 def test_procurement_requires_same_standard_coating_grade_and_nominal_size():

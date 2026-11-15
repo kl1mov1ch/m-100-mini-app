@@ -13,26 +13,22 @@ def table_works(path, payload):
     """Filter saved draft evidence without modifying a job or its source files."""
     if payload.get("engine") != "docling":
         return payload.get("works", [])
-    from .intent import select_works
-    from .structured import insulation_name
-    from .table_context import document_rows
+    from .intent import include_commissioning, select_works
+    from .structured import insulation_name, read_matrix, row_highlights, source_geometry
 
-    tables = {}
-    for cached in (path / "docling").glob("page-*.json"):
-        record = json.loads(cached.read_text(encoding="utf-8"))
-        number = int(cached.stem.removeprefix("page-"))
-        tables[number] = (
-            estimate_table(record) if record.get("source") == payload.get("file_hash") else None
-        )
-    contexts = document_rows(tables)
+    _, tables, contexts = read_matrix(path, payload.get("file_hash"))
+    _, boxes = source_geometry(tables)
     result = []
     for work in payload.get("works", []):
         table = tables.get(work.get("page"))
+        if work.get("page") not in tables:
+            result.append(work)
+            continue
         if not table or work.get("source_row") not in table["rows"]:
             continue
         context = contexts.get((work["page"], work["source_row"]), {})
-        if context.get("role") == "commissioning" and not re.search(
-            r"налад|пуск", payload.get("query", ""), re.I
+        if context.get("role") == "commissioning" and not include_commissioning(
+            payload.get("query", "")
         ):
             continue
         if context.get("component") or context.get("structural_note"):
@@ -47,6 +43,9 @@ def table_works(path, payload):
             "source_description": context.get("source_description")
             or work.get("source_description"),
         }
+        geometry = row_highlights(work["page"], work["source_row"], context, contexts, boxes)
+        if geometry["highlights"] or geometry["highlight_pages"]:
+            work.update(geometry)
         if work.get("visual_verified") and work.get("visual_source_hash") == payload.get(
             "file_hash"
         ):

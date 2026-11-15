@@ -141,6 +141,7 @@ def test_document_queue_ownership_ocr_ai_and_export(client, monkeypatch, tmp_pat
     assert book.active.title == "Кондиционирование"
     assert book.active.column_dimensions["A"].hidden
     assert book.active.freeze_panes == "A5"
+    assert [view.pane for view in book.active.sheet_view.selection] == ["bottomLeft"]
     assert book.active["D5"].value == 10
     assert book.active["E5"].value is None
     assert "Уточнить высоту" not in book.active["B5"].comment.text
