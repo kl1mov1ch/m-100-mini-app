@@ -73,7 +73,7 @@ export const ReportReviewEditor = forwardRef<ReportReviewHandle, ReviewProps>(
 			setEditing(null);
 		};
 		const options = Object.values(props.positions)
-			.filter((position) => !position.hidden)
+			.filter((position) => !position.hidden && !position.extra)
 			.map((position) => ({
 				value: position.id,
 				label: `${position.name} · ${unit(position.unit)}`,

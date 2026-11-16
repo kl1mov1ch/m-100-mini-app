@@ -59,6 +59,7 @@ export function ChangesPage({ workspace }: { workspace: WorkspaceView }) {
 					const groups = new Map<string, CellChange[]>();
 					for (const row of cells) groups.set(row.sheet, [...(groups.get(row.sheet) || []), row]);
 					const lines = (payload.changes?.lines || []).filter((line) => line.before !== line.after);
+					const notes = payload.changes?.notes || [];
 					const crewChanged =
 						payload.changes && payload.changes.crew_before !== payload.changes.crew_after;
 					return (
@@ -78,9 +79,11 @@ export function ChangesPage({ workspace }: { workspace: WorkspaceView }) {
 									? countLabel(cells.length, 'ячейка', 'ячейки', 'ячеек')
 									: lines.length
 										? countLabel(lines.length, 'работа', 'работы', 'работ')
-										: crewChanged
-											? 'Бригада'
-											: 'Подробности'
+										: notes.length
+											? countLabel(notes.length, 'примечание', 'примечания', 'примечаний')
+											: crewChanged
+												? 'Бригада'
+												: 'Подробности'
 							}
 							meta={
 								payload.position_name ||
@@ -145,6 +148,12 @@ export function ChangesPage({ workspace }: { workspace: WorkspaceView }) {
 										</strong>
 									</div>
 								)}
+								{notes.map((note, index) => (
+									<div key={index} className="object-note-read">
+										<strong>{note.name}</strong>
+										<div>{note.after || 'Примечание удалено'}</div>
+									</div>
+								))}
 							</section>
 						</CompactWorkEditor>
 					);

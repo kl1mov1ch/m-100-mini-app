@@ -39,7 +39,7 @@ export function useWorkspace() {
 		[data, setData] = useState<Data | null>(null),
 		[failure, setFailure] = useState<Error | null>(null);
 	const [page, setPage] = useState(
-			releaseNavigation?.page ||
+			(releaseNavigation?.page !== 'documents' && releaseNavigation?.page) ||
 				(new URLSearchParams(location.search).has('object') ? 'today' : 'objects'),
 		),
 		[project, setProject] = useState(
@@ -96,7 +96,6 @@ export function useWorkspace() {
 		[ack, setAck] = useState<string[]>([]),
 		[mapping, setMapping] = useState<ImportSheet[]>([]);
 	const selectionVersion = useRef(0);
-	const documentBack = useRef<(() => void) | null>(null);
 	const sessionVersion = useRef(0);
 	const active = session?.projects.find((p) => p.id === project);
 	const allPositions = data?.project?.id === project ? data.positions : [];
@@ -378,7 +377,15 @@ export function useWorkspace() {
 	const deltaIds = [...new Set([...Object.keys(oldLines), ...Object.keys(nextLines)])].filter(
 		(id) => oldLines[id] !== nextLines[id],
 	);
-	const dirty = deltaIds.length > 0 || crew !== report?.crew_count || reportText !== report?.text;
+	const savedNotes = new Map(report?.lines.map((line) => [line.item_id, line.note || '']));
+	const notesChanged = lines.some(
+		(line) => (line.note?.trim() || '') !== (savedNotes.get(line.item_id) || ''),
+	);
+	const dirty =
+		deltaIds.length > 0 ||
+		notesChanged ||
+		crew !== report?.crew_count ||
+		reportText !== report?.text;
 	editorState.current = { project, day, dirty: !!report && dirty };
 	const refreshBitrix = async (force = false) => {
 		if (
@@ -508,10 +515,6 @@ export function useWorkspace() {
 							? () => setProjectOpen(false)
 							: page !== 'objects'
 								? () => {
-										if (page === 'documents' && documentBack.current) {
-											documentBack.current();
-											return;
-										}
 										setPage(
 											page === 'changes'
 												? 'history'
@@ -538,6 +541,7 @@ export function useWorkspace() {
 					lines: lines.map((l) => ({
 						item_id: l.item_id,
 						quantity: l.quantity,
+						note: l.note ?? '',
 					})),
 					crew_count: crew,
 					text: reportText,
@@ -548,6 +552,7 @@ export function useWorkspace() {
 			setReport(r);
 			setLines(r.lines);
 			if (r.changed === false) message.info('Изменений нет');
+			else if (r.notes_only) message.success('Примечания сохранены');
 			else if (r.sync_status === 'synced')
 				message.success('Отчёт подтверждён и записан в Битрикс24');
 			else message.info('Отчёт подтверждён. ' + (r.sync_error || 'Ожидает отправки'));
@@ -567,6 +572,13 @@ export function useWorkspace() {
 	) => {
 		if (!report) return;
 		const editor = createRef<ReportReviewHandle>();
+		const workNotes = new Map(lines.map((line) => [line.item_id, line.note ?? '']));
+		const notesOnly =
+			!freeform &&
+			notesChanged &&
+			!deltaIds.length &&
+			nextCrew === report.crew_count &&
+			nextText === report.text;
 		const reviewModal = modal.confirm({
 			title: active ? 'Отчёт · ' + active.name : 'Общий отчёт за день',
 			icon: null,
@@ -583,13 +595,17 @@ export function useWorkspace() {
 					connected={!!data?.config.has_webhook && data?.config.source === 'bitrix'}
 					onValidityChange={(valid, exceeds) =>
 						reviewModal.update({
-							okText: exceeds ? 'Подтвердить перерасход' : 'Подтвердить и отправить',
+							okText: notesOnly
+								? 'Сохранить примечания'
+								: exceeds
+									? 'Подтвердить перерасход'
+									: 'Подтвердить и отправить',
 							okButtonProps: { disabled: !valid },
 						})
 					}
 				/>
 			),
-			okText: 'Подтвердить и отправить',
+			okText: notesOnly ? 'Сохранить примечания' : 'Подтвердить и отправить',
 			cancelText: 'Вернуться',
 			onOk: async () => {
 				if (editorState.current.project !== project || editorState.current.day !== day)
@@ -610,6 +626,7 @@ export function useWorkspace() {
 							date: day,
 							revision: report.revision,
 							...values,
+							lines: values.lines.map((line) => ({ ...line, note: workNotes.get(line.item_id) })),
 							text: nextText,
 							allow_exceed: exceeds,
 						},
@@ -624,7 +641,8 @@ export function useWorkspace() {
 						setFreeText('');
 					}
 					await refresh(true);
-					if (saved.sync_status === 'synced')
+					if (saved.notes_only) message.success('Примечания сохранены');
+					else if (saved.sync_status === 'synced')
 						message.success('Готово. Отчёт и расчёты записаны в Битрикс24');
 					else message.info('Отчёт сохранён. ' + (saved.sync_error || 'Ожидает отправки'));
 					window.Telegram?.WebApp?.HapticFeedback?.notificationOccurred('success');
@@ -1160,7 +1178,6 @@ export function useWorkspace() {
 		mapping,
 		setMapping,
 		selectionVersion,
-		documentBack,
 		active,
 		positions,
 		allPositions,

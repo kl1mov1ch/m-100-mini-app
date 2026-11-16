@@ -115,7 +115,7 @@ async def restore(request: Request, day: date, body: RestoreBody):
         SaveBody(
             date=day,
             revision=body.revision,
-            lines=target["lines"],
+            lines=[{**line, "note": line.get("note", "")} for line in target["lines"]],
             crew_count=target["crew_count"],
             text=target.get("text") or "",
             allow_exceed=True,
@@ -143,7 +143,11 @@ async def persist_report(request: Request, body: SaveBody, action="edit_report")
         for line in body.lines:
             if line.item_id not in ps:
                 raise HTTPException(422, "Позиция отсутствует в справочнике")
-            if extra_position(ps[line.item_id]) and line.item_id not in old and action != "restore_day":
+            if (
+                extra_position(ps[line.item_id])
+                and line.item_id not in old
+                and action != "restore_day"
+            ):
                 raise HTTPException(409, "Добавьте эту позицию в разделе «Доп. работы»")
             if line.item_id in hidden and line.item_id not in old and action != "restore_day":
                 raise HTTPException(409, "Работа скрыта из сметы. Обновите список работ.")
@@ -155,13 +159,36 @@ async def persist_report(request: Request, body: SaveBody, action="edit_report")
                     422, "Объём превышает остаток. Подтвердите фактическое выполнение."
                 )
         delta = report_changes(before, body, ps)
-        changed = (
+        previous_notes = {
+            line["item_id"]: line["note"] for line in before["lines"] if line.get("note")
+        }
+        notes = {
+            line.item_id: note
+            for line in body.lines
+            if (
+                note := previous_notes.get(line.item_id, "")
+                if line.note is None
+                else line.note.strip()
+            )
+        }
+        note_changes = [
+            {
+                "name": ps[ident]["name"],
+                "before": previous_notes.get(ident, ""),
+                "after": notes.get(ident, ""),
+            }
+            for ident in sorted(previous_notes.keys() | notes.keys())
+            if previous_notes.get(ident) != notes.get(ident)
+        ]
+        if note_changes:
+            delta["notes"] = note_changes
+        sync_changed = (
             bool(delta["lines"])
             or before["crew_count"] != body.crew_count
             or before["revision"] == 0
             or before["text"] != body.text
         )
-        if not changed:
+        if not sync_changed and not note_changes:
             return {**before, "changed": False, "changes": delta}
         remember_start(db, before)
         event = {
@@ -175,28 +202,42 @@ async def persist_report(request: Request, body: SaveBody, action="edit_report")
             "INSERT INTO audit(date,payload,created_at) VALUES(?,?,?)",
             (day, json.dumps(event, ensure_ascii=False), now()),
         )
-        db.execute("DELETE FROM entries WHERE date=?", (day,))
-        db.executemany(
-            "INSERT INTO entries(item_id,date,quantity) VALUES(?,?,?)",
-            [(l.item_id, day, l.quantity) for l in body.lines],
-        )
-        db.execute(
-            """INSERT INTO reports(date,revision,text,updated_at,sync_status,crew_count,author_id,sync_error) VALUES(?,?,?,?,?,?,?,?)
+        if note_changes:
+            store.set_setting(db, f"report_notes:{day}", json.dumps(notes, ensure_ascii=False))
+        if sync_changed:
+            db.execute("DELETE FROM entries WHERE date=?", (day,))
+            db.executemany(
+                "INSERT INTO entries(item_id,date,quantity) VALUES(?,?,?)",
+                [(l.item_id, day, l.quantity) for l in body.lines],
+            )
+            db.execute(
+                """INSERT INTO reports(date,revision,text,updated_at,sync_status,crew_count,author_id,sync_error) VALUES(?,?,?,?,?,?,?,?)
           ON CONFLICT(date) DO UPDATE SET revision=excluded.revision,text=excluded.text,updated_at=excluded.updated_at,sync_status=excluded.sync_status,crew_count=excluded.crew_count,author_id=excluded.author_id,sync_error='' """,
-            (
-                day,
-                body.revision + 1,
-                body.text,
-                now(),
-                "pending",
-                body.crew_count,
-                request.state.user["telegram_id"],
-                "",
-            ),
-        )
-    await send_day(request.state.project, day)
+                (
+                    day,
+                    body.revision + 1,
+                    body.text,
+                    now(),
+                    "pending",
+                    body.crew_count,
+                    request.state.user["telegram_id"],
+                    "",
+                ),
+            )
+        else:
+            db.execute(
+                "UPDATE reports SET revision=?,updated_at=? WHERE date=?",
+                (body.revision + 1, now(), day),
+            )
+    if sync_changed:
+        await send_day(request.state.project, day)
     with store.connect() as db:
-        return {**get_report(db, day), "changed": True, "changes": delta}
+        return {
+            **get_report(db, day),
+            "changed": True,
+            "notes_only": not sync_changed,
+            "changes": delta,
+        }
 
 
 def render_csv(database_path):

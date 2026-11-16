@@ -23,6 +23,23 @@ def owned_object(request):
     return project
 
 
+class ObjectNoteBody(BaseModel):
+    note: str = Field(max_length=2000)
+    previous: str = Field(max_length=2000)
+
+
+@router.post("/note")
+def save_object_note(request: Request, body: ObjectNoteBody):
+    owned_object(request)
+    note = body.note.strip()
+    with store.connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        if store.setting(db, "object_note") != body.previous:
+            raise HTTPException(409, "Примечание уже изменилось. Обновите объект.")
+        store.set_setting(db, "object_note", note)
+    return {"note": note}
+
+
 def position_usage(db):
     used = {row[0] for row in db.execute("SELECT DISTINCT item_id FROM entries")}
     used.update(row[0] for row in db.execute("SELECT id FROM positions WHERE baseline<>0"))

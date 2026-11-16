@@ -41,6 +41,7 @@
 
 .date-control-modal .ant-modal-body {
 	padding-inline: 0;
+	max-height: none;
 }
 
 .date-control-modal .ant-picker-calendar {
@@ -128,4 +129,13 @@
 }
 .date-control-cell[aria-pressed='true']::after {
 	background: white;
+}
+
+@media (max-height: 650px) {
+	.date-control-modal .ant-picker-cell {
+		padding-block: 2px;
+	}
+	.date-control-modal .date-control-cell {
+		min-height: 36px;
+	}
 }

@@ -86,6 +86,42 @@ def test_revocation_takes_effect_and_no_self_assignment(client):
     assert client.get("/api/session", headers={"X-Preview-User": "1001"}).status_code == 403
 
 
+def test_project_and_work_notes_preserve_scope_and_skip_duplicate_sync(client, monkeypatch):
+    from backend.api import reports
+
+    calls = []
+
+    async def sync(project, day):
+        calls.append((project["id"], day))
+
+    monkeypatch.setattr(reports, "send_day", sync)
+    grant(client, "1001")
+    grant(client, "1002")
+    ident = create(client, "1001")
+    headers = {"X-Preview-User": "1001", "X-Project-Id": ident}
+    other = {**headers, "X-Preview-User": "1002"}
+    note_url = "/api/object/note"
+    note = {"note": "Вход со двора", "previous": ""}
+    assert client.post(note_url, json=note, headers=other).status_code == 403
+    assert client.post(note_url, json=note, headers=headers).json()["note"] == note["note"]
+    assert client.post(note_url, json=note, headers=headers).status_code == 409
+    assert client.get("/api/bootstrap", headers=headers).json()["config"]["object_note"] == note["note"]
+    assert client.get("/api/documents", headers=headers).status_code == 404
+
+    day = service.today()
+    line = {"item_id": "excel-17", "quantity": 1.5}
+    body = {"date": day, "revision": 0, "lines": [line], "crew_count": 3}
+    original = client.post("/api/reports", json=body, headers=headers).json()
+    assert original["revision"] == 1 and len(calls) == 1
+    body.update(revision=1, lines=[{**line, "note": "Второй этаж"}])
+    noted = client.post("/api/reports", json=body, headers=headers).json()
+    assert noted["notes_only"] and noted["lines"][0]["note"] == "Второй этаж"
+    assert noted["payroll"] == original["payroll"] and len(calls) == 1
+    body.update(revision=2, lines=[{**line, "quantity": 2}])
+    edited = client.post("/api/reports", json=body, headers=headers).json()
+    assert edited["lines"][0]["note"] == "Второй этаж" and len(calls) == 2
+
+
 def test_exact_payroll_no_op_and_changes(client):
     ident = create(client)
     h = {"X-Project-Id": ident}

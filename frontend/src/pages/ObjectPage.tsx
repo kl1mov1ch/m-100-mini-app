@@ -1,4 +1,5 @@
-import { Alert, App, Button, Empty, Segmented, Spin } from 'antd';
+import { Alert, App, Button, Empty, Input, Segmented, Spin } from 'antd';
+import { NotebookPen } from 'lucide-react';
 import { useState } from 'react';
 import type { WorkspaceView } from '../App';
 import { ObjectActionDialog, type ObjectAction } from '../components/ObjectActionDialog';
@@ -21,7 +22,7 @@ const sections: { label: string; value: ObjectSection }[] = [
 ];
 
 export function ObjectPage({ workspace }: { workspace: WorkspaceView }) {
-	const { message } = App.useApp();
+	const { message, modal } = App.useApp();
 	const {
 		active,
 		project,
@@ -30,6 +31,7 @@ export function ObjectPage({ workspace }: { workspace: WorkspaceView }) {
 		positions,
 		objectSection,
 		setPage,
+		setData,
 		setObjectForm,
 		openObjectSection,
 		loadSession,
@@ -85,6 +87,46 @@ export function ObjectPage({ workspace }: { workspace: WorkspaceView }) {
 		} finally {
 			setLoadingAction(false);
 		}
+	};
+	const editObjectNote = () => {
+		const previous = data.config.object_note || '';
+		let note = previous;
+		modal.confirm({
+			title: 'Примечание к объекту',
+			icon: null,
+			okText: 'Сохранить',
+			cancelText: 'Отмена',
+			content: (
+				<Input.TextArea
+					aria-label="Примечание к объекту"
+					placeholder="Например, время доступа на площадку"
+					defaultValue={previous}
+					maxLength={2000}
+					autoSize={{ minRows: 3, maxRows: 8 }}
+					onChange={(event) => {
+						note = event.target.value;
+					}}
+				/>
+			),
+			onOk: async () => {
+				try {
+					const result = await request<{ note: string }>(
+						'/object/note',
+						{ note, previous },
+						project,
+					);
+					setData((current) =>
+						current?.project?.id === project
+							? { ...current, config: { ...current.config, object_note: result.note } }
+							: current,
+					);
+					message.success('Примечание сохранено');
+				} catch (error) {
+					message.error((error as Error).message);
+					throw error;
+				}
+			},
+		});
 	};
 	const deleteObject = () =>
 		withManagement((details) => ({
@@ -178,7 +220,18 @@ export function ObjectPage({ workspace }: { workspace: WorkspaceView }) {
 	};
 	return (
 		<div className="object-page swipe-surface" {...sectionSwipe}>
-			<h1 title={active.name}>{active.name}</h1>
+			<div className="object-heading">
+				<h1 title={active.name}>{active.name}</h1>
+				<Button
+					type="text"
+					icon={<NotebookPen size={19} />}
+					className="object-note-button"
+					data-has-note={!!data.config.object_note}
+					aria-label="Примечание к объекту"
+					title="Примечание к объекту"
+					onClick={editObjectNote}
+				/>
+			</div>
 			<Segmented<ObjectSection>
 				block
 				className="object-section-switch"

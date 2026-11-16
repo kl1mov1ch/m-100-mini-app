@@ -1,10 +1,23 @@
-import { Alert, Empty, Input } from 'antd';
+import { Alert, Button, Empty, Input } from 'antd';
 import { Check, FileSpreadsheet, LoaderCircle, Plus, Search } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { request } from '../lib/api';
 import { Money, shortName, unit } from '../lib/format';
 import { estimateStatus } from '../lib/position-volume';
 import type { Position, SearchResult } from '../types';
+const pageSize = 60;
+
+function searchable(value: string) {
+	return value
+		.toLowerCase()
+		.replaceAll('ё', 'е')
+		.replace(/(\d)\s*[×хx]\s*(?=\d)/g, '$1x')
+		.replace(/(\d),(?=\d)/g, '$1.')
+		.replace(/[ø⌀]\s*|(^|\s)[dд]\s*(?=\d)/g, '$1д')
+		.replace(/[²³]/g, (value) => (value === '²' ? '2' : '3'));
+}
+const queryParts = (value: string) => searchable(value).match(/[\p{L}\p{N}]+(?:\.\d+)?/gu) || [];
+
 export function LiveSearch({
 	project,
 	positions,
@@ -23,7 +36,8 @@ export function LiveSearch({
 	const seq = useRef(0);
 	const searchContainer = useRef<HTMLDivElement>(null);
 	const [controlsHidden, setControlsHidden] = useState(false);
-	const normalize = (text: string) => text.toLowerCase().replaceAll('ё', 'е').trim();
+	const [limit, setLimit] = useState(pageSize);
+	const searchRequest = useRef<AbortController>(null);
 	useEffect(() => {
 		const scrollContainer = searchContainer.current?.closest('.ant-drawer-body');
 		if (!scrollContainer) return;
@@ -52,63 +66,70 @@ export function LiveSearch({
 			cancelAnimationFrame(animationFrame);
 		};
 	}, []);
-	useEffect(() => {
+	const index = useMemo(
+		() =>
+			positions.map((p) => {
+				const name = searchable(p.name);
+				const full = searchable(
+					[p.name, p.section, p.unit, p.source_sheet].filter(Boolean).join(' '),
+				);
+				return {
+					p,
+					name,
+					full,
+					numbers: new Set(full.match(/\d+(?:\.\d+)?/g) || []),
+					terms: new Set(queryParts(full)),
+				};
+			}),
+		[positions],
+	);
+	const local = useMemo(() => {
+		const terms = queryParts(q);
+		if (!terms.length) return index;
+		const matches = index.filter(({ full, numbers, terms: candidateTerms }) =>
+			terms.every((term) =>
+				/^\d+(?:\.\d+)?$/.test(term)
+					? numbers.has(term)
+					: /\d/.test(term)
+						? candidateTerms.has(term)
+						: full.includes(term),
+			),
+		);
+		return matches.sort(
+			(left, right) =>
+				Number(terms.every((term) => right.name.includes(term))) -
+				Number(terms.every((term) => left.name.includes(term))),
+		);
+	}, [index, q]);
+	const map = useMemo(() => new Map(positions.map((p) => [p.id, p])), [positions]);
+	const selectedIds = useMemo(() => new Set(selected), [selected]);
+	const options = result
+		? result.suggestions.flatMap(({ item_id, reason }) => {
+				const p = map.get(item_id);
+				return p ? [{ p, reason }] : [];
+			})
+		: local.map(({ p }) => ({ p, reason: '' }));
+	useEffect(() => () => searchRequest.current?.abort(), [project]);
+	const searchByMeaning = async () => {
 		const id = ++seq.current;
 		const controller = new AbortController();
-		if (!q.trim()) {
-			setResult(null);
-			setLoading(false);
-			setError('');
-			return () => controller.abort();
-		}
+		searchRequest.current = controller;
 		setLoading(true);
 		setError('');
-		const timer = setTimeout(async () => {
-			try {
-				const local = await request<SearchResult>(
-					'/search',
-					{ text: q, local_only: true },
-					project,
-					controller.signal,
-				);
-				if (id !== seq.current) return;
-				setResult(local);
-				setLoading(false);
-				if (local.needs_ai) {
-					setLoading(true);
-					await new Promise((resolve) => setTimeout(resolve, 450));
-					if (id !== seq.current) return;
-					const enriched = await request<SearchResult>(
-						'/search',
-						{ text: q },
-						project,
-						controller.signal,
-					);
-					if (id === seq.current) setResult(enriched);
-				}
-			} catch (e) {
-				if ((e as Error).name !== 'AbortError' && id === seq.current)
-					setError((e as Error).message);
-			} finally {
-				if (id === seq.current) setLoading(false);
-			}
-		}, 180);
-		return () => {
-			clearTimeout(timer);
-			controller.abort();
-		};
-	}, [q, project]);
-	const map = useMemo(() => Object.fromEntries(positions.map((p) => [p.id, p])), [positions]);
-	const words = normalize(q).split(/\s+/);
-	const options = q.trim()
-		? result
-			? result.suggestions.flatMap((s) =>
-					map[s.item_id] ? [{ p: map[s.item_id], reason: s.reason }] : [],
-				)
-			: positions
-					.filter((p) => words.every((word) => normalize(p.name + ' ' + p.section).includes(word)))
-					.map((p) => ({ p, reason: '' }))
-		: positions.map((p) => ({ p, reason: '' }));
+		try {
+			const response = await request<SearchResult>(
+				'/search',
+				{ text: q.trim() },
+				project,
+				controller.signal,
+			);
+			if (id === seq.current && !controller.signal.aborted) setResult(response);
+		} catch (failure) {
+			if (id === seq.current && !controller.signal.aborted) setError((failure as Error).message);
+		} finally {
+			if (id === seq.current && !controller.signal.aborted) setLoading(false);
+		}
+	};
 	return (
 		<div className="live-search" ref={searchContainer}>
 			<div className={'live-search-controls ' + (controlsHidden ? 'is-hidden' : '')}>
@@ -120,6 +141,10 @@ export function LiveSearch({
 						onChange={(event) => {
 							if (event.target.value === q) return;
 							seq.current += 1;
+							searchRequest.current?.abort();
+							setLoading(false);
+							setError('');
+							setLimit(pageSize);
 							setResult(null);
 							setQ(event.target.value);
 						}}
@@ -141,12 +166,12 @@ export function LiveSearch({
 			</div>
 			{error && <Alert type="warning" message={error} />}
 			<div className="search-options">
-				{options.map(({ p, reason }) => (
+				{options.slice(0, limit).map(({ p, reason }) => (
 					<button
 						className="search-option"
 						key={p.id}
 						onClick={() => onSelect(p.id)}
-						disabled={selected.includes(p.id)}
+						disabled={selectedIds.has(p.id)}
 					>
 						<span className="option-icon">
 							<FileSpreadsheet size={18} />
@@ -167,13 +192,24 @@ export function LiveSearch({
 							)}
 						</span>
 						<span className="option-add">
-							{selected.includes(p.id) ? <Check size={17} /> : <Plus size={19} />}
+							{selectedIds.has(p.id) ? <Check size={17} /> : <Plus size={19} />}
 						</span>
 					</button>
 				))}
 			</div>
+			{options.length > limit && (
+				<Button block onClick={() => setLimit((count) => count + pageSize)}>
+					Показать ещё
+				</Button>
+			)}
 			{!options.length && !loading && (
-				<Empty description={positions.length ? 'Совпадений пока нет' : 'Загрузите смету объекта'} />
+				<Empty
+					description={positions.length ? 'Совпадений в смете нет' : 'Загрузите смету объекта'}
+				>
+					{positions.length > 0 && q.trim().length > 2 && !result && (
+						<Button onClick={() => void searchByMeaning()}>Поиск по смыслу</Button>
+					)}
+				</Empty>
 			)}
 		</div>
 	);

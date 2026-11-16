@@ -1,11 +1,12 @@
-import { Alert, App, Button, DatePicker, Form, Input, InputNumber, Modal, Skeleton } from 'antd';
+import { Alert, App, Button, Form, Input, InputNumber, Modal, Skeleton } from 'antd';
 import type { Dayjs } from 'dayjs';
 import { ChevronRight, Mic, Plus, ReceiptText, Sparkles, Square, X } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useAudioInput } from '../hooks/useAudioInput';
 import { request } from '../lib/api';
 import dayjs from '../lib/date';
-import { countLabel, Money } from '../lib/format';
+import { countLabel, Currency, Money } from '../lib/format';
+import { DatePicker } from './ResponsiveDatePicker';
 
 type ExpenseValues = {
 	date: string;
@@ -54,7 +55,7 @@ function ExpenseRow({
 	onOpen,
 }: {
 	name: string;
-	detail: string;
+	detail: ReactNode;
 	amount?: number;
 	onOpen?: () => void;
 }) {
@@ -62,7 +63,10 @@ function ExpenseRow({
 		<>
 			<span className="compact-row-main">
 				<strong title={name}>{name}</strong>
-				<span className="compact-row-description" title={detail}>
+				<span
+					className="compact-row-description"
+					title={typeof detail === 'string' ? detail : undefined}
+				>
 					{detail}
 				</span>
 			</span>
@@ -91,6 +95,7 @@ export function ObjectExpenses({ project, day }: { project: string; day: string 
 	const [list, setList] = useState<ExpenseState>();
 	const [error, setError] = useState('');
 	const [editor, setEditor] = useState<Editor>();
+	const [pickingDate, setPickingDate] = useState(false);
 	const [busy, setBusy] = useState(false);
 	const [text, setText] = useState('');
 	const [drafts, setDrafts] = useState<Draft[]>([]);
@@ -317,9 +322,18 @@ export function ObjectExpenses({ project, day }: { project: string; day: string 
 								<ExpenseRow
 									name={row.name || 'Доп. работа'}
 									detail={
-										ready(row)
-											? `${volume.format(Number(row.quantity))} ${row.unit} · ${volume.format(Number(row.rate))} BYN за ед.`
-											: 'Уточните количество, единицу или цену'
+										ready(row) ? (
+											<>
+												{volume.format(Number(row.quantity))} {row.unit} ·{' '}
+												<span className="money">
+													{volume.format(Number(row.rate))}
+													<Currency />
+												</span>{' '}
+												за ед.
+											</>
+										) : (
+											'Уточните количество, единицу или цену'
+										)
 									}
 									amount={ready(row) ? amount(row.quantity, row.rate) : undefined}
 									onOpen={() => !busy && openEditor({ values: row, draft: row })}
@@ -388,7 +402,15 @@ export function ObjectExpenses({ project, day }: { project: string; day: string 
 							<ExpenseRow
 								key={item.id}
 								name={item.name}
-								detail={`${volume.format(item.rate)} BYN / ${item.unit}`}
+								detail={
+									<>
+										<span className="money">
+											{volume.format(item.rate)}
+											<Currency />
+										</span>{' '}
+										/ {item.unit}
+									</>
+								}
 								onOpen={() =>
 									openEditor({
 										values: {
@@ -407,8 +429,9 @@ export function ObjectExpenses({ project, day }: { project: string; day: string 
 			)}
 
 			<Modal
-				open={!!editor}
+				open={!!editor && !pickingDate}
 				forceRender
+				focusTriggerAfterClose={!pickingDate}
 				className="expense-editor"
 				title={
 					editor?.draft ? 'Проверить расход' : editor?.saved ? 'Изменить расход' : 'Добавить расход'
@@ -443,7 +466,7 @@ export function ObjectExpenses({ project, day }: { project: string; day: string 
 						<Form.Item name="unit" label="Ед. изм." rules={[{ ...required[0], whitespace: true }]}>
 							<Input maxLength={24} autoComplete="off" />
 						</Form.Item>
-						<Form.Item name="rate" label="Цена за ед., BYN" rules={decimalRules}>
+						<Form.Item name="rate" label="Цена за ед." rules={decimalRules}>
 							<InputNumber
 								stringMode
 								min="0"
@@ -451,6 +474,7 @@ export function ObjectExpenses({ project, day }: { project: string; day: string 
 								decimalSeparator=","
 								controls={false}
 								inputMode="decimal"
+								suffix={<Currency />}
 							/>
 						</Form.Item>
 						<Form.Item
@@ -461,10 +485,11 @@ export function ObjectExpenses({ project, day }: { project: string; day: string 
 							getValueFromEvent={(value: Dayjs | null) => value?.format('YYYY-MM-DD')}
 						>
 							<DatePicker
+								value={null}
+								onChange={() => {}}
 								allowClear={false}
-								inputReadOnly
-								format="DD.MM.YYYY"
-								placement="topRight"
+								aria-label="Дата расхода"
+								onOpenChange={setPickingDate}
 							/>
 						</Form.Item>
 					</div>

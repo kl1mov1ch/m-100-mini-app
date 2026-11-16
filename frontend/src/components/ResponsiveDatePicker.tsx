@@ -16,6 +16,7 @@ type DatePickerProps = {
 	range?: { start: string; end: string };
 	disabledDate?: (date: Dayjs) => boolean;
 	onChange: (date: Dayjs | null) => void;
+	onOpenChange?: (open: boolean) => void;
 };
 
 export function DatePicker({
@@ -28,6 +29,7 @@ export function DatePicker({
 	range,
 	disabledDate,
 	onChange,
+	onOpenChange,
 }: DatePickerProps) {
 	const id = useId();
 	const [open, setOpen] = useState(false);
@@ -38,9 +40,13 @@ export function DatePicker({
 	const move = (step: number) => setCursor((current) => current.add(step, mode));
 	const swipe = useHorizontalSwipe(move, mode !== 'month');
 
+	const changeOpen = (next: boolean) => {
+		setOpen(next);
+		onOpenChange?.(next);
+	};
 	const choose = (date: Dayjs | null) => {
 		if (date && disabledDate?.(date)) return;
-		setOpen(false);
+		changeOpen(false);
 		if (!date || !date.isSame(value, 'day')) onChange(date);
 	};
 
@@ -55,7 +61,7 @@ export function DatePicker({
 				onClick={() => {
 					setCursor(value || today);
 					setMode('month');
-					setOpen(true);
+					changeOpen(true);
 				}}
 			>
 				<span>{value?.format(format) || placeholder}</span>
@@ -73,7 +79,7 @@ export function DatePicker({
 			<Modal
 				title={label}
 				open={open}
-				onCancel={() => setOpen(false)}
+				onCancel={() => changeOpen(false)}
 				footer={null}
 				rootClassName="date-control-modal"
 			>

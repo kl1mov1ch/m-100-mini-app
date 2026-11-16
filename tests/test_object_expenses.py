@@ -9,7 +9,6 @@ from test_workspaces import client, create, grant  # noqa: F401 - pytest fixture
 
 from backend import bitrix, expense_drafts, store, tables, workspaces
 from backend.clock import today
-from backend.documents.structured import candidates
 from backend.workbook_journal import format_journal
 
 
@@ -102,25 +101,6 @@ def test_expenses_sync_separately_and_survive_daily_report(client, monkeypatch):
     )
     assert journal.cell(grand_total, 8).value == 62.6
     assert journal.row_dimensions[6].hidden
-
-
-def test_pdf_skips_expense_section_and_fuel(tmp_path):
-    table = (
-        "Строка 1: C1–C2=Наименование | C2–C3=Единица измерения | C3–C4=Количество |\n"
-        "Строка 2: C1–C2=ДОП |\n"
-        "Строка 3: C1–C2=Пробивка отверстий | C2–C3=шт. | C3–C4=7 |\n"
-        "Строка 4: C1–C2=Вентиляция |\n"
-        "Строка 5: C1–C2=Топливо | C2–C3=л | C3–C4=10 |\n"
-        "Строка 6: C1–C2=Монтаж воздуховодов | C2–C3=м² | C3–C4=15 |"
-    )
-    records = tmp_path / "docling"
-    records.mkdir()
-    (records / "page-1.json").write_text(
-        json.dumps({"source": "test", "text": table, "analysis_text": table}), encoding="utf-8"
-    )
-    works, controls = candidates(tmp_path, {"file_hash": "test"})
-    assert [(row["source_row"], row["quantity_cell"]) for row in works] == [(6, "15")]
-    assert not controls
 
 
 def test_expense_drafts_require_confirmation_and_batch_retries_are_safe(client, monkeypatch):  # noqa: F811

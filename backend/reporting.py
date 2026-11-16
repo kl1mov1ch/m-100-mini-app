@@ -57,6 +57,10 @@ def get_report(db, day):
             "SELECT item_id,quantity FROM entries WHERE date=? ORDER BY item_id", (day,)
         )
     ]
+    notes = json.loads(store.setting(db, f"report_notes:{day}", "{}"))
+    for line in lines:
+        if note := notes.get(line["item_id"]):
+            line["note"] = note
     return {**base, "lines": lines, "payroll": payroll(db, lines, base["crew_count"])}
 
 
@@ -88,6 +92,7 @@ def history(db):
 def safe_config(db, include_table_review=True):
     return {
         "today": today(),
+        "object_note": store.setting(db, "object_note"),
         "mode": os.getenv("APP_ENV", "development"),
         "currency": "BYN",
         "llm": bool(matcher.provider(ai_settings(db))["key"]),

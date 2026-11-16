@@ -1,4 +1,4 @@
-import { Alert, Button, Empty, InputNumber, Spin, Tag } from 'antd';
+import { Alert, Button, Empty, Input, InputNumber, Spin, Tag } from 'antd';
 import 'dayjs/locale/ru';
 import { Check, Mic, Plus, RotateCcw, TextCursorInput, Trash2, Users } from 'lucide-react';
 import { useState } from 'react';
@@ -179,6 +179,7 @@ function MasterDailyReport({ workspace }: { workspace: WorkspaceView }) {
 									{p
 										? ' · смета ' + nf.format(p.planned) + ' ' + unit(p.unit)
 										: ' · выберите позицию'}
+									{l.note?.trim() ? ' · с примечанием' : ''}
 								</>
 							}
 							value={<Money value={(p?.rate || 0) * (l.quantity || 0)} />}
@@ -248,6 +249,23 @@ function MasterDailyReport({ workspace }: { workspace: WorkspaceView }) {
 									</div>
 								</div>
 								{p && balance && <WorkEstimate balance={balance} unit={p.unit} />}
+								{p && (
+									<label className="work-note">
+										Примечание к работе
+										<Input.TextArea
+											value={l.note || ''}
+											placeholder="Например, этаж или причина перерасхода"
+											maxLength={1000}
+											autoSize={{ minRows: 1, maxRows: 4 }}
+											onChange={(event) => {
+												const note = event.target.value;
+												setLines((items) =>
+													items.map((item, index) => (index === i ? { ...item, note } : item)),
+												);
+											}}
+										/>
+									</label>
+								)}
 								<div className="work-card-foot">
 									<span>
 										{p ? (

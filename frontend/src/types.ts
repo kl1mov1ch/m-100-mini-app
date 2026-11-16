@@ -126,6 +126,7 @@ export type Line = {
 	unit?: string | null;
 	reason?: string;
 	candidates?: string[];
+	note?: string;
 };
 export type ParsedReport = {
 	lines: Line[];
@@ -152,6 +153,7 @@ export type Report = {
 	lines: Line[];
 	payroll: Payroll;
 	changed?: boolean;
+	notes_only?: boolean;
 };
 export type HistoryRow = Payroll & {
 	date: string;
@@ -165,6 +167,7 @@ export type DiskWebhook = { id: string; name: string; portal: string };
 
 export type Config = {
 	today: string;
+	object_note?: string;
 	mode: string;
 	llm: boolean;
 	source: string;
@@ -231,6 +234,7 @@ export type Change = {
 		saved_to_source?: boolean;
 		changes?: {
 			lines: { name: string; unit: string; before: number; after: number }[];
+			notes?: { name: string; before: string; after: string }[];
 			crew_before: number;
 			crew_after: number;
 		};

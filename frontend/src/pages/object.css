@@ -20,7 +20,39 @@
 .object-danger-zone .ant-btn {
 	min-height: 42px;
 }
-.object-page > h1 {
+.object-heading {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	gap: 8px;
+	align-items: center;
+}
+.object-heading > h1 {
+	margin: 0;
+}
+.object-note-button.ant-btn {
+	width: 42px;
+	height: 42px;
+	color: var(--ios-secondary);
+	box-shadow: none;
+}
+.object-note-button[data-has-note='true'] {
+	color: var(--ios-accent);
+	background: var(--ios-accent-fill);
+}
+.work-note {
+	display: grid;
+	gap: 4px;
+	font-size: 12px;
+	color: var(--ios-secondary);
+}
+.object-note-read {
+	margin: 0;
+	padding: 9px 11px;
+	border-radius: 10px;
+	background: var(--ios-fill);
+	color: var(--ios-label);
+	font-size: 13px;
+	white-space: pre-wrap;
 	overflow-wrap: anywhere;
 }
 .object-page-nav,
@@ -673,12 +705,9 @@
 .expense-editor :is(.ant-input, .ant-input-number-input) {
 	font-size: 16px;
 }
-.expense-editor :is(.ant-input-number, .ant-picker) {
+.expense-editor .ant-input-number {
 	width: 100%;
 	min-width: 0;
-}
-.expense-editor .ant-picker {
-	padding-inline: 8px;
 }
 .expense-fields {
 	display: grid;

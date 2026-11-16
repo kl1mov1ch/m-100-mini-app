@@ -6,7 +6,6 @@ import {
 	Check,
 	ChevronDown,
 	ChevronRight,
-	Files,
 	History,
 	Plus,
 	Settings2,
@@ -29,7 +28,6 @@ import { ObjectPage } from './pages/ObjectPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { TeamPage } from './pages/TeamPage';
-import { DocumentsPage } from './pages/DocumentsPage';
 import { RemindersPage } from './pages/RemindersPage';
 import './reports.css';
 import './search-controls.css';
@@ -104,7 +102,6 @@ export function WorkspaceApp() {
 			busy ||
 			controller.switchingRole ||
 			controller.page === 'more' ||
-			controller.page === 'documents' ||
 			Boolean(
 				(controller.report && controller.dirty) ||
 				controller.freeText.trim() ||
@@ -154,9 +151,6 @@ export function WorkspaceApp() {
 					{page === 'more' && <SettingsPage workspace={workspace} notifications={notifications} />}
 					{page === 'team' && <TeamPage workspace={workspace} />}
 					{page === 'reminders' && <RemindersPage workspace={workspace} />}
-					<div hidden={page !== 'documents'}>
-						<DocumentsPage workspace={workspace} visible={page === 'documents'} />
-					</div>
 				</main>
 			</div>
 			<nav className="bottom-nav">
@@ -164,15 +158,12 @@ export function WorkspaceApp() {
 					{ id: 'objects', label: 'Объекты', icon: Building2 },
 					...(!isAdmin ? [{ id: 'today', label: 'Отчёт', icon: Plus }] : []),
 					{ id: 'history', label: 'История', icon: History },
-					{ id: 'documents', label: 'Документы', icon: Files },
 					{ id: 'more', label: 'Настройки', icon: Settings2 },
 				].map((n) => (
 					<button
 						key={n.id}
 						onClick={() => {
 							if (n.id === 'more') openSettings();
-							else if (n.id === 'documents' && page === 'documents')
-								controller.documentBack.current?.();
 							else if (n.id === 'today' && !isAdmin && active)
 								controller.openObjectSection('reports');
 							else setPage(n.id);

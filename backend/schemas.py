@@ -11,6 +11,7 @@ class ParseBody(BaseModel):
 class Line(BaseModel):
     item_id: str
     quantity: float = Field(gt=0, le=1e8, allow_inf_nan=False)
+    note: str | None = Field(default=None, max_length=1000)
 
 
 class SaveBody(BaseModel):

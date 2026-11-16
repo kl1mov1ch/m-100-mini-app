@@ -13,8 +13,6 @@ from .audio import router as audio_router
 from .bitrix_refresh import refresh_linked_tables
 from .clock import now
 from .clock import today as today
-from .documents.api import router as documents_router
-from .documents.publication import router as document_publication_router
 from .imports import register
 from .notifications import router as reminders_router
 from .notifications import scheduled_reminders
@@ -83,8 +81,6 @@ app.include_router(table_editing_router)
 app.include_router(reminders_router)
 app.include_router(analytics_router)
 app.include_router(profile_router)
-app.include_router(documents_router)
-app.include_router(document_publication_router)
 app.include_router(report_downloads_router)
 register(app, ai_settings, now)
 dist = store.ROOT / "frontend/dist"

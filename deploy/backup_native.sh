@@ -17,9 +17,7 @@ if test "$storage" = postgres; then
     test -s "$temporary"
     docker exec -i m100-postgres pg_restore --list < "$temporary" > /dev/null
     mv -- "$temporary" "$target"
-    directories=(imports)
-    if test -d data/document-jobs; then directories+=(document-jobs); fi
-    (cd data; find "${directories[@]}" -type f \( -path 'imports/*' -o -name source.pdf \) -print0 | tar --null -czf "/var/backups/m100/m100-files-$stamp.tar.gz" -T -)
+    (cd data; find imports -type f -print0 | tar --null -czf "/var/backups/m100/m100-files-$stamp.tar.gz" -T -)
 else
     APP_DATABASE=/var/miniApp/m-100/data/m100.sqlite3 .venv/bin/python scripts/data_archive.py backup "/var/backups/m100/m100-$stamp.zip"
 fi

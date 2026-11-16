@@ -40,6 +40,7 @@ export function AdminDailyReport({ workspace }: { workspace: WorkspaceView }) {
 					onChange={(value) => value && void changeDay(value.format('YYYY-MM-DD'))}
 				/>
 			</div>
+			{data.config.object_note && <p className="object-note-read">{data.config.object_note}</p>}
 			<section className="report-metrics">
 				<div className="metric-primary">
 					<span>Выработка за день</span>
@@ -101,6 +102,7 @@ export function AdminDailyReport({ workspace }: { workspace: WorkspaceView }) {
 									</strong>
 								</div>
 								{position && <WorkEstimate balance={balances[position.id]} unit={position.unit} />}
+								{line.note && <p className="object-note-read">{line.note}</p>}
 								{position && (
 									<p className="position-rate">
 										<Money value={position.rate} /> / {unit(position.unit)}
