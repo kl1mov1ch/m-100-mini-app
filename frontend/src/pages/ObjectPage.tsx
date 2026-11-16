@@ -181,6 +181,7 @@ export function ObjectPage({ workspace }: { workspace: WorkspaceView }) {
 			<h1 title={active.name}>{active.name}</h1>
 			<Segmented<ObjectSection>
 				block
+				className="object-section-switch"
 				aria-label="Разделы объекта"
 				value={objectSection}
 				onChange={openSection}

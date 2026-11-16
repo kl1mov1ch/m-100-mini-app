@@ -1,12 +1,13 @@
 import base64
 import io
 import json
+from uuid import uuid4
 
 import httpx
 import openpyxl
 from test_workspaces import client, create, grant  # noqa: F401 - pytest fixture
 
-from backend import bitrix, store, tables, workspaces
+from backend import bitrix, expense_drafts, store, tables, workspaces
 from backend.clock import today
 from backend.documents.structured import candidates
 from backend.workbook_journal import format_journal
@@ -120,3 +121,63 @@ def test_pdf_skips_expense_section_and_fuel(tmp_path):
     works, controls = candidates(tmp_path, {"file_hash": "test"})
     assert [(row["source_row"], row["quantity_cell"]) for row in works] == [(6, "15")]
     assert not controls
+
+
+def test_expense_drafts_require_confirmation_and_batch_retries_are_safe(client, monkeypatch):  # noqa: F811
+    grant(client, "1753")
+    project = create(client, "1753", sample=False)
+    headers = {"X-Preview-User": "1753", "X-Project-Id": project}
+    url = "/api/object/expenses"
+    monkeypatch.setattr(expense_drafts.matcher, "provider", lambda _: {"key": ""})
+    response = client.post(
+        url + "/parse",
+        headers=headers,
+        json={
+            "text": "Топливо двадцать литров по два рубля пятьдесят копеек; "
+            "Аренда крана 3 часа по 180; Доставка 2 рейса за всё 60 BYN"
+        },
+    )
+    assert response.status_code == 200, response.text
+    fuel, crane, delivery = response.json()["rows"]
+    assert (fuel["name"], fuel["quantity"], fuel["rate"]) == ("Топливо", "20", "2.50")
+    assert (crane["quantity"], crane["rate"]) == ("3", "180")
+    assert delivery["quantity"] == "2" and delivery["rate"] is None
+    assert client.get(url, headers=headers).json()["rows"] == []
+    rows = [{**row, "date": today(), "draft_id": str(uuid4())} for row in (fuel, crane, delivery)]
+    assert client.post(url + "/batch", headers=headers, json={"rows": rows}).status_code == 422
+    assert client.get(url, headers=headers).json()["rows"] == []
+    rows[2]["rate"] = "30"
+    for _ in range(2):
+        result = client.post(url + "/batch", headers=headers, json={"rows": rows})
+        assert result.status_code == 200, result.text
+        assert len(result.json()["rows"]) == 3 and result.json()["total"] == "650.00"
+
+
+def test_expense_ai_checks_source_and_drops_invented_amounts(client, monkeypatch):  # noqa: F811
+    grant(client, "1754")
+    project = create(client, "1754", sample=False)
+    headers = {"X-Preview-User": "1754", "X-Project-Id": project}
+    url = "/api/object/expenses"
+    monkeypatch.setattr(expense_drafts.matcher, "provider", lambda _: {"key": "test"})
+
+    async def answer(_prompt, text, _settings):
+        return {
+            "rows": [
+                {
+                    "name": "Доставка",
+                    "quote": text,
+                    "unit": "рейс",
+                    "quantity": 99,
+                    "rate": 150,
+                }
+            ]
+        }
+
+    monkeypatch.setattr(expense_drafts.matcher, "complete", answer)
+    result = client.post(
+        url + "/parse", headers=headers, json={"text": "Доставка: два рейса, всего 150 рублей"}
+    )
+    assert result.status_code == 200, result.text
+    [row] = result.json()["rows"]
+    assert row["name"] == "Доставка"
+    assert row["rate"] is None and row["quantity"] is None
