@@ -1,0 +1,567 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "Box": {
+      "additionalProperties": false,
+      "properties": {
+        "x0": {
+          "title": "X0",
+          "type": "number"
+        },
+        "y0": {
+          "title": "Y0",
+          "type": "number"
+        },
+        "x1": {
+          "title": "X1",
+          "type": "number"
+        },
+        "y1": {
+          "title": "Y1",
+          "type": "number"
+        }
+      },
+      "required": [
+        "x0",
+        "y0",
+        "x1",
+        "y1"
+      ],
+      "title": "Box",
+      "type": "object"
+    },
+    "Callout": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "diameter",
+            "dimension",
+            "tolerance",
+            "roughness",
+            "other"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "text": {
+          "$ref": "#/$defs/Observation_Annotated_str__FieldInfo_annotation_NoneType__required_True__metadata__MinLen_min_length_1___MaxLen_max_length_512_____"
+        }
+      },
+      "required": [
+        "kind",
+        "text"
+      ],
+      "title": "Callout",
+      "type": "object"
+    },
+    "Correction": {
+      "additionalProperties": false,
+      "properties": {
+        "field": {
+          "title": "Field",
+          "type": "string"
+        },
+        "original": {
+          "title": "Original",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "string"
+        },
+        "method": {
+          "const": "catalogue_confusable",
+          "title": "Method",
+          "type": "string"
+        }
+      },
+      "required": [
+        "field",
+        "original",
+        "value",
+        "method"
+      ],
+      "title": "Correction",
+      "type": "object"
+    },
+    "Observation_Annotated_Decimal__FieldInfo_annotation_NoneType__required_True__metadata__Ge_ge_0___Le_le_Decimal__1000000000______PydanticGeneralMetadata_max_digits_18__decimal_places_8_____BeforeValidator__": {
+      "additionalProperties": false,
+      "properties": {
+        "value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Value"
+        },
+        "confidence_score": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence Score",
+          "type": "number"
+        },
+        "source": {
+          "$ref": "#/$defs/Region"
+        },
+        "raw_text": {
+          "default": "",
+          "maxLength": 2000,
+          "title": "Raw Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "value",
+        "confidence_score",
+        "source"
+      ],
+      "title": "Observation[Annotated[Decimal, FieldInfo(annotation=NoneType, required=True, metadata=[Ge(ge=0), Le(le=Decimal('1000000000')), _PydanticGeneralMetadata(max_digits=18, decimal_places=8)]), BeforeValidator]]",
+      "type": "object"
+    },
+    "Observation_Annotated_str__FieldInfo_annotation_NoneType__required_True__metadata__MinLen_min_length_1___MaxLen_max_length_512_____": {
+      "additionalProperties": false,
+      "properties": {
+        "value": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Value"
+        },
+        "confidence_score": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence Score",
+          "type": "number"
+        },
+        "source": {
+          "$ref": "#/$defs/Region"
+        },
+        "raw_text": {
+          "default": "",
+          "maxLength": 2000,
+          "title": "Raw Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "value",
+        "confidence_score",
+        "source"
+      ],
+      "title": "Observation[Annotated[str, FieldInfo(annotation=NoneType, required=True, metadata=[MinLen(min_length=1), MaxLen(max_length=512)])]]",
+      "type": "object"
+    },
+    "PageInfo": {
+      "additionalProperties": false,
+      "properties": {
+        "number": {
+          "minimum": 1,
+          "title": "Number",
+          "type": "integer"
+        },
+        "kind": {
+          "enum": [
+            "vector",
+            "raster",
+            "mixed",
+            "blank"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "space": {
+          "enum": [
+            "pdf_pt",
+            "image_px"
+          ],
+          "title": "Space",
+          "type": "string"
+        },
+        "width": {
+          "exclusiveMinimum": 0,
+          "title": "Width",
+          "type": "number"
+        },
+        "height": {
+          "exclusiveMinimum": 0,
+          "title": "Height",
+          "type": "number"
+        },
+        "rotation": {
+          "default": 0,
+          "enum": [
+            0,
+            90,
+            180,
+            270
+          ],
+          "title": "Rotation",
+          "type": "integer"
+        },
+        "raster_coverage": {
+          "default": 0.0,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Raster Coverage",
+          "type": "number"
+        },
+        "ocr_required": {
+          "default": false,
+          "title": "Ocr Required",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "number",
+        "kind",
+        "space",
+        "width",
+        "height"
+      ],
+      "title": "PageInfo",
+      "type": "object"
+    },
+    "Region": {
+      "additionalProperties": false,
+      "description": "Origin is top-left. PDF boxes use unrotated page coordinates in points.",
+      "properties": {
+        "page": {
+          "minimum": 1,
+          "title": "Page",
+          "type": "integer"
+        },
+        "bbox": {
+          "$ref": "#/$defs/Box"
+        },
+        "space": {
+          "default": "pdf_pt",
+          "enum": [
+            "pdf_pt",
+            "image_px"
+          ],
+          "title": "Space",
+          "type": "string"
+        }
+      },
+      "required": [
+        "page",
+        "bbox"
+      ],
+      "title": "Region",
+      "type": "object"
+    },
+    "ReviewItem": {
+      "additionalProperties": false,
+      "properties": {
+        "field": {
+          "title": "Field",
+          "type": "string"
+        },
+        "reason": {
+          "enum": [
+            "low_confidence",
+            "missing_value",
+            "source_outside_page",
+            "invalid_format",
+            "invalid_unit",
+            "mass_mismatch",
+            "fuzzy_match",
+            "evidence_mismatch"
+          ],
+          "title": "Reason",
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/Region"
+        },
+        "confidence_score": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence Score",
+          "type": "number"
+        },
+        "detail": {
+          "title": "Detail",
+          "type": "string"
+        },
+        "suggestion": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Suggestion"
+        },
+        "crop_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Crop Path"
+        }
+      },
+      "required": [
+        "field",
+        "reason",
+        "source",
+        "confidence_score",
+        "detail"
+      ],
+      "title": "ReviewItem",
+      "type": "object"
+    },
+    "SpecificationRow": {
+      "additionalProperties": false,
+      "properties": {
+        "row_id": {
+          "maxLength": 100,
+          "minLength": 1,
+          "pattern": "^[\\w.-]+$",
+          "title": "Row Id",
+          "type": "string"
+        },
+        "name": {
+          "$ref": "#/$defs/Observation_Annotated_str__FieldInfo_annotation_NoneType__required_True__metadata__MinLen_min_length_1___MaxLen_max_length_512_____"
+        },
+        "unit": {
+          "$ref": "#/$defs/Observation_Annotated_str__FieldInfo_annotation_NoneType__required_True__metadata__MinLen_min_length_1___MaxLen_max_length_512_____"
+        },
+        "quantity": {
+          "$ref": "#/$defs/Observation_Annotated_Decimal__FieldInfo_annotation_NoneType__required_True__metadata__Ge_ge_0___Le_le_Decimal__1000000000______PydanticGeneralMetadata_max_digits_18__decimal_places_8_____BeforeValidator__"
+        },
+        "unit_mass": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Observation_Annotated_Decimal__FieldInfo_annotation_NoneType__required_True__metadata__Ge_ge_0___Le_le_Decimal__1000000000______PydanticGeneralMetadata_max_digits_18__decimal_places_8_____BeforeValidator__"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "total_mass": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Observation_Annotated_Decimal__FieldInfo_annotation_NoneType__required_True__metadata__Ge_ge_0___Le_le_Decimal__1000000000______PydanticGeneralMetadata_max_digits_18__decimal_places_8_____BeforeValidator__"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "mass_unit": {
+          "default": "kg",
+          "enum": [
+            "g",
+            "kg",
+            "t"
+          ],
+          "title": "Mass Unit",
+          "type": "string"
+        },
+        "material": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Observation_Annotated_str__FieldInfo_annotation_NoneType__required_True__metadata__MinLen_min_length_1___MaxLen_max_length_512_____"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "steel_grade": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Observation_Annotated_str__FieldInfo_annotation_NoneType__required_True__metadata__MinLen_min_length_1___MaxLen_max_length_512_____"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "standard": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Observation_Annotated_str__FieldInfo_annotation_NoneType__required_True__metadata__MinLen_min_length_1___MaxLen_max_length_512_____"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "part_number": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Observation_Annotated_str__FieldInfo_annotation_NoneType__required_True__metadata__MinLen_min_length_1___MaxLen_max_length_512_____"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "row_id",
+        "name",
+        "unit",
+        "quantity"
+      ],
+      "title": "SpecificationRow",
+      "type": "object"
+    },
+    "Stamp": {
+      "additionalProperties": false,
+      "properties": {
+        "drawing_code": {
+          "$ref": "#/$defs/Observation_Annotated_str__FieldInfo_annotation_NoneType__required_True__metadata__MinLen_min_length_1___MaxLen_max_length_512_____"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Observation_Annotated_str__FieldInfo_annotation_NoneType__required_True__metadata__MinLen_min_length_1___MaxLen_max_length_512_____"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "revision": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Observation_Annotated_str__FieldInfo_annotation_NoneType__required_True__metadata__MinLen_min_length_1___MaxLen_max_length_512_____"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "drawing_code"
+      ],
+      "title": "Stamp",
+      "type": "object"
+    },
+    "ValidatedRow": {
+      "additionalProperties": false,
+      "properties": {
+        "row": {
+          "$ref": "#/$defs/SpecificationRow"
+        },
+        "calculated_mass": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Calculated Mass"
+        },
+        "needs_review": {
+          "title": "Needs Review",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "row",
+        "needs_review"
+      ],
+      "title": "ValidatedRow",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "source_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Source Sha256",
+      "type": "string"
+    },
+    "pages": {
+      "items": {
+        "$ref": "#/$defs/PageInfo"
+      },
+      "title": "Pages",
+      "type": "array"
+    },
+    "stamp": {
+      "$ref": "#/$defs/Stamp"
+    },
+    "rows": {
+      "items": {
+        "$ref": "#/$defs/ValidatedRow"
+      },
+      "title": "Rows",
+      "type": "array"
+    },
+    "callouts": {
+      "items": {
+        "$ref": "#/$defs/Callout"
+      },
+      "title": "Callouts",
+      "type": "array"
+    },
+    "corrections": {
+      "items": {
+        "$ref": "#/$defs/Correction"
+      },
+      "title": "Corrections",
+      "type": "array"
+    },
+    "review_queue": {
+      "items": {
+        "$ref": "#/$defs/ReviewItem"
+      },
+      "title": "Review Queue",
+      "type": "array"
+    },
+    "needs_review": {
+      "title": "Needs Review",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "source_sha256",
+    "pages",
+    "stamp",
+    "rows",
+    "callouts",
+    "corrections",
+    "review_queue",
+    "needs_review"
+  ],
+  "title": "DrawingResult",
+  "type": "object"
+}

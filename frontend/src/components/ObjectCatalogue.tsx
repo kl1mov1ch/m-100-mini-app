@@ -125,7 +125,8 @@ export function ObjectCatalogue({
 	const [section, setSection] = useState('all');
 	const [sort, setSort] = useState<CatalogueSort>('source');
 	const [filtersOpen, setFiltersOpen] = useState(false);
-	const { allPositions, openObjectSection } = workspace;
+	const { allPositions: positions, openObjectSection } = workspace;
+	const allPositions = positions.filter((position) => !position.extra);
 	const sections = useMemo(
 		() =>
 			[...new Set(allPositions.map((position) => position.section).filter(Boolean))].sort((a, b) =>

@@ -44,6 +44,7 @@ UNIT_ALIASES = {
     "система": ("систем", "1"),
     "системы": ("систем", "1"),
 }
+CELL_NUMBER = r"(?:[0-9]+|[0-9]{1,3}(?:[ \u00a0\u202f][0-9]{3})+)(?:[,.][0-9]+)?"
 
 
 def canonical(value):
@@ -66,6 +67,15 @@ def decimal_value(value):
     return number if number.is_finite() and 0 <= number <= Decimal(1000000000) else None
 
 
+def numeric_cell(value):
+    if not isinstance(value, str):
+        return None
+    value = value.strip()
+    if not re.fullmatch(rf"{CELL_NUMBER}(?:\s*/\s*{CELL_NUMBER})?", value):
+        return None
+    return re.sub(r"\s", "", value).replace(".", ",")
+
+
 def normalise(work):
     original_unit = work.get("unit_cell") or work.get("unit")
     raw_unit = original_unit
@@ -78,14 +88,14 @@ def normalise(work):
         pair = definition.get("composite_units", {}).get(
             str(original_unit or "").replace(" ", "").casefold()
         )
-        values = cell.replace(" ", "").split("/")
-        if pair and len(pair) == len(values) and standard[2] in pair and "[OCR" not in cell:
+        values = (numeric_cell(cell) or "").split("/")
+        if pair and len(pair) == len(values) and standard[2] in pair:
             position = pair.index(standard[2])
             original_unit = pair[position]
             measure, factor = unit_value(original_unit)
             cell = values[position]
-    compact_cell = re.sub(r"\s", "", cell)
-    if cell and "[OCR" not in cell and re.fullmatch(r"\d+(?:[.,]\d+)?", compact_cell):
+    compact_cell = numeric_cell(cell)
+    if compact_cell and "/" not in compact_cell:
         quantity = decimal_value(compact_cell)
     elif cell:
         quantity = None
@@ -305,6 +315,7 @@ def build_groups(works, previous=None):
             for field in (
                 "quantity",
                 "rate",
+                "rate_suggestion",
                 "notes",
                 "confirmed",
                 "resolution",
@@ -326,9 +337,23 @@ def build_groups(works, previous=None):
                 for index in sorted(overlapping)
                 if evidence(previous[index]["sources"]) <= source_set
             ]
-            rates = {str(old["rate"]) for old in merged if old.get("rate") is not None}
+            rates = {
+                str(old["rate"])
+                for old in merged
+                if old.get("rate") is not None and not old.get("rate_suggestion")
+            }
             if len(rates) == 1:
                 row["rate"] = next(iter(rates))
+            if (
+                old
+                and old.get("rate_suggestion")
+                and all(
+                    row.get(field) == old.get(field)
+                    for field in ("name", "category", "unit", "subsection")
+                )
+            ):
+                row["rate"] = old["rate"]
+                row["rate_suggestion"] = old["rate_suggestion"]
             earlier_reviews = [
                 review for old in merged for review in old.get("previous_reviews", [])
             ]

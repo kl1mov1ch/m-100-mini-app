@@ -11,7 +11,6 @@ from .normalization import canonical, decimal_value, unit_value
 
 ROOT = Path(__file__).resolve().parents[2]
 PUBLIC_GUIDE = ROOT / "docs/document-price-guide.md"
-PRIVATE_GUIDE = ROOT / "data/document-price-guide.md"
 
 
 def guide_rows(path, heading):
@@ -22,14 +21,6 @@ def guide_rows(path, heading):
         return []
     lines = [line for line in section.split("\n## ", 1)[0].splitlines() if line.startswith("|")]
     return [[cell.strip() for cell in line.strip("|").split("|")] for line in lines[2:]]
-
-
-def labour_rates(path=PRIVATE_GUIDE):
-    return {
-        (category, canonical(name), unit_value(unit)[0]): (value, reference)
-        for category, name, unit, rate, reference in guide_rows(path, "Оплата работ")
-        if (value := decimal_value(rate)) is not None
-    }
 
 
 def offers_by_specification(path=PUBLIC_GUIDE):

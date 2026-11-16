@@ -15,6 +15,7 @@ from openpyxl.workbook.properties import CalcProperties
 
 from . import matcher
 from .table_advice import explain_issues, with_tips
+from .workbook_expenses import is_expense_sheet
 from .workbook_journal import is_journal, journal_mapping, journal_row
 
 ALIASES = {
@@ -351,7 +352,7 @@ def discover(content, *, original=False, workbook=None):
             "Итоги объекта",
             "Примечания PDF",
             "Источники PDF",
-        ) or is_journal(sheet):
+        ) or is_journal(sheet) or is_expense_sheet(sheet):
             continue
         if not any(cell.value is not None for row in sheet for cell in row):
             continue

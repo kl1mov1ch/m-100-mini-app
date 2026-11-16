@@ -12,6 +12,8 @@ from openpyxl.utils import get_column_letter
 from openpyxl.workbook.properties import CalcProperties
 from openpyxl.workbook.views import BookView
 
+from .expense_rules import extra_position
+
 JOURNAL_MARKER = "M100 • Журнал работ"
 JOURNAL_SOURCE = "M100 • рабочий лист"
 AMOUNT_FORMAT = '#,##0.00 "BYN"'
@@ -93,6 +95,7 @@ def format_journal(
     content, catalogue, entries, crew_by_day, issues, mappings=None, *, named_groups=False
 ):
     from .workbook_calculation import cache_formulas
+    from .workbook_expenses import write_summary
 
     book = openpyxl.load_workbook(io.BytesIO(content))
     journals = [sheet for sheet in book if is_journal(sheet)]
@@ -146,6 +149,7 @@ def format_journal(
         )
         if index == 0:
             book.active = sheet
+    write_summary(book)
     output = io.BytesIO()
     book.save(output)
     return cache_formulas(output.getvalue(), issues, original=content)
@@ -249,6 +253,8 @@ def write_journal_sheet(
         for column, day in enumerate(days, 10):
             sheet.cell(row, column, quantities.get((position["id"], day), 0))
         sheet.row_dimensions[row].height = max(20, min(70, 16 * (1 + len(position["name"]) // 55)))
+        if extra_position(position):
+            sheet.row_dimensions[row].hidden = True
 
     totals = last_row + 2
     labels = (
@@ -290,6 +296,9 @@ def write_journal_sheet(
             sheet.cell(row, column).number_format = AMOUNT_FORMAT
 
     line = Side(style="hair", color="D6E2F0")
+    divider = Side(style="thin", color="D2DDE8")
+    section_divider = Side(style="thin", color="A8BBD0")
+    header_divider = Side(style="thin", color="5C738A")
     for row in sheet.iter_rows(
         min_row=1, max_row=totals + 5, max_col=notes_column or 9 + len(days)
     ):
@@ -313,7 +322,14 @@ def write_journal_sheet(
                 color="FFFFFF" if header else "21344A",
                 bold=header or total or date_heading,
             )
-            cell.border = Border(bottom=line)
+            right = (
+                header_divider
+                if header
+                else section_divider
+                if cell.column in (2, 6, 9)
+                else divider
+            )
+            cell.border = Border(bottom=line, right=right)
             cell.alignment = Alignment(
                 horizontal="left" if cell.column in (2, notes_column) else "center",
                 vertical="center",

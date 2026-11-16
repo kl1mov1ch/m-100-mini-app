@@ -10,7 +10,9 @@ from .profile import load_template
 
 def requested_categories(query):
     value = str(query or "").casefold().replace("ё", "е")
-    if "кроме" in value or re.search(r"все\s+(?:направления|категории|разделы)", value):
+    value = re.sub(r"\b(?:кроме|без)\s+пуско?[\s-]*налад[а-я]*", "", value)
+    value = re.split(r"\b(?:кроме|без)\b", value, maxsplit=1)[0]
+    if re.search(r"все\s+(?:направления|категории|разделы)", value):
         return set()
     stemmer = snowballstemmer.stemmer("russian")
     words = stemmer.stemWords(re.findall(r"[а-я]+", value))

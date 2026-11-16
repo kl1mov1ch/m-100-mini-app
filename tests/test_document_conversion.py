@@ -3,9 +3,37 @@ import json
 from test_workspaces import client as client
 
 from backend.documents import conversion, repository, retrieval, worker
-from backend.documents.docling_runner import ENGINE, native_coordinate_table, native_lines
+from backend.documents.docling_runner import (
+    ENGINE,
+    native_coordinate_table,
+    native_lines,
+    native_table,
+)
 from backend.documents.parsed_tables import estimate_table
 from backend.documents.table_context import document_rows
+
+
+def test_performance_parameters_cannot_select_an_estimate_table():
+    table = (
+        "Строка 1: C1–C2=Наименование | C2–C3=Единица измерения | "
+        "C3–C4=Количество воздуха, м³/ч | C4–C5=Длина корпуса, мм |\n"
+        "Строка 2: C1–C2=П1 | C2–C3=шт. | C3–C4=750 | C4–C5=1200 |\n"
+        "Строка 3: C1–C2=П2 | C2–C3=шт. | C3–C4=900 | C4–C5=1500 |"
+    )
+    assert estimate_table({"analysis_text": table}) is None
+    table = estimate_table(
+        {
+            "analysis_text": table.replace("Длина корпуса, мм", "Количество").replace(
+                "C4–C5=1200", "C4–C5=4"
+            )
+        }
+    )
+    assert document_rows({1: table})[1, 2]["quantity_cell"] == "4"
+
+
+def test_native_drawing_without_tabular_evidence_needs_no_rasterization(tmp_path):
+    record = {"text": "План систем на отметке +3.000. Схема П1. L=750 м³/ч."}
+    assert native_table(tmp_path / "nonexistent.pdf", 1, tmp_path, record) is record
 
 
 def test_native_short_specification_uses_quantity_column_only():
@@ -23,7 +51,14 @@ def test_native_short_specification_uses_quantity_column_only():
         start = len(raw)
         raw += value + "\n"
         layout["lines"].append(
-            {"start": start, "end": len(raw) - 1, "left": x, "right": x + 14, "top": y, "bottom": y + 10}
+            {
+                "start": start,
+                "end": len(raw) - 1,
+                "left": x,
+                "right": x + 14,
+                "top": y,
+                "bottom": y + 10,
+            }
         )
     table = estimate_table(native_coordinate_table({"layout": layout, "text": raw}))
     assert table and table["rows"] == [1, 2]

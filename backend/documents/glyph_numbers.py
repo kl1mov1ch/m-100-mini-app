@@ -97,7 +97,7 @@ def calibrate(image, record, fallback=None):
         if pieces:
             main = max(pieces, key=lambda c: len(c[4]))
             templates[digit] = bitmap(main)
-    replacements, corrections, uncertain = [], [], []
+    replacements, corrections, uncertain, verified = [], [], [], []
     number_row = labelled[0][0]["row"] if labelled else header + 1
     for cell in cells:
         if cell["row"] <= number_row or not any(
@@ -108,9 +108,10 @@ def calibrate(image, record, fallback=None):
         base = old.split(" [OCR")[0].replace(" ", "")
         if not re.fullmatch(r"\d+(?:[.,]\d+)?", base):
             continue
+        location = {"row": cell["row"], "column": cell["column"]}
         pieces = parts(cell)
         if not pieces:
-            uncertain.append({"row": cell["row"], "column": cell["column"]})
+            uncertain.append(location)
             continue
         height = max(c[3] - c[1] for c in pieces)
         digits = [c for c in pieces if c[3] - c[1] >= height * 0.65 and len(c[4]) >= 8]
@@ -122,7 +123,7 @@ def calibrate(image, record, fallback=None):
                 value for value in alternatives if sum(c.isdigit() for c in value) == len(digits)
             ]
             if len(alternatives) != 1:
-                uncertain.append({"row": cell["row"], "column": cell["column"]})
+                uncertain.append(location)
                 continue
             base = alternatives[0]
         characters, index, confident = list(base), 0, True
@@ -147,8 +148,6 @@ def calibrate(image, record, fallback=None):
                 # digit looks plausible. Unsupported substitutions stay flagged.
                 confident = False
         value = "".join(characters)
-        if not confident:
-            uncertain.append({"row": cell["row"], "column": cell["column"]})
         # A visible small component between digits independently preserves the
         # decimal separator when the second OCR pass dropped it.
         if pieces:
@@ -167,8 +166,15 @@ def calibrate(image, record, fallback=None):
             )
             if split is not None and not re.search(r"[.,]", value):
                 value = value[:split] + "," + value[split:]
-            if "[OCR" in old and (not confident or (re.search(r"[.,]", base) and split is None)):
+            if separator := re.search(r"[.,]", base):
+                confident = confident and separator.start() == split
+            if "[OCR" in old and not confident:
+                uncertain.append(location)
                 continue
+        if confident:
+            verified.append(location)
+        else:
+            uncertain.append(location)
         if value != base or ("[OCR" in old and confident):
             segment = text[cell["start"] : cell["end"]]
             replacement = segment[: segment.index("=") + 1] + value + " | "
@@ -197,6 +203,7 @@ def calibrate(image, record, fallback=None):
         "analysis_layout": {**layout, "lines": lines},
         "digit_calibration": "header-glyphs-v1",
         "uncertain_numeric_cells": uncertain,
+        "verified_numeric_cells": verified,
         "numeric_corrections": [*record.get("numeric_corrections", []), *corrections],
         "digit_templates": {digit: value.tolist() for digit, value in templates.items()},
     }

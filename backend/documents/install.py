@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from .. import postgres
 from ..naming import normalize_existing_project_names
 from ..orm_models import AuditEvent, Project
-from .repository import DocumentJob, RecognitionExample
+from .repository import DocumentJob, RecognitionExample, WorkRate
 
 
 def main():
@@ -21,6 +21,7 @@ def main():
         with postgres.pool().begin() as connection:
             DocumentJob.__table__.create(connection, checkfirst=True)
             RecognitionExample.__table__.create(connection, checkfirst=True)
+            WorkRate.__table__.create(connection, checkfirst=True)
             with Session(bind=connection) as database:
                 projects = list(
                     database.scalars(
@@ -56,6 +57,11 @@ def main():
             connection.execute(
                 DDL(
                     "GRANT SELECT, INSERT, UPDATE, DELETE ON registry.document_recognition_examples TO m100_app"
+                )
+            )
+            connection.execute(
+                DDL(
+                    "GRANT SELECT, INSERT, UPDATE, DELETE ON registry.document_work_rates TO m100_app"
                 )
             )
     finally:

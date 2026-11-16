@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 
 from . import postgres, store, workspaces
 from .analytics import router as analytics_router
-from .api import accounts, bitrix, objects, reports
+from .api import accounts, bitrix, expenses, objects, reports
 from .audio import router as audio_router
 from .bitrix_refresh import refresh_linked_tables
 from .clock import now
@@ -77,6 +77,7 @@ app.include_router(accounts.router)
 app.include_router(reports.router)
 app.include_router(bitrix.router)
 app.include_router(objects.router)
+app.include_router(expenses.router)
 app.include_router(audio_router)
 app.include_router(table_editing_router)
 app.include_router(reminders_router)

@@ -16,6 +16,9 @@ export type DocumentSource = {
 	conversion_factor: string | null;
 	geometry_factor?: string | null;
 	visual_verified?: boolean;
+	local_verified?: boolean;
+	quantity_warning?: boolean;
+	evidence_warning?: string;
 	highlights?: { left: number; top: number; width: number; height: number }[];
 	highlight_pages?: { page: number; highlights: NonNullable<DocumentSource['highlights']> }[];
 };
@@ -41,6 +44,7 @@ export type DocumentGroup = {
 	quantity: string | number | null;
 	proposed_quantity: string | number | null;
 	rate: string | number | null;
+	rate_suggestion?: { name: string; method: 'exact' | 'ai' };
 	notes: string;
 	confirmed: boolean;
 	issues: string[];
@@ -75,6 +79,8 @@ export type DocumentJob = {
 			started_at?: string;
 		};
 		query?: string;
+		scope_categories?: string[];
+		scope_pages?: number[];
 		questions?: string[];
 		notice?: string;
 		groups?: DocumentGroup[];
@@ -84,10 +90,12 @@ export type DocumentJob = {
 		analysis_total?: number;
 		acknowledge_scope?: boolean;
 		publication?: {
+			mode?: 'disk';
 			phase: string;
 			name: string;
 			token: string;
-			public_url: string;
+			public_url?: string;
+			detail_url?: string;
 			project_id: string;
 			object_name: string;
 			webhook_id: string;

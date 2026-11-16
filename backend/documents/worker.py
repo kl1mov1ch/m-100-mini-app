@@ -26,11 +26,13 @@ from .examples import confirmed_examples
 from .execution import JobDeleted, cancellable, check_active, current_job, run
 from .extraction import classify, propose
 from .families import assign_work_names
+from .intent import requested_categories, select_works
 from .normalization import financial_summary
 from .page_cache import cache_page, cached_page, text_digest
 from .progress import recover_interrupted, worker_lock
 from .repository import DocumentJob, folder, session
 from .selection import page_index
+from .work_rates import suggest_rates
 
 
 def update(ident, **values):
@@ -312,6 +314,7 @@ def process_docling(ident, payload, path, total):
         "profile_version": profile_version(),
     }
     groups = estimate_rows(payload)
+    asyncio.run(suggest_rates(groups, {}))
     payload = {**payload, "groups": groups, "summary": financial_summary(groups)}
     update(
         ident,
@@ -555,6 +558,28 @@ def analyse(ident, payload):
             },
         )
         return
+    works = select_works(payload.get("works", []), payload.get("query", ""))
+    categories = sorted(requested_categories(payload.get("query", "")))
+    if payload.get("structured_extraction") and categories:
+        payload = {
+            **payload,
+            "scope_categories": categories,
+            "scope_pages": sorted({work["page"] for work in works}),
+        }
+        if not works:
+            update(
+                ident,
+                status="needs_review",
+                payload={
+                    **payload,
+                    "works": [],
+                    "controls": [],
+                    "groups": [],
+                    "summary": financial_summary([]),
+                    "notice": f"В таблицах нет подходящих строк для запроса «{', '.join(categories)}».",
+                },
+            )
+            return
     settings = workspaces.shared()
     with session() as database:
         owner = database.get(DocumentJob, ident)
@@ -572,9 +597,6 @@ def analyse(ident, payload):
             },
         )
         return
-    from .intent import select_works
-
-    works = select_works(payload.get("works", []), payload.get("query", ""))
     questions = list(payload.get("questions", []))
     done = set(payload.get("analysed_chunks", []))
     pages = payload.get("selected_pages") or [
@@ -609,6 +631,13 @@ def analyse(ident, payload):
         payload = {**payload, "ai_calls": calls}
         update(ident, payload=payload)
         return await cancellable(matcher.complete(*args))
+
+    def apply_rates(groups):
+        try:
+            asyncio.run(suggest_rates(groups, settings, budgeted_complete))
+        except BudgetExhausted:
+            # Exact matches and already processed batches remain available for review.
+            pass
 
     if payload.get("structured_extraction") and not payload.get("visual_complete"):
         from .visual import resolve
@@ -689,6 +718,7 @@ def analyse(ident, payload):
         from .workbook import estimate_rows
 
         groups = estimate_rows({**payload, "works": works})
+        apply_rates(groups)
         update(
             ident,
             status="needs_review",
@@ -868,11 +898,15 @@ def analyse(ident, payload):
             if page.get("ocr_confidence") is not None and page["ocr_confidence"] < 75
         ],
     }
+    groups = payload.get("groups", [])
+    apply_rates(groups)
     update(
         ident,
         status="queued" if payload.get("automatic") and not complete_extraction else "needs_review",
         payload={
             **payload,
+            "groups": groups,
+            "summary": financial_summary(groups),
             "coverage": coverage,
             "notice": (
                 f"Отобрано листов с данными: {len(payload.get('selected_specifications', []))}. Чертежи и общие данные исключены."

@@ -1,5 +1,4 @@
 import hashlib
-import io
 import shutil
 import subprocess
 from datetime import UTC, datetime
@@ -21,7 +20,8 @@ from .metadata import mark_uploaded, page_count
 from .normalization import canonical, financial_summary, unit_value
 from .progress import notify_queue
 from .repository import DocumentJob, create, folder, owned, public, session, version
-from .workbook import estimate_rows, make_estimate
+from .work_rates import rate_key, record_rate
+from .workbook import download_controls, downloadable_estimate, estimate_rows
 
 router = APIRouter(prefix="/api/documents")
 
@@ -453,7 +453,7 @@ def marked_pdf(ident: str, request: Request, prepare: bool = False):
         with session() as database:
             current = owned(database, ident, user["telegram_id"])
             groups = download_rows(
-                ident, current.payload, final=current.status in {"ready", "published"}
+                ident, current.payload, final=current.status in {"ready", "uploaded", "published"}
             )
             allowed = (
                 set(current.payload.get("selected_specifications", []))
@@ -644,11 +644,13 @@ def save_reviews(ident, request, expected_version, items, acknowledge_scope):
             )
         groups = [dict(row) for row in job.payload.get("groups", [])]
         reviews = list(job.payload.get("reviews", []))
+        reviewed_rows = []
         for group_id, body in items:
             row = next((row for row in groups if row["id"] == group_id), None)
             if row is None:
                 raise HTTPException(404, "Позиция не найдена")
             before = apply_review(row, body)
+            reviewed_rows.append((row, before))
             reviews.append(
                 {
                     "group_id": group_id,
@@ -674,6 +676,8 @@ def save_reviews(ident, request, expected_version, items, acknowledge_scope):
                 or acknowledge
             )
         )
+        for row, before in sorted(reviewed_rows, key=lambda change: rate_key(change[0]) or ()):
+            record_rate(database, row, before)
         job.payload = {
             **job.payload,
             "publication": None,
@@ -683,11 +687,7 @@ def save_reviews(ident, request, expected_version, items, acknowledge_scope):
             "acknowledge_scope": acknowledge,
         }
         job.status = "ready" if ready else "needs_review"
-        remember(
-            database,
-            job.owner_id,
-            [row for row in groups if row["id"] in {item[0] for item in items}],
-        )
+        remember(database, job.owner_id, [row for row, _ in reviewed_rows])
         job.updated_at = datetime.now(UTC)
         return public(job)
 
@@ -714,32 +714,22 @@ def download_rows(ident, payload, *, final=False):
     return estimate_rows({**payload, "works": table_works(folder(ident), payload)})
 
 
-def download_controls(payload):
-    return [row for row in payload.get("controls", []) if row.get("table_role") != "commissioning"]
-
-
 @router.get("/{ident}/export.xlsx")
 def export(ident: str, request: Request, prepare: bool = False, final: bool = False):
     def render(user):
-        from openpyxl import Workbook
-
         with session() as database:
             job = owned(database, ident, user["telegram_id"])
-            if final and job.status not in {"ready", "published"}:
+            if final and job.status not in {"ready", "uploaded", "published"}:
                 raise HTTPException(
                     409, "Для итогового отчёта подтвердите все объёмы, расценки и полноту выборки"
                 )
             rows = download_rows(ident, job.payload, final=final)
-            controls = download_controls(job.payload)
-        blank = io.BytesIO()
-        Workbook().save(blank)
-        return make_estimate(
-            blank.getvalue(), rows, draft=not final, download=True, controls=controls
-        )
+            payload = job.payload
+        return downloadable_estimate(rows, payload, draft=not final)
 
     with session() as database:
         job = owned(database, ident, request.state.user["telegram_id"])
-        if final and job.status not in {"ready", "published"}:
+        if final and job.status not in {"ready", "uploaded", "published"}:
             raise HTTPException(409, "Подтвердите объёмы и расценки перед итоговой выгрузкой")
     return report_export(
         request.state.user,

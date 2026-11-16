@@ -4,16 +4,15 @@ import subprocess
 import sys
 import threading
 import time
-from datetime import UTC, datetime
-
-import openpyxl
 import httpx
+import openpyxl
 import pytest
 from pypdf import PdfReader
 from test_document_jobs import sample_pdf
 from test_workspaces import client
 
 from backend import profile_webhooks
+from backend.clock import today
 from backend.documents import execution, publication, repository, worker
 from backend.documents.normalization import build_groups, financial_summary
 
@@ -220,7 +219,10 @@ def test_publish_requires_empty_unchanged_file_and_is_idempotent(
     assert result.status_code == 200, result.text
     published = result.json()
     assert published["status"] == "published" and remote["writes"] == 1
-    assert openpyxl.load_workbook(io.BytesIO(remote["content"])).active["A2"].value == "M100 • Журнал работ"
+    assert (
+        openpyxl.load_workbook(io.BytesIO(remote["content"])).active["A2"].value
+        == "M100 • Журнал работ"
+    )
     project_id = published["payload"]["publication"]["project_id"]
     parsed = client.get("/api/bootstrap", headers={"X-Project-Id": project_id}).json()
     assert parsed["positions"][0]["planned"] == 12
@@ -233,3 +235,106 @@ def test_publish_requires_empty_unchanged_file_and_is_idempotent(
     assert client.get(f"/api/documents/{ident}/export.xlsx?final=true").status_code == 200
     with pytest.raises(ValueError):
         publication.ensure_empty(remote["content"])
+
+
+@pytest.mark.parametrize("lost_response", [False, True])
+def test_upload_to_disk_then_connect_as_project(client, monkeypatch, tmp_path, lost_response):
+    monkeypatch.setattr(repository.store, "ROOT", tmp_path)
+    ident = ready_job(tmp_path)
+    hook = profile_webhooks.save_webhook(
+        "local-admin", "Диск", "https://demo.bitrix24.by/rest/1/abc123/"
+    )
+    remote = {"file": None, "writes": 0}
+    detail_url = "https://demo.bitrix24.by/disk/file/9"
+
+    async def rest(webhook, method, payload):
+        if method == "disk.storage.getList":
+            assert payload["filter"] == {"ENTITY_TYPE": "user", "ENTITY_ID": "1"}
+            return [{"ID": "8", "ENTITY_TYPE": "user", "ENTITY_ID": "1"}]
+        if method == "disk.file.uploadVersion":
+            assert str(payload["id"]) == "9"
+            remote["content"] = base64.b64decode(payload["fileContent"][1])
+            return remote["file"]
+        assert payload["id"] == "8"
+        if method == "disk.storage.getChildren":
+            return [remote["file"]] if remote["file"] else []
+        assert method == "disk.storage.uploadFile"
+        assert payload["generateUniqueName"] is False
+        name, encoded = payload["fileContent"]
+        assert name == payload["data"]["NAME"]
+        remote["writes"] += 1
+        remote["file"] = {"ID": "9", "NAME": name, "DETAIL_URL": detail_url}
+        remote["content"] = base64.b64decode(encoded)
+        if lost_response:
+            raise httpx.ReadTimeout("Lost response after upload")
+        return remote["file"]
+
+    async def download(webhook, file_id):
+        assert str(file_id) == "9"
+        return remote["content"], remote["file"]
+
+    monkeypatch.setattr(publication.bitrix, "rest", rest)
+    monkeypatch.setattr(publication.bitrix, "download_rest", download)
+    url = f"/api/documents/{ident}"
+    job = client.get(url).json()
+    body = {"webhook_id": hook["id"], "object_name": "PDF объект", "version": job["updated_at"]}
+    upload = client.post(url + "/bitrix/upload", json=body)
+    if lost_response:
+        assert upload.status_code == 502
+        retry = client.get(url).json()
+        assert retry["status"] == "publish_retry"
+        upload = client.post(url + "/bitrix/upload", json={**body, "version": retry["updated_at"]})
+    assert upload.status_code == 200, upload.text
+    uploaded = upload.json()
+    assert uploaded["status"] == "uploaded" and remote["writes"] == 1
+    target = uploaded["payload"]["publication"]
+    assert target["detail_url"] == detail_url
+    project_id = target["project_id"]
+    with repository.session() as database:
+        assert database.get(publication.Project, project_id) is None
+
+    export = client.get(url + "/export.xlsx?final=true")
+    assert export.status_code == 200
+    for workbook in (
+        openpyxl.load_workbook(io.BytesIO(data)) for data in (export.content, remote["content"])
+    ):
+        assert workbook.active["B5"].border.right.style == "thin"
+        assert workbook.active["D5"].border.right.style == "thin"
+        assert workbook["Источники PDF"]["C2"].border.right.style == "thin"
+
+    connection = {"version": uploaded["updated_at"], "token": target["token"]}
+    original = remote["content"]
+    edited = openpyxl.load_workbook(io.BytesIO(original))
+    edited.active["D5"] = 400
+    changed = io.BytesIO()
+    edited.save(changed)
+    remote["content"] = changed.getvalue()
+    assert client.post(url + "/bitrix/connect", json=connection).status_code == 409
+    remote["content"] = original
+
+    result = client.post(url + "/bitrix/connect", json=connection)
+    assert result.status_code == 200, result.text
+    assert result.json()["status"] == "published"
+    parsed = client.get("/api/bootstrap", headers={"X-Project-Id": project_id}).json()
+    assert parsed["positions"][0]["planned"] == 12
+    assert parsed["positions"][0]["rate"] == 2.5
+    assert parsed["config"]["detail_url"] == detail_url
+    assert not parsed["config"].get("public_url")
+    repeat = client.post(url + "/bitrix/connect", json=connection)
+    assert repeat.json()["payload"]["publication"]["project_id"] == project_id
+    assert remote["writes"] == 1
+
+    report = client.post(
+        "/api/reports",
+        headers={"X-Project-Id": project_id},
+        json={
+            "date": today(),
+            "revision": 0,
+            "lines": [{"item_id": parsed["positions"][0]["id"], "quantity": 2}],
+        },
+    )
+    assert report.status_code == 200, report.text
+    assert report.json()["sync_status"] == "synced", report.text
+    updated = openpyxl.load_workbook(io.BytesIO(remote["content"]), data_only=True)
+    assert updated.active["I5"].value == 2
+    assert updated.active["D5"].border.right.style == "thin"

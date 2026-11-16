@@ -7,23 +7,24 @@ from textwrap import TextWrapper
 
 import openpyxl
 from openpyxl.comments import Comment
-from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.styles import Alignment, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.hyperlink import Hyperlink
 from openpyxl.worksheet.views import Selection
 
 from ..analytics import style_sheet
+from ..expense_rules import extra_position
 from ..workbook_calculation import cache_formulas
 from ..workbook_journal import format_journal, is_journal, journal_row
 from .aggregation import notes_with_sources, source_identity, without_position_number
 from .extraction import CATEGORIES
 from .normalization import build_groups, canonical, unit_value
-from .pricing import labour_rates, material_rows
+from .pricing import material_rows
 from .work_catalogue import catalogue_order
 
 
 def estimate_rows(payload):
-    groups = payload.get("groups", [])
+    groups = [row for row in payload.get("groups", []) if not extra_position(row)]
     works = payload.get("works", [])
     if "works" not in payload:
         return groups
@@ -48,7 +49,8 @@ def estimate_rows(payload):
     draft = [
         source
         for source in works
-        if source_key(source) not in accepted_sources
+        if not extra_position(source)
+        and source_key(source) not in accepted_sources
         and source_identity(source) not in accepted_locations
     ]
     compacted = build_groups(draft, [row for row in groups if not row.get("confirmed")])
@@ -106,7 +108,20 @@ def fit_cells(sheet, widths, row_numbers=None):
         sheet.row_dimensions[number].height = min(409, max(23, base, 16 * lines + 6))
 
 
+def download_controls(payload):
+    return [row for row in payload.get("controls", []) if row.get("table_role") != "commissioning"]
+
+
+def downloadable_estimate(rows, payload, *, draft=False):
+    blank = io.BytesIO()
+    openpyxl.Workbook().save(blank)
+    return make_estimate(
+        blank.getvalue(), rows, draft=draft, download=True, controls=download_controls(payload)
+    )
+
+
 def make_estimate(content, rows, *, draft=False, download=False, controls=()):
+    rows = [row for row in rows if not extra_position(row)]
     categories = {row["id"]: category_for(row) for row in rows}
     order = (
         ["Отопление", *(category for category in CATEGORIES if category != "Отопление")]
@@ -166,7 +181,6 @@ def make_estimate(content, rows, *, draft=False, download=False, controls=()):
             book.remove(sheet)
     journals = [sheet for sheet in book if is_journal(sheet)]
     if download:
-        references = labour_rates()
         for sheet in journals:
             title = sheet["C2"].value
             if title and title not in book:
@@ -183,12 +197,10 @@ def make_estimate(content, rows, *, draft=False, download=False, controls=()):
                 visible_rows.append(cell.row)
                 if note := sheet.cell(cell.row, 2).comment:
                     sheet.cell(cell.row, 10, note.text).data_type = "s"
-                rate = references.get(
-                    (category_for(row), canonical(row["name"]), unit_value(row.get("unit"))[0])
-                )
-                if rate and row.get("rate") is None:
+                if draft and (suggestion := row.get("rate_suggestion")) and not row["confirmed"]:
                     sheet.cell(cell.row, 5).comment = Comment(
-                        f"Ориентир {rate[0]} BYN/{row['unit']}. {rate[1]}", "M100"
+                        f"Предложено из общего справочника: {suggestion['name']}. Проверьте ставку.",
+                        "M100",
                     )
             fit_cells(
                 sheet,
@@ -294,10 +306,24 @@ def make_estimate(content, rows, *, draft=False, download=False, controls=()):
             cell.fill = copy(journals[0]["A1"].fill)
             cell.font = copy(journals[0]["A1"].font)
         fit_cells(sources, {1: (16, 28), 5: (20, 37), 8: (24, 36), 9: (48, 82)})
+        divide_auxiliary_columns(sources)
     book.active = journals[0]
     output = io.BytesIO()
     book.save(output)
     return cache_formulas(output.getvalue(), [], original=result)
+
+
+def divide_auxiliary_columns(sheet, *, skip_rows=()):
+    divider = Side(style="thin", color="D2DDE8")
+    header_divider = Side(style="thin", color="5C738A")
+    for row in sheet.iter_rows():
+        number = row[0].row
+        if number in skip_rows:
+            continue
+        for cell in row:
+            border = copy(cell.border)
+            border.right = header_divider if number == 1 else divider
+            cell.border = border
 
 
 def add_procurement(book, materials):
@@ -392,3 +418,4 @@ def add_procurement(book, materials):
         cell = sheet.cell(row, 6)
         cell.fill = PatternFill("solid", fgColor="E6F4EC")
         cell.font = Font(name="Calibri", size=11, color="24634C", bold=True)
+    divide_auxiliary_columns(sheet, skip_rows=header_rows)

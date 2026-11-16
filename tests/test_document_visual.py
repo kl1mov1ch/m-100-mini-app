@@ -64,6 +64,7 @@ def fixture(tmp_path):
         "source_row": 3,
         "unit_cell": "шт.",
         "quantity_cell": "1 [OCR расходится: 11; проверить]",
+        "quantity_column": "C3–C4",
         "quantity_warning": True,
         "quote": "Исходная строка сохранена",
     }
@@ -135,6 +136,7 @@ def test_calibrated_ocr_reads_counts_locally_and_preserves_decimal_uncertainty(t
     path = tmp_path / "docling/page-1.json"
     record = json.loads(path.read_text(encoding="utf-8"))
     record["digit_calibration"] = "header-glyphs-v1"
+    record["verified_numeric_cells"] = [{"row": 3, "column": "C3–C4"}]
     path.write_text(json.dumps(record), encoding="utf-8")
     work = payload["works"][0]
     work.update(quantity_warning=False, quantity_cell="11", unit_present=True)
@@ -146,6 +148,8 @@ def test_calibrated_ocr_reads_counts_locally_and_preserves_decimal_uncertainty(t
     assert result[0]["local_verified"] and build_groups(result)[0]["quantity"] == "11"
     assert not visual.local_reading(dict(work, unit_cell="м"), record)
     assert visual.local_reading(dict(work, unit_cell="м", quantity_cell="1,1"), record)
+    assert not visual.local_reading(dict(work, source_row=4), record)
+    assert not visual.local_reading(dict(work, quantity_column="C2–C3"), record)
 
 
 def test_pdf_marks_continued_names_only_on_selected_pages(tmp_path):
@@ -214,6 +218,55 @@ def test_duplicate_or_out_of_batch_ids_and_nonliteral_numbers_are_rejected():
     )
     assert "a" not in rows and "other" not in rows and rows["b"]["quantity"] is None
     assert visual.literal("1 200,25") == "1200,25"
+    assert visual.literal("1 2") is None
+    assert visual.literal("12\n34") is None
+    assert visual.literal("12 / 1 200,25") == "12/1200,25"
+
+
+def test_unit_change_triggers_second_read_and_compares_conversion_factors(tmp_path, monkeypatch):
+    payload = fixture(tmp_path)
+    path = tmp_path / "docling/page-1.json"
+    record = json.loads(path.read_text(encoding="utf-8"))
+    record["verified_numeric_cells"] = [{"row": 3, "column": "C3–C4"}]
+    path.write_text(json.dumps(record), encoding="utf-8")
+    work = payload["works"][0]
+    work.update(
+        name="Прокладка трубы",
+        category="Отопление",
+        quantity_cell="12",
+        unit_cell="м",
+        unit_present=True,
+        quantity_warning=False,
+    )
+    monkeypatch.setattr(visual, "evidence", lambda *a: {"QTY": Image.new("L", (100, 70), "white")})
+    replies = iter(("см", "м"))
+
+    async def complete(*args):
+        return {
+            "rows": [{"id": "P1-R3", "quantity": "12", "unit": next(replies), "readable": True}]
+        }
+
+    result = asyncio.run(visual.resolve(tmp_path, payload, {}, complete, lambda *a: None))
+    assert result[0]["quantity_warning"] and not result[0].get("visual_verified")
+    assert build_groups(result)[0]["quantity"] is None
+
+
+def test_visual_crops_follow_the_source_columns(tmp_path, monkeypatch):
+    data = [
+        {"row": 1, "column": "C1–C2", "value": "Наименование"},
+        {"row": 3, "column": "C2–C3", "value": "Труба"},
+        {"row": 3, "column": "C5–C6", "value": "12"},
+    ]
+    context = {"name_column": "C2–C3", "surface_column": "C5–C6"}
+    monkeypatch.setattr(visual, "cell_crop", lambda path, page, record, field, images: field)
+    panels = visual.evidence(
+        tmp_path,
+        {"page": 1, "source_row": 3, "quantity_basis": "surface_schedule"},
+        {1: {}},
+        {(1, 3): context},
+        {1: data},
+    )
+    assert panels == {"NAME": data[1], "QTY": data[2], "UNIT": None}
 
 
 def test_progress_response_omits_intermediate_evidence_without_changing_the_job():

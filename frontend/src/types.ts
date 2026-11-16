@@ -45,6 +45,7 @@ export type Position = {
 	source_row: number;
 	source_sheet?: string;
 	hidden?: boolean;
+	extra?: boolean;
 	bitrix?: { planned: number; rate: number; completed: number; remaining: number } | null;
 };
 export type PositionHistory = {
@@ -85,7 +86,7 @@ export type BitrixReviewIssue = {
 	completed?: number;
 	formula?: string | null;
 };
-export type ObjectSection = 'reports' | 'catalogue' | 'table';
+export type ObjectSection = 'reports' | 'catalogue' | 'expenses' | 'table';
 export type CatalogueAction = 'delete' | 'hide' | 'show';
 export type ViewMode = 'admin' | 'master';
 export type ObjectManagement = {

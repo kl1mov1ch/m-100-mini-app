@@ -17,9 +17,14 @@ def load_prompt(name):
         "visual",
         "visual_verify",
         "visual_dimensions",
+        "rates",
     }:
         raise ValueError("Unknown document prompt")
-    return (ROOT / "prompts" / (name + ".md")).read_text(encoding="utf-8")
+    directory = ROOT / "prompts"
+    prompt = (directory / (name + ".md")).read_text(encoding="utf-8")
+    if name in {"extract", "visual"}:
+        return (directory / "drawing_context.md").read_text(encoding="utf-8") + "\n\n" + prompt
+    return prompt
 
 
 def load_template():

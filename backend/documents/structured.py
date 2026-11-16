@@ -5,6 +5,7 @@ import json
 import re
 from collections import defaultdict
 
+from ..expense_rules import extra_position
 from .intent import include_commissioning, requested_categories
 from .parsed_tables import CELLS, ROWS, estimate_table
 from .russian_cells import restore_names
@@ -129,6 +130,8 @@ def candidates(path, payload):
             name = f"Страница {page}, строка {number}"
         if context.get("role") == "insulation_schedule":
             name, cell, unit = insulation_name(category), context.get("surface_cell", ""), "м²"
+        if extra_position({**context, "name": name}):
+            continue
         missing_primary = context.get("named_primary") and context.get("unit_present")
         if (
             not name
@@ -146,12 +149,13 @@ def candidates(path, payload):
         if row is None or (cell and not re.search(r"\d", cell) and not missing_primary):
             continue
         start = row.start(2)
+        quantity_column = context.get(
+            "surface_column" if context.get("role") == "insulation_schedule" else "quantity_column"
+        )
         columns = {
             context.get("name_column"),
             context.get("unit_column"),
-            context.get("surface_column")
-            if context.get("role") == "insulation_schedule"
-            else context.get("quantity_column"),
+            quantity_column,
         }
         quote = " | ".join(
             cell[0].strip()
@@ -166,18 +170,13 @@ def candidates(path, payload):
             "unit_cell": unit,
             "unit_present": context.get("unit_present", False),
             "quantity_cell": cell,
+            "quantity_column": quantity_column,
             "quantity_warning": (bool(cell) and not re.search(r"\d", cell))
             or any(
-                entry["row"] == number
-                and entry["column"]
-                == context.get(
-                    "surface_column"
-                    if context.get("role") == "insulation_schedule"
-                    else "quantity_column"
-                )
+                entry["row"] == number and entry["column"] == quantity_column
                 for entry in records[page].get("uncertain_numeric_cells", [])
             ),
-            "name_warning": name_warning,
+            "name_warning": name_warning or context.get("name_needs_verification", False),
             "quote": quote,
             "source_row": number,
             "source_start": start,

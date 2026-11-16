@@ -140,8 +140,14 @@ def restore_hidden_positions(db, incoming):
 
 
 def selectable_positions(db):
+    from .expense_rules import extra_position
+
     hidden = hidden_positions(db)
-    return [position for position in positions(db) if position["id"] not in hidden]
+    return [
+        position
+        for position in positions(db)
+        if position["id"] not in hidden and not extra_position(position)
+    ]
 
 
 def insert_position(db, p):

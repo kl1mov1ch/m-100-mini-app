@@ -22,6 +22,7 @@ from .execution import check_active, run
 from .geometry import perimeter
 from .glyph_numbers import components
 from .normalization import decimal_value, unit_value
+from .normalization import numeric_cell as literal
 from .parsed_tables import ROWS
 from .profile import load_prompt, load_template
 from .structured import insulation_name, read_matrix
@@ -43,11 +44,8 @@ def cells(record):
     return result
 
 
-def literal(value):
-    if not isinstance(value, str):
-        return None
-    value = re.sub(r"\s", "", value).replace(".", ",")
-    return value if re.fullmatch(r"\d+(?:,\d+)?(?:/\d+(?:,\d+)?)?", value) else None
+def reading_unit(reading, work):
+    return unit_value(reading.get("unit") or work.get("unit_cell"))
 
 
 def response_rows(answer, allowed):
@@ -175,23 +173,16 @@ def evidence(path, work, records, contexts, page_cells, images=None):
     page, row = work["page"], work["source_row"]
     record, context = records[page], contexts[page, row]
     data = page_cells[page]
-    name_header = next(
-        (item for item in data if re.match(r"наименован", item["value"], re.I)), None
-    )
-    name_column = name_header["column"] if name_header else None
     quantity_column = (
         context.get("surface_column")
         if work.get("quantity_basis") == "surface_schedule"
         else context.get("quantity_column")
     )
-    unit_header = next(
-        (item for item in data if re.match(r"единиц|ед\.?\s*изм", item["value"], re.I)), None
-    )
-    dim_header = next((item for item in data if re.match(r"размер", item["value"], re.I)), None)
     find = lambda column: next(
         (item for item in data if item["row"] == row and item["column"] == column), None
     )
-    name, quantity = find(name_column), find(quantity_column)
+    name = find(context.get("name_column"))
+    quantity = find(quantity_column)
     if not quantity:
         # A blank cell still has a geometric box: reconstruct it from this row
         # and the quantity column header, rather than guessing a missing number.
@@ -201,18 +192,14 @@ def evidence(path, work, records, contexts, page_cells, images=None):
             quantity = {**header, "top": anchor["top"], "bottom": anchor["bottom"]}
     if not quantity:
         return None
-    unit = (
-        find(unit_header["column"])
-        if unit_header
-        else next((item for item in data if item["column"] == quantity_column), None)
-    )
+    unit = find(context.get("unit_column"))
     panels = {
         "NAME": cell_crop(path, page, record, name, images),
         "UNIT": cell_crop(path, page, record, unit, images),
         "QTY": cell_crop(path, page, record, quantity, images),
     }
-    if dim_header:
-        panels["DIM"] = cell_crop(path, page, record, find(dim_header["column"]), images)
+    if dimension_column := context.get("dimension_column"):
+        panels["DIM"] = cell_crop(path, page, record, find(dimension_column), images)
     if work.get("quantity_basis") != "surface_schedule":
         fragments = []
         for anchor_page, anchor_row in context.get("name_locations", ())[:4]:
@@ -356,12 +343,18 @@ def apply_reading(work, item, signature):
     return result
 
 
+def calibrated_cell(work, record):
+    return {"row": work.get("source_row"), "column": work.get("quantity_column")} in record.get(
+        "verified_numeric_cells", []
+    )
+
+
 def local_reading(work, record):
     raw = str(work.get("quantity_cell") or "").strip()
     value = literal(raw)
     unit, factor = unit_value(work.get("unit_cell"))
     if (
-        record.get("digit_calibration") != "header-glyphs-v1"
+        not calibrated_cell(work, record)
         or work.get("quantity_warning")
         or work.get("name_warning")
         or not value
@@ -436,7 +429,11 @@ async def resolve(path, payload, settings, complete, report, *, page_report=None
         else:
             pending.append((ident, work))
     report(done, len(candidates), works)
-    page_cells = {page: cells(record) for page, record in records.items()} if pending else {}
+    evidence_pages = {work["page"] for _, work in pending}
+    for _, work in pending:
+        context = contexts[work["page"], work["source_row"]]
+        evidence_pages.update(page for page, _ in context.get("name_locations", ())[:4])
+    page_cells = {page: cells(records[page]) for page in evidence_pages}
 
     async def request(prompt, content, limit):
         for attempt in range(3):
@@ -508,10 +505,13 @@ async def resolve(path, payload, settings, complete, report, *, page_report=None
             if item["id"] in first
             and (
                 item["work"].get("quantity_warning")
+                or not calibrated_cell(item["work"], records[item["work"]["page"]])
                 or not item["work"].get("unit_present")
                 or needs_dimensions(item["work"])
                 or literal(item["work"].get("quantity_cell")) is None
                 or literal(item["work"].get("quantity_cell")) != first[item["id"]].get("quantity")
+                or reading_unit(first[item["id"]], item["work"])
+                != unit_value(item["work"].get("unit_cell"))
             )
         ]
         if verify:
@@ -547,8 +547,8 @@ async def resolve(path, payload, settings, complete, report, *, page_report=None
                     ident not in second
                     or second[ident].get("readable") is not True
                     or first[ident].get("quantity") != second[ident].get("quantity")
-                    or unit_value(first[ident].get("unit") or item["work"].get("unit_cell"))[0]
-                    != unit_value(second[ident].get("unit") or item["work"].get("unit_cell"))[0]
+                    or reading_unit(first[ident], item["work"])
+                    != reading_unit(second[ident], item["work"])
                 ):
                     first[ident] = {"readable": False, "quantity": None}
                 elif needs_dimensions(item["work"]) and dimension_key(

@@ -6,7 +6,7 @@ from typing import ClassVar
 from uuid import uuid4
 
 from fastapi import HTTPException
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, Text, create_engine, select
+from sqlalchemy import JSON, DateTime, ForeignKey, Integer, Numeric, Text, create_engine, select
 from sqlalchemy.orm import Session, mapped_column
 
 from .. import postgres, store
@@ -41,6 +41,18 @@ class RecognitionExample(Base):
     updated_at = mapped_column(DateTime(timezone=True), nullable=False)
 
 
+class WorkRate(Base):
+    __tablename__ = "document_work_rates"
+    __table_args__: ClassVar[dict] = {"schema": "registry"}
+    category = mapped_column(Text, primary_key=True)
+    unit = mapped_column(Text, primary_key=True)
+    work_type = mapped_column(Text, primary_key=True)
+    name_key = mapped_column(Text, primary_key=True)
+    name = mapped_column(Text, nullable=False)
+    rate = mapped_column(Numeric(15, 4), nullable=False)
+    updated_at = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 @contextmanager
 def session():
     if postgres.enabled():
@@ -58,6 +70,7 @@ def session():
     try:
         DocumentJob.__table__.create(engine, checkfirst=True)
         RecognitionExample.__table__.create(engine, checkfirst=True)
+        WorkRate.__table__.create(engine, checkfirst=True)
         with Session(engine, expire_on_commit=False) as database, database.begin():
             yield database
     finally:

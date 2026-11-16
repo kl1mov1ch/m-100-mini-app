@@ -131,8 +131,9 @@ export function DocumentProgress({ job, resume }: { job: DocumentJob; resume: ()
 			)}
 			{job.payload.selection_complete && (
 				<small className="document-progress-metadata">
-					Отобрано листов с данными: {job.payload.selected_specifications?.length || 0} · чертежи не
-					разбираются
+					{job.payload.scope_categories?.length
+						? `${job.payload.scope_categories.join(' · ')} — листов с нужными строками: ${job.payload.scope_pages?.length || 0}`
+						: `Отобрано листов с данными: ${job.payload.selected_specifications?.length || 0}`}
 				</small>
 			)}
 			{!active && job.payload.groups?.length ? (

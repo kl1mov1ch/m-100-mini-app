@@ -18,6 +18,11 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from statistics import median
 
+if __package__:
+    from .parsed_tables import quantity_rank
+else:
+    from parsed_tables import quantity_rank
+
 ENGINE = "docling-2.150.0-v6"
 
 
@@ -176,10 +181,21 @@ def structured_table(image, record, *, verify_numbers=True):
 
     from PIL import Image, ImageOps
 
+    title_row = next(
+        (row for row, _, _, _, _, value in cells if re.match(r"наименован", value, re.I)), None
+    )
+    number_columns = {
+        (left, right)
+        for row, left, _, right, _, value in cells
+        if row == title_row and quantity_rank(value)
+    }
     candidates = [
         index
-        for index, (_, left, top, right, bottom, value) in enumerate(cells)
+        for index, (row, left, top, right, bottom, value) in enumerate(cells)
         if verify_numbers
+        and title_row is not None
+        and row > title_row
+        and any(abs(left - start) <= 4 and abs(right - end) <= 4 for start, end in number_columns)
         and right - left < image.width * 0.1
         and bottom - top < image.height * 0.08
         and (not value or re.fullmatch(r"[+-]?\d+(?:[.,]\d+)?", value))
@@ -395,6 +411,13 @@ def native_table(source, number, destination, record):
     """Parse ruled cells around native PDF text without OCRing its numbers."""
     from PIL import Image
 
+    text = record["text"]
+    if re.search(
+        r"\b(?:план\s+(?:на|систем|этажа|кровли)|аксонометр|схема\s|разрез\s)", text, re.I
+    ) and not re.search(
+        r"наименован|спецификаци[яи]|ведомость\s+(?:об[ъь][её]м|работ)", text, re.I
+    ):
+        return record
     prefix = destination / f"native-{number}"
     image_path = prefix.with_suffix(".png")
     try:
@@ -456,7 +479,7 @@ def native_table(source, number, destination, record):
         image_path.unlink(missing_ok=True)
 
 
-def ocr(source, page, destination):
+def ocr(source, page, destination, signature):
     import numpy as np
     from PIL import Image
 
@@ -577,7 +600,7 @@ def ocr(source, page, destination):
                 },
             ),
             destination,
-            hashlib.sha256(source.read_bytes()).hexdigest(),
+            signature,
         )
     finally:
         prefix.with_suffix(".png").unlink(missing_ok=True)
@@ -613,7 +636,7 @@ def convert(source, destination, signature, pages=None):
 
     def save_page(done, number, page):
         if len(page["text"].strip()) < 30:
-            page = ocr(source, number, destination)
+            page = ocr(source, number, destination, signature)
         else:
             page = native_table(source, number, destination, page)
         page.update(source=signature, engine=ENGINE)
@@ -641,7 +664,10 @@ def convert(source, destination, signature, pages=None):
                 if pending:
                     pending.result()
                     pending = None
-                if upgrade:
+                if upgrade or (
+                    cached.get("digit_calibration") == "header-glyphs-v1"
+                    and "verified_numeric_cells" not in cached
+                ):
                     cached = upgrade_ocr(source, number, destination, cached, signature)
                     cached["engine"] = ENGINE
                     write_json(path, cached)

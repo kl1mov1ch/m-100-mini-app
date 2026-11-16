@@ -143,8 +143,10 @@ class FormulaEvaluator:
                 )
                 formula = re.sub(r"(?<![<>=!])=(?!=)", "==", formula)
                 formula = re.sub(
-                    r"(?:'([^']+)'|([A-Za-z_А-Яа-я][\w ]*))!([A-Z]+\d+)",
-                    lambda match: f"CELL({(match[1] or match[2])!r},{match[3]!r})",
+                    r"(?:'((?:[^']|'')+)'|([A-Za-z_А-Яа-я][\w ]*))!([A-Z]+\d+)",
+                    lambda match: (
+                        f"CELL({(match[1] or match[2]).replace(chr(39) * 2, chr(39))!r},{match[3]!r})"
+                    ),
                     formula,
                 )
                 formula = re.sub(r"\b([A-Z]+\d+):([A-Z]+\d+)\b", r"RANGE(\1,\2)", formula)
@@ -281,6 +283,7 @@ class FormulaEvaluator:
 def cache_formulas(content, issues=None, *, original=None):
     from openpyxl.utils.datetime import to_excel
 
+    from .workbook_expenses import is_expense_sheet
     from .workbook_journal import is_journal
 
     book = openpyxl.load_workbook(io.BytesIO(content), data_only=False)
@@ -292,7 +295,12 @@ def cache_formulas(content, issues=None, *, original=None):
         for row in sheet:
             for cell in row:
                 if cell.data_type == "f":
-                    if originals is not None and not is_journal(sheet):
+                    if (
+                        originals is not None
+                        and sheet.title in originals
+                        and not is_journal(sheet)
+                        and not is_expense_sheet(sheet)
+                    ):
                         previous = originals[sheet.title][cell.coordinate]
                         value = previous.value
                         if value is not None:

@@ -100,7 +100,7 @@ export function useWorkspace() {
 	const sessionVersion = useRef(0);
 	const active = session?.projects.find((p) => p.id === project);
 	const allPositions = data?.project?.id === project ? data.positions : [];
-	const positions = allPositions.filter((position) => !position.hidden);
+	const positions = allPositions.filter((position) => !position.hidden && !position.extra);
 	const byId = Object.fromEntries(allPositions.map((p) => [p.id, p]));
 	const isAdmin = session?.user.role === 'admin';
 	const audioInput = useAudioInput(

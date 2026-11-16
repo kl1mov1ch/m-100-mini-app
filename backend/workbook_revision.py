@@ -7,6 +7,7 @@ from zipfile import ZipFile
 from openpyxl import load_workbook
 from openpyxl.xml.functions import tostring
 
+from .workbook_expenses import is_expense_sheet
 from .workbook_journal import is_journal, manual_fill
 
 
@@ -53,7 +54,7 @@ def snapshot(content, *, original_only=False):
     styles = {}
     result = {}
     for sheet in load(content):
-        if original_only and is_journal(sheet):
+        if original_only and (is_journal(sheet) or is_expense_sheet(sheet)):
             continue
         values, formats = {}, {}
         for row in sheet.iter_rows():

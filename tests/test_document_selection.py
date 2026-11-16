@@ -1,11 +1,13 @@
 import asyncio
 import io
+import json
 
 from pypdf import PdfReader, PdfWriter
 from test_workspaces import client as client
 
 from backend.documents import annotations, examples, extraction, repository, selection, worker
 from backend.documents.normalization import build_groups
+from backend.documents.structured import candidates
 
 
 def test_structural_selection_does_not_reuse_fixed_section_names():
@@ -17,6 +19,11 @@ def test_structural_selection_does_not_reuse_fixed_section_names():
     )
     assert selection.classify_page("План систем на отметке +3.000. Схема вентиляции") == "drawing"
     assert (
+        selection.classify_page("Схема П1. Подбор по спецификации оборудования на листе 20")
+        == "drawing"
+    )
+    assert selection.classify_page("Продолжение спецификации оборудования") == "specification"
+    assert (
         selection.classify_page("Наименование Кол. Обозначение документа Поверхность м²")
         == "specification"
     )
@@ -27,6 +34,38 @@ def test_structural_selection_does_not_reuse_fixed_section_names():
         == "specification"
     )
     assert selection.classify_page("Теплоизоляционные материалы") == "uncertain"
+
+
+def test_section_query_starts_inside_a_mixed_sheet_and_continues_on_the_next(tmp_path):
+    header = "Строка 1: C1–C2=Наименование | C2–C3=Единица измерения | C3–C4=Количество |"
+    texts = [
+        header + "\n"
+        "Строка 2: C1–C2=Отопление |\n"
+        "Строка 3: C1–C2=Радиатор | C2–C3=шт. | C3–C4=50 |\n"
+        "Строка 4: C1–C2=Вентиляция |\n"
+        "Строка 5: C1–C2=Вентилятор | C2–C3=шт. | C3–C4=7 |\n",
+        header + "\n"
+        "Строка 2: C1–C2=Изделия и материалы |\n"
+        "Строка 3: C1–C2=Решётка | C2–C3=шт. | C3–C4=16 |\n"
+        "Строка 4: C1–C2=Отопление |\n"
+        "Строка 5: C1–C2=Труба | C2–C3=м | C3–C4=90 |",
+    ]
+    records = tmp_path / "docling"
+    records.mkdir()
+    for number, content in enumerate(texts, 1):
+        (records / f"page-{number}.json").write_text(
+            json.dumps({"source": "test", "text": content, "analysis_text": content}),
+            encoding="utf-8",
+        )
+    works, controls = candidates(
+        tmp_path, {"file_hash": "test", "query": "Вентиляция кроме пусконаладки"}
+    )
+    assert [(row["page"], row["source_row"], row["quantity_cell"]) for row in works] == [
+        (1, 5, "7"),
+        (2, 3, "16"),
+    ]
+    assert {row["category"] for row in works} == {"Вентиляция"}
+    assert not controls
 
 
 def test_categories_stay_separate_and_copies_only_count_once():

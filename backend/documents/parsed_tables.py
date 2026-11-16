@@ -15,7 +15,17 @@ def clean(value):
 
 def quantity_rank(value):
     label = clean(value)
-    if label.startswith("кол") and len(label) < 24:
+    if re.search(
+        r"воздух|теплоносител|производительност|расход|оборот|мощност|давлен|температур|"
+        r"корпус|габарит|толщин|диаметр",
+        label,
+    ):
+        return 0
+    if (
+        label == "кол"
+        or label.startswith(("колич", "колво", "колсистем"))
+        or re.fullmatch(r"кол.{0,5}чест[а-я]{0,4}", label)
+    ):
         return 1
     if re.match(r"^(?:длина|поверх.*ност|объем|площад)", label):
         return 2

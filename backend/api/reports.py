@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from .. import matcher, store, workspaces
 from ..bitrix_refresh import remote_positions
 from ..clock import now, today
+from ..expense_rules import extra_position
 from ..report_downloads import report_export
 from ..report_snapshots import remember_start, restore_target
 from ..reporting import ai_settings, get_report, history, report_changes, safe_config
@@ -34,6 +35,7 @@ def bootstrap(request: Request):
                 {
                     **position,
                     "hidden": position["id"] in hidden,
+                    "extra": extra_position(position),
                     "bitrix": bitrix.get(position["id"]),
                 }
                 for position in store.positions(db)
@@ -141,6 +143,8 @@ async def persist_report(request: Request, body: SaveBody, action="edit_report")
         for line in body.lines:
             if line.item_id not in ps:
                 raise HTTPException(422, "Позиция отсутствует в справочнике")
+            if extra_position(ps[line.item_id]) and line.item_id not in old and action != "restore_day":
+                raise HTTPException(409, "Добавьте эту позицию в разделе «Доп. работы»")
             if line.item_id in hidden and line.item_id not in old and action != "restore_day":
                 raise HTTPException(409, "Работа скрыта из сметы. Обновите список работ.")
             if (

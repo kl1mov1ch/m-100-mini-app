@@ -658,6 +658,12 @@
 .document-workspace {
 	gap: 10px;
 }
+.document-query {
+	display: grid;
+	gap: 5px;
+	color: var(--ios-secondary);
+	font-size: 13px;
+}
 .document-workspace .document-upload {
 	padding: 12px 14px;
 }
@@ -807,8 +813,7 @@
 	gap: 7px;
 	font-size: 16px;
 }
-.document-publish-panel > small,
-.document-target-preview small {
+.document-publish-panel > small {
 	color: var(--ios-secondary);
 	font-size: 12px;
 	line-height: 1.5;
@@ -823,19 +828,12 @@
 .document-publish-panel .ant-select {
 	width: 100%;
 }
-.document-target-preview {
-	display: flex;
-	align-items: center;
-	gap: 9px;
-	color: var(--ios-success);
-	font-size: 13px;
-}
-.document-target-preview > span {
-	min-width: 0;
+.document-publish-panel > strong {
 	overflow-wrap: anywhere;
 }
-.document-target-preview small {
-	display: block;
+.document-publish-panel h2 > svg {
+	flex: none;
+	color: var(--ios-success);
 }
 .document-publish-actions {
 	display: flex;
@@ -849,7 +847,8 @@
 	gap: 5px;
 	font-size: 13px;
 }
-.document-publish-panel .document-details .ant-input {
+.document-publish-existing label,
+.document-publish-existing > .ant-btn {
 	margin-top: 8px;
 }
 .document-highlight-page > span {

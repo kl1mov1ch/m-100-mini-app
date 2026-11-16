@@ -2,6 +2,7 @@
 
 import re
 
+from ..expense_rules import EXTRA_SECTION
 from .intent import requested_categories
 from .parsed_tables import CELLS, ROWS, quantity_rank
 from .work_catalogue import ventilation_type
@@ -131,6 +132,10 @@ def document_rows(tables):
             ),
             None,
         )
+        dimension_column = next(
+            ((cell[1], cell[2]) for cell in cells if re.match(r"размер", cell[3], re.I)),
+            None,
+        )
         surface_column = next(
             (
                 (cell[1], cell[2])
@@ -180,6 +185,13 @@ def document_rows(tables):
                     and int(left) <= int(name_column[0]) < int(right)
                     and 0 < len(content) < 120
                 ]
+                if extra_heading := next(
+                    (label for label in headings if EXTRA_SECTION.match(label)), None
+                ):
+                    role, subsection = "extra", extra_heading
+                    name, unit, assembly = "", "", False
+                    name_location, name_locations = None, []
+                    continue
                 if any(COMMISSIONING.fullmatch(label) for label in headings):
                     role, subsection = "commissioning", "Пусконаладочные работы"
                     name, unit, assembly = "", "", False
@@ -210,6 +222,8 @@ def document_rows(tables):
                     (label for label in headings if SUBSECTION.fullmatch(label)), None
                 )
                 if subheading:
+                    if role == "extra":
+                        continue
                     subsection = subheading.rstrip(".:")
                     role = (
                         "work"
@@ -260,6 +274,15 @@ def document_rows(tables):
                 )
             )
             new_numbered = bool(re.match(r"^\s*\d+[.,]?\s*[А-ЯA-Z]", numbered_value))
+            name_needs_verification = False
+            if (
+                role == "commissioning"
+                and quantity
+                and re.search(r"(?:^|\s)\d{1,2}[.)]\s+[а-яё]{3,}", numbered_value, re.I)
+            ):
+                # OCR may move the list number into the middle of the same cell.
+                name_needs_verification = not new_numbered
+                new_numbered = primary = True
             primary = primary or bool(ventilation_type({"name": value, "category": category}))
             if (
                 quantity
@@ -339,11 +362,15 @@ def document_rows(tables):
                 "ordinal": ordinal,
                 "dimension_text": value,
                 "named_primary": primary and not in_assembly,
+                "name_needs_verification": name_needs_verification,
                 "unit_present": bool(values.get(unit_column)),
                 "name_location": name_location,
                 "name_locations": tuple(name_locations),
                 "name_column": f"C{name_column[0]}–C{name_column[1]}" if name_column else None,
                 "unit_column": f"C{unit_column[0]}–C{unit_column[1]}" if unit_column else None,
+                "dimension_column": f"C{dimension_column[0]}–C{dimension_column[1]}"
+                if dimension_column
+                else None,
                 "structural_note": bool(
                     FOOTNOTE.fullmatch(quantity)
                     and (

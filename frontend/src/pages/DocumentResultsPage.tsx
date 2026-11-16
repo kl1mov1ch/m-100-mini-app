@@ -179,6 +179,11 @@ function SourceGallery({ jobId, group }: { jobId: string; group: DocumentGroup }
 						{source.original_quantity ?? 'Объём не определён'} {source.original_unit}
 					</summary>
 					<blockquote>{source.quote}</blockquote>
+					{source.evidence_warning ? (
+						<p className="document-question">{source.evidence_warning}</p>
+					) : source.visual_verified || source.local_verified ? (
+						<small className="page-context">Количество сверено по ячейке PDF</small>
+					) : null}
 					{source.question && <p className="document-question">{source.question}</p>}
 					{source.geometry_factor && <p>Площадь поверхности: {source.quantity} м²</p>}
 				</details>
@@ -245,6 +250,11 @@ export function DocumentResultsPage({
 		job.payload.coverage?.low_ocr?.length ||
 		job.payload.coverage?.questions
 	);
+	const suggestedRate = editing?.rate_suggestion;
+	const usingSuggestion = suggestedRate && rate !== null && Number(rate) === Number(editing?.rate);
+	const clearSuggestedRate = () => {
+		if (usingSuggestion) setRate(null);
+	};
 	const eligible = rows
 		.filter(
 			(row) =>
@@ -324,7 +334,7 @@ export function DocumentResultsPage({
 	const exportFile = async (kind: 'excel' | 'pdf') => {
 		setDownload(kind);
 		try {
-			const final = ['ready', 'published'].includes(job.status);
+			const final = ['ready', 'uploaded', 'published'].includes(job.status);
 			const file = kind === 'pdf' ? 'marked.pdf' : 'export.xlsx' + (final ? '?final=true' : '');
 			await downloadReport('/documents/' + job.id + '/' + file);
 		} catch (error) {
@@ -385,11 +395,13 @@ export function DocumentResultsPage({
 					</span>
 				</div>
 			</section>
+			<DocumentPublishPanel job={job} refresh={refresh} openObject={openObject} />
 			<details className="document-checks">
 				<summary>
 					Проверка источников{' '}
 					<span>
 						· {job.processed}/{job.pages} стр.
+						{summary?.unresolved ? ` · ${summary.unresolved} к сверке` : ''}
 						{job.payload.questions?.length ? ` · ${job.payload.questions.length} вопросов` : ''}
 					</span>
 				</summary>
@@ -397,8 +409,9 @@ export function DocumentResultsPage({
 				<p>В сумме — только проверенные строки с расценками.</p>
 				{job.payload.selection_complete && (
 					<p>
-						Отобраны страницы: {job.payload.selected_specifications?.join(', ') || 'не найдены'}.
-						Остальные листы не используются для подсчёта и выделения.
+						{job.payload.scope_categories?.length
+							? `${job.payload.scope_categories.join(' · ')}. Листы с нужными строками: ${job.payload.scope_pages?.join(', ') || 'не найдены'}.`
+							: `Листы с таблицами: ${job.payload.selected_specifications?.join(', ') || 'не найдены'}.`}
 					</p>
 				)}
 				{!job.payload.coverage?.complete && (
@@ -492,7 +505,13 @@ export function DocumentResultsPage({
 										)
 									}
 									meta={
-										row.confirmed ? 'Проверено' : row.issues.length ? 'Нужна проверка' : 'Черновик'
+										row.confirmed
+											? 'Проверено'
+											: row.issues.length
+												? 'Нужна проверка'
+												: row.rate_suggestion
+													? 'Из справочника'
+													: 'Черновик'
 									}
 									attention={!row.confirmed && !!row.issues.length}
 									onClick={() => choose(row)}
@@ -505,9 +524,7 @@ export function DocumentResultsPage({
 			{!rows.length && <p className="compact-empty">Работ по этим фильтрам нет</p>}
 			{eligible.length > 0 && (
 				<section className="document-batch-review">
-					<small>
-						Строки с расценками без спорных объёмов. Подтвердите их после проверки источников.
-					</small>
+					<small>Перед подтверждением проверьте объёмы и предложенные расценки.</small>
 					{needsScope && !job.payload.acknowledge_scope && (
 						<Checkbox
 							checked={acknowledge}
@@ -521,7 +538,6 @@ export function DocumentResultsPage({
 					</Button>
 				</section>
 			)}
-			<DocumentPublishPanel job={job} refresh={refresh} openObject={openObject} />
 			<Modal
 				className="document-work-sheet"
 				title={
@@ -606,14 +622,20 @@ export function DocumentResultsPage({
 								<Input
 									value={name}
 									maxLength={300}
-									onChange={(event) => setName(event.target.value)}
+									onChange={(event) => {
+										clearSuggestedRate();
+										setName(event.target.value);
+									}}
 								/>
 							</label>
 							<label>
 								Категория
 								<Select
 									value={editCategory}
-									onChange={setEditCategory}
+									onChange={(value) => {
+										clearSuggestedRate();
+										setEditCategory(value);
+									}}
 									options={[
 										'Вентиляция',
 										'Отопление',
@@ -639,7 +661,10 @@ export function DocumentResultsPage({
 								Подраздел
 								<Input
 									value={subsection}
-									onChange={(e) => setSubsection(e.target.value)}
+									onChange={(e) => {
+										clearSuggestedRate();
+										setSubsection(e.target.value);
+									}}
 									maxLength={160}
 								/>
 							</label>
@@ -660,6 +685,7 @@ export function DocumentResultsPage({
 								<Select
 									value={unit}
 									onChange={(value) => {
+										clearSuggestedRate();
 										setUnit(value);
 										setResolution('manual');
 									}}
@@ -706,6 +732,13 @@ export function DocumentResultsPage({
 								controls={false}
 							/>
 						</label>
+						{usingSuggestion && (
+							<small className="page-context">
+								{suggestedRate.method === 'ai'
+									? `ИИ подобрал из справочника: ${suggestedRate.name}`
+									: 'Расценка из общего справочника'}
+							</small>
+						)}
 						{notes && <p className="page-context">{notes}</p>}
 						{editing && (!!editing.issues.length || editing.quantity_mode === 'mentions') && (
 							<label>

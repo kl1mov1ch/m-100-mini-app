@@ -4,6 +4,7 @@ import re
 import subprocess
 from pathlib import Path
 
+from ..expense_rules import extra_position
 from .docling_runner import ENGINE, valid_record
 from .execution import run
 from .parsed_tables import estimate_table
@@ -31,7 +32,11 @@ def table_works(path, payload):
             payload.get("query", "")
         ):
             continue
-        if context.get("component") or context.get("structural_note"):
+        if (
+            context.get("component")
+            or context.get("structural_note")
+            or extra_position({**context, "name": context.get("name") or work["name"]})
+        ):
             continue
         work = {
             **work,

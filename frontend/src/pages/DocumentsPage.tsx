@@ -26,6 +26,7 @@ const labels: Record<string, string> = {
 	draft: 'Черновик',
 	publishing: 'Записываем таблицу',
 	publish_retry: 'Проверьте запись',
+	uploaded: 'Смета на Диске Битрикс24',
 	published: 'Объект создан',
 };
 export function DocumentsPage({
@@ -300,7 +301,7 @@ export function DocumentsPage({
 	const tone = (job: DocumentJob) =>
 		documentActive(job.status)
 			? 'active'
-			: ['ready', 'published'].includes(job.status)
+			: ['ready', 'uploaded', 'published'].includes(job.status)
 				? 'ready'
 				: ['failed', 'needs_ai', 'needs_ocr', 'needs_budget'].includes(job.status)
 					? 'blocked'
@@ -319,17 +320,18 @@ export function DocumentsPage({
 					</div>
 					{!!files.length && (
 						<section className="document-upload">
-							<details className="document-checks">
-								<summary>Что найти в документе</summary>
-								<Input.TextArea
+							<label className="document-query">
+								Что найти в PDF
+								<Input
 									value={query}
 									onChange={(event) => setQuery(event.target.value)}
+									onPressEnter={() => {
+										if (!uploading && files.some((file) => file.state === 'pending')) void start();
+									}}
 									maxLength={2000}
-									autoSize={{ minRows: 2, maxRows: 4 }}
-									aria-label="Что найти в PDF"
-									placeholder="Например: только вентиляция. Пустое поле — все работы."
+									placeholder="Например, вентиляция"
 								/>
-							</details>
+							</label>
 							{!!files.length && (
 								<div className="document-pending-files">
 									{files.map((file) => (
@@ -450,14 +452,26 @@ export function DocumentsPage({
 					)) && <DocumentProgress job={selected} resume={() => void resume()} />}
 
 			{selected &&
-				['needs_review', 'ready', 'draft', 'published'].includes(selected.status) &&
+				[
+					'needs_review',
+					'ready',
+					'draft',
+					'publishing',
+					'publish_retry',
+					'uploaded',
+					'published',
+				].includes(selected.status) &&
 				!!selected.payload.groups?.length && (
 					<DocumentResultsPage
 						key={selected.id}
 						embedded
 						job={selected}
 						back={() => setSelected(null)}
-						recheck={selected.status === 'published' ? undefined : () => resume(true)}
+						recheck={
+							['needs_review', 'ready', 'draft'].includes(selected.status)
+								? () => resume(true)
+								: undefined
+						}
 						refresh={(job) => {
 							setSelected(job);
 							void load();

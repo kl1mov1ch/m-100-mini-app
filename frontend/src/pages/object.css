@@ -1,5 +1,6 @@
 .object-page {
 	display: grid;
+	grid-template-columns: minmax(0, 1fr);
 	gap: 14px;
 	min-width: 0;
 }
@@ -527,4 +528,75 @@
 	.object-connection-form > .ant-btn {
 		width: 100%;
 	}
+}
+.object-page > .ant-segmented {
+	overflow: hidden;
+}
+.object-page > .ant-segmented .ant-segmented-item {
+	min-width: 0;
+}
+.object-page > .ant-segmented .ant-segmented-item-label {
+	min-width: 0;
+	padding-inline: 5px;
+	font-size: clamp(12px, 3.75vw, 14px);
+}
+.object-expense-heading {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+}
+.object-expense-heading h2 {
+	margin: 0 0 5px;
+}
+.object-expense-heading strong {
+	font-size: 20px;
+}
+.object-expenses {
+	display: grid;
+	gap: 12px;
+}
+.object-expense-list > button {
+	display: flex;
+	width: 100%;
+	align-items: center;
+	gap: 10px;
+	padding: 11px 12px;
+	border: 0;
+	border-bottom: 1px solid var(--ios-separator, #ddd);
+	background: transparent;
+	color: inherit;
+	text-align: start;
+}
+.object-expense-list > button:last-child {
+	border-bottom: 0;
+}
+.object-expense-list > button > span:first-of-type {
+	flex: 1;
+	min-width: 0;
+}
+.object-expense-list > button > span:first-of-type > * {
+	display: block;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.object-expense-list small {
+	color: var(--ios-secondary);
+}
+.object-expense-fields {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+	gap: 12px;
+}
+.object-expense-fields .ant-input-number,
+.object-expense-templates .ant-btn {
+	width: 100%;
+}
+.object-expense-templates .ant-btn {
+	justify-content: flex-start;
+}
+.object-expense-templates .ant-btn > span:not(.ant-btn-icon) {
+	overflow: hidden;
+	text-overflow: ellipsis;
 }

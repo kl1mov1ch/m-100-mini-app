@@ -2,23 +2,29 @@ import base64
 import hashlib
 import io
 import json
+import re
 import secrets
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from urllib.parse import urlparse
 from uuid import uuid4
+from zipfile import BadZipFile
 
 import httpx
 import openpyxl
 from fastapi import APIRouter, HTTPException, Request
+from openpyxl.utils.exceptions import InvalidFileException
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
+from starlette.concurrency import run_in_threadpool
 
 from .. import bitrix, postgres, profile_webhooks, store, tables, workspaces
 from ..naming import unique_project_name
 from ..orm_models import Position, Project, ProjectSetting, User
 from .normalization import financial_summary
 from .repository import DocumentJob, folder, owned, public, session, version
+from .workbook import downloadable_estimate
 from .workbook import make_estimate as make_workbook
 
 router = APIRouter(prefix="/api/documents")
@@ -60,6 +66,234 @@ class PublishInput(BaseModel):
     token: str = Field(min_length=20, max_length=100)
 
 
+class UploadInput(BaseModel):
+    version: str
+    webhook_id: str = Field(min_length=1, max_length=100)
+    object_name: str = Field(min_length=1, max_length=100)
+
+
+def lock_job(database, ident, owner):
+    job = database.scalar(
+        select(DocumentJob)
+        .where(DocumentJob.id == ident, DocumentJob.owner_id == owner)
+        .with_for_update()
+    )
+    if job is None:
+        raise HTTPException(404, "Документ не найден")
+    return job
+
+
+def update_publication(job, target, status):
+    job.payload = {**job.payload, "publication": target}
+    job.status = status
+    job.updated_at = datetime.now(UTC)
+
+
+def disk_detail_url(webhook, value):
+    try:
+        url = urlparse(value or "")
+        if (
+            url.scheme == "https"
+            and url.netloc == urlparse(webhook).netloc
+            and url.path.startswith("/")
+            and not url.path.startswith("/rest/")
+        ):
+            return url.geturl()
+    except ValueError:
+        pass
+    return ""
+
+
+def disk_account(webhook):
+    url = urlparse(webhook)
+    return url.hostname, url.path.split("/")[2]
+
+
+async def disk_upload(webhook, target, content):
+    _, user_id = disk_account(webhook)
+    storages = await bitrix.rest(
+        webhook, "disk.storage.getList", {"filter": {"ENTITY_TYPE": "user", "ENTITY_ID": user_id}}
+    )
+    storage_id = next(
+        (
+            row.get("ID")
+            for row in storages or []
+            if row.get("ENTITY_TYPE") == "user" and str(row.get("ENTITY_ID")) == user_id
+        ),
+        None,
+    )
+    if not storage_id:
+        raise ValueError("Личный Диск для выбранного подключения не найден")
+    name = target["name"]
+    files = await bitrix.rest(
+        webhook, "disk.storage.getChildren", {"id": storage_id, "filter": {"NAME": name}}
+    )
+    found = next((item for item in files or [] if item.get("NAME") == name), None)
+    if found is None:
+        found = await bitrix.rest(
+            webhook,
+            "disk.storage.uploadFile",
+            {
+                "id": storage_id,
+                "data": {"NAME": name},
+                "fileContent": [name, base64.b64encode(content).decode()],
+                "generateUniqueName": False,
+            },
+        )
+    file_id = (found or {}).get("ID")
+    if not file_id:
+        raise ValueError("Битрикс24 не вернул номер файла")
+    return file_id
+
+
+async def verified_disk_file(webhook, file_id, identity):
+    content, meta = await bitrix.download_rest(webhook, file_id)
+    if (await run_in_threadpool(bitrix.workbook_identity, content)).hex() != identity:
+        raise ValueError("Файл на Диске отличается от утверждённой сметы")
+    return content, disk_detail_url(webhook, meta.get("DETAIL_URL"))
+
+
+@router.post("/{ident}/bitrix/upload")
+async def upload_estimate(ident: str, request: Request, body: UploadInput):
+    owner = request.state.user["telegram_id"]
+    name = body.object_name.strip()
+    if not name:
+        raise HTTPException(422, "Укажите название объекта")
+    async with workspaces.mutation_lock("pdf:" + ident):
+        with session() as database:
+            job = lock_job(database, ident, owner)
+            target = dict(job.payload.get("publication") or {})
+            if job.status in {"uploaded", "published"} and target.get("mode") == "disk":
+                return public(job)
+            if version(job.updated_at) != body.version:
+                raise HTTPException(409, "Смета обновилась. Повторите действие.")
+            rows = job.payload.get("groups", [])
+            if job.status == "ready":
+                if not rows or financial_summary(rows)["priced"] != len(rows):
+                    raise HTTPException(409, "Подтвердите все строки и расценки")
+                project_id = uuid4().hex
+                filename = re.sub(r'[\x00-\x1f<>:"/\\|?*]', "-", name).strip(" .") or "Объект"
+                target = {
+                    "mode": "disk",
+                    "token": secrets.token_urlsafe(24),
+                    "name": f"Смета {filename} · {project_id[:12]}.xlsx",
+                    "object_name": name,
+                    "webhook_id": body.webhook_id,
+                    "project_id": project_id,
+                }
+            elif target.get("mode") != "disk" or job.status not in {"publishing", "publish_retry"}:
+                raise HTTPException(409, "Сначала утвердите смету")
+            elif job.status == "publishing" and datetime.now(UTC) - job.updated_at.replace(
+                tzinfo=UTC
+            ) < timedelta(minutes=2):
+                raise HTTPException(409, "Таблица ещё загружается")
+            webhook = profile_webhooks.webhook_url(owner, target["webhook_id"])
+            account = "/".join(disk_account(webhook))
+            if target.get("disk_account", account) != account:
+                raise HTTPException(409, "Восстановите подключение к исходному Диску Битрикс24")
+            target["disk_account"] = account
+            job.payload = {
+                key: value for key, value in job.payload.items() if key != "_publication_webhook"
+            }
+            update_publication(job, {**target, "phase": "uploading"}, "publishing")
+            payload = job.payload
+
+        try:
+            content = await run_in_threadpool(downloadable_estimate, rows, payload)
+            identity = (await run_in_threadpool(bitrix.workbook_identity, content)).hex()
+            file_id = await disk_upload(webhook, target, content)
+            _, detail_url = await verified_disk_file(webhook, file_id, identity)
+        except (
+            ValueError,
+            OSError,
+            httpx.HTTPError,
+            BadZipFile,
+            InvalidFileException,
+            KeyError,
+        ) as error:
+            with session() as database:
+                job = lock_job(database, ident, owner)
+                update_publication(job, {**target, "phase": "retry"}, "publish_retry")
+            raise HTTPException(
+                502, "Не удалось подтвердить загрузку. Проверьте доступ к Диску и повторите."
+            ) from error
+
+        with session() as database:
+            job = lock_job(database, ident, owner)
+            update_publication(
+                job,
+                {
+                    **target,
+                    "phase": "uploaded",
+                    "file_id": file_id,
+                    "detail_url": detail_url,
+                    "workbook_hash": identity,
+                },
+                "uploaded",
+            )
+            return public(job)
+
+
+@router.post("/{ident}/bitrix/connect")
+async def connect_estimate(ident: str, request: Request, body: PublishInput):
+    owner = request.state.user["telegram_id"]
+    async with workspaces.mutation_lock("pdf:" + ident):
+        with session() as database:
+            job = lock_job(database, ident, owner)
+            target = job.payload.get("publication") or {}
+            if target.get("mode") != "disk" or not secrets.compare_digest(
+                target.get("token", ""), body.token
+            ):
+                raise HTTPException(409, "Сначала загрузите смету в Битрикс24")
+            if job.status == "published":
+                return public(job)
+            if job.status != "uploaded" or version(job.updated_at) != body.version:
+                raise HTTPException(409, "Смета обновилась. Повторите действие.")
+            webhook = profile_webhooks.webhook_url(owner, target["webhook_id"])
+            if target["disk_account"] != "/".join(disk_account(webhook)):
+                raise HTTPException(409, "Восстановите подключение к исходному Диску Битрикс24")
+
+        try:
+            content, detail_url = await verified_disk_file(
+                webhook, target["file_id"], target["workbook_hash"]
+            )
+            mappings, _ = await run_in_threadpool(tables.discover, content)
+            parsed = await run_in_threadpool(bitrix.read_workbook, content, mappings)
+            if not parsed["positions"]:
+                raise ValueError("В файле не найдены работы")
+        except (
+            ValueError,
+            OSError,
+            httpx.HTTPError,
+            BadZipFile,
+            InvalidFileException,
+            KeyError,
+        ) as error:
+            raise HTTPException(
+                409, "Не удалось подтвердить утверждённую смету на Диске Битрикс24"
+            ) from error
+
+        with session() as database:
+            job = lock_job(database, ident, owner)
+            if job.status == "published":
+                return public(job)
+            if job.status != "uploaded" or version(job.updated_at) != body.version:
+                raise HTTPException(409, "Смета обновилась. Повторите действие.")
+            target = {**target, "detail_url": detail_url or target.get("detail_url", "")}
+            project = create_object(database, job, target, webhook, parsed)
+            update_publication(
+                job,
+                {
+                    **target,
+                    "phase": "published",
+                    "object_name": project.name,
+                    "published_at": datetime.now(UTC).isoformat(),
+                },
+                "published",
+            )
+            return public(job)
+
+
 @router.post("/{ident}/bitrix/reset")
 async def reset_target(ident: str, request: Request):
     owner = request.state.user["telegram_id"]
@@ -69,6 +303,8 @@ async def reset_target(ident: str, request: Request):
             if job.status != "publish_retry":
                 raise HTTPException(409, "Дождитесь проверки записи")
             target = dict(job.payload["publication"])
+            if target.get("mode") == "disk":
+                raise HTTPException(409, "Повторите загрузку таблицы")
             rows = job.payload["groups"]
         webhook = job.payload.get("_publication_webhook") or profile_webhooks.webhook_url(
             owner, target["webhook_id"]
@@ -173,7 +409,8 @@ def create_object(database, job, target, webhook, parsed):
     settings = {
         "source": "bitrix",
         "source_name": target["name"],
-        "public_url": target["public_url"],
+        "public_url": target.get("public_url", ""),
+        "table_detail_url": target.get("detail_url", ""),
         "webhook": webhook,
         "webhook_profile_id": target["webhook_id"],
         "file_id": str(target["file_id"]),
@@ -247,6 +484,8 @@ async def publish(ident: str, request: Request, body: PublishInput):
             ):
                 raise HTTPException(409, "Обновите выборку перед записью")
             target = dict(job.payload.get("publication") or {})
+            if target.get("mode") == "disk":
+                raise HTTPException(409, "Подключите загруженную таблицу из сметы")
             saved_webhook = job.payload.get("_publication_webhook")
             rows = job.payload.get("groups", [])
             if not secrets.compare_digest(str(target.get("token", "")), body.token) or target.get(

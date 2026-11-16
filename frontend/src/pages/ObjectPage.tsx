@@ -3,6 +3,7 @@ import { useState } from 'react';
 import type { WorkspaceView } from '../App';
 import { ObjectActionDialog, type ObjectAction } from '../components/ObjectActionDialog';
 import { ObjectCatalogue } from '../components/ObjectCatalogue';
+import { ObjectExpenses } from '../components/ObjectExpenses';
 import { ObjectTablePanel } from '../components/ObjectTablePanel';
 import { PositionDetails } from '../components/PositionDetails';
 import { BitrixReadStatus } from '../components/BitrixReadStatus';
@@ -15,6 +16,7 @@ import './object.css';
 const sections: { label: string; value: ObjectSection }[] = [
 	{ label: 'Отчёты', value: 'reports' },
 	{ label: 'Смета', value: 'catalogue' },
+	{ label: 'Доп. работы', value: 'expenses' },
 	{ label: 'Таблица', value: 'table' },
 ];
 
@@ -212,6 +214,9 @@ export function ObjectPage({ workspace }: { workspace: WorkspaceView }) {
 					workspace={workspace}
 					onView={(position) => setViewPosition(position.id)}
 				/>
+			)}
+			{objectSection === 'expenses' && (
+				<ObjectExpenses key={project} project={project} day={workspace.day} />
 			)}
 			{objectSection === 'table' && (
 				<ObjectTablePanel
