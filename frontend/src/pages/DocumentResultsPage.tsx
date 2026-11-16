@@ -10,7 +10,7 @@ import {
 	ZoomOut,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { Money, nf } from '../lib/format';
+import { countLabel, Currency, Money, nf } from '../lib/format';
 import { headers, request } from '../lib/api';
 import { downloadReport } from '../lib/report-download';
 import type { DocumentJob, DocumentGroup, DocumentSource } from './document-types';
@@ -219,7 +219,6 @@ export function DocumentResultsPage({
 		[editCategory, setEditCategory] = useState(''),
 		[section, setSection] = useState(''),
 		[subsection, setSubsection] = useState(''),
-		[notes, setNotes] = useState(''),
 		[resolution, setResolution] = useState<string>(),
 		[acknowledge, setAcknowledge] = useState(false),
 		[saving, setSaving] = useState(false),
@@ -299,7 +298,6 @@ export function DocumentResultsPage({
 		setEditCategory(row.category);
 		setSection(row.section || '');
 		setSubsection(row.subsection || '');
-		setNotes(pageMentions(row));
 		setResolution(row.quantity === null ? undefined : row.quantity_mode || 'manual');
 		setAcknowledge(false);
 	};
@@ -316,7 +314,7 @@ export function DocumentResultsPage({
 				category: editCategory,
 				section,
 				subsection,
-				notes,
+				notes: pageMentions(editing),
 				resolution,
 				acknowledge_scope: acknowledge,
 			});
@@ -540,24 +538,7 @@ export function DocumentResultsPage({
 			)}
 			<Modal
 				className="document-work-sheet"
-				title={
-					sources
-						? sources.name
-						: editing && (
-								<div className="document-gallery-title">
-									<span>{editing.name}</span>
-									{!!editing.sources.length && (
-										<Button
-											type="text"
-											aria-label="Галерея источников PDF"
-											title="Галерея источников PDF"
-											icon={<Images size={19} />}
-											onClick={() => setSources(editing)}
-										/>
-									)}
-								</div>
-							)
-				}
+				title={sources ? 'Источники PDF' : editing?.name}
 				width={sources ? 820 : undefined}
 				open={!!editing}
 				onCancel={() => (sources ? setSources(null) : !saving && setEditing(null))}
@@ -575,12 +556,13 @@ export function DocumentResultsPage({
 					disabled:
 						quantity === null ||
 						rate === null ||
-						((editing?.issues.length || 0) > 0 && !resolution),
+						((editing?.issues.length || 0) > 0 && !resolution) ||
+						(needsScope && !job.payload.acknowledge_scope && !acknowledge),
 				}}
 			>
 				{sources ? (
 					<SourceGallery jobId={job.id} group={sources} />
-				) : readOnly ? (
+				) : !editing ? null : readOnly ? (
 					<div className="document-review-form">
 						<dl className="position-totals">
 							<div>
@@ -601,20 +583,113 @@ export function DocumentResultsPage({
 								.filter(Boolean)
 								.join(' · ')}
 						</p>
-						{editing && pageMentions(editing) && <p>{pageMentions(editing)}</p>}
+						{!!editing.sources.length && (
+							<Button icon={<Images size={18} />} onClick={() => setSources(editing)}>
+								Галерея источников PDF
+							</Button>
+						)}
 					</div>
 				) : (
 					<div className="document-review-form">
+						{editing?.issues.map((issue) => (
+							<p className="document-question" key={issue}>
+								{issue}
+							</p>
+						))}
+						<div className="document-input-pair">
+							<label>
+								Ед. изм.
+								<Select
+									value={unit}
+									aria-label="Единица измерения"
+									onChange={(value) => {
+										clearSuggestedRate();
+										setUnit(value);
+										setResolution('manual');
+									}}
+									options={[
+										'м',
+										'м²',
+										'м³',
+										'шт.',
+										'кг',
+										'кВт',
+										'компл.',
+										'систем',
+										'чел·ч',
+										'чел·дн',
+									].map((value) => ({
+										value,
+										label: value,
+									}))}
+								/>
+							</label>
+							<label>
+								Объём
+								<InputNumber
+									stringMode
+									aria-label="Объём"
+									min="0"
+									max="1000000000"
+									value={quantity}
+									onChange={(value) => {
+										setQuantity(value);
+										setResolution('manual');
+									}}
+									controls={false}
+									inputMode="decimal"
+									decimalSeparator=","
+								/>
+							</label>
+							<label>
+								Расценка
+								<InputNumber
+									stringMode
+									aria-label="Расценка за единицу"
+									min="0"
+									max="1000000000"
+									value={rate}
+									onChange={setRate}
+									controls={false}
+									inputMode="decimal"
+									decimalSeparator=","
+									suffix={<Currency />}
+								/>
+							</label>
+						</div>
 						<div className="document-work-total">
 							<span>Сумма по позиции</span>
 							<strong>
 								{quantity !== null && rate !== null ? (
 									<Money value={Number(quantity) * Number(rate)} />
 								) : (
-									'Укажите объём и расценку'
+									'—'
 								)}
 							</strong>
 						</div>
+						{!!editing.sources.length && (
+							<button
+								type="button"
+								className="document-source-link"
+								aria-label="Галерея источников PDF"
+								onClick={() => setSources(editing)}
+							>
+								<Images size={18} aria-hidden />
+								<span>
+									<strong>Источники PDF</strong>
+									<small title={pageMentions(editing)}>
+										{countLabel(
+											editing.mention_count ?? editing.sources.length,
+											'упоминание',
+											'упоминания',
+											'упоминаний',
+										)}{' '}
+										· стр. {editing.sources[0].page}
+									</small>
+								</span>
+								<ChevronRight size={16} aria-hidden />
+							</button>
+						)}
 						<details className="document-details document-edit-details">
 							<summary>Название и раздел</summary>
 							<label>
@@ -669,69 +744,6 @@ export function DocumentResultsPage({
 								/>
 							</label>
 						</details>
-						{editing?.issues.map((issue) => (
-							<p className="document-question" key={issue}>
-								{issue}
-							</p>
-						))}
-						{!!editing?.sources.length && (
-							<small className="page-context">
-								Упоминаний: {editing.mention_count ?? editing.sources.length}
-							</small>
-						)}
-						<div className="document-input-pair">
-							<label>
-								Единица измерения
-								<Select
-									value={unit}
-									onChange={(value) => {
-										clearSuggestedRate();
-										setUnit(value);
-										setResolution('manual');
-									}}
-									options={[
-										'м',
-										'м²',
-										'м³',
-										'шт.',
-										'кг',
-										'кВт',
-										'компл.',
-										'систем',
-										'чел·ч',
-										'чел·дн',
-									].map((value) => ({
-										value,
-										label: value,
-									}))}
-								/>
-							</label>
-							<label>
-								Объём
-								<InputNumber
-									stringMode
-									min="0"
-									max="1000000000"
-									value={quantity}
-									onChange={(value) => {
-										setQuantity(value);
-										setResolution('manual');
-									}}
-									controls={false}
-								/>
-							</label>
-						</div>
-						<label>
-							Расценка за {unit}, BYN
-							<InputNumber
-								stringMode
-								min="0"
-								max="1000000000"
-								value={rate}
-								onChange={setRate}
-								controls={false}
-							/>
-						</label>
 						{usingSuggestion && (
 							<small className="page-context">
 								{suggestedRate.method === 'ai'
@@ -739,7 +751,6 @@ export function DocumentResultsPage({
 									: 'Расценка из общего справочника'}
 							</small>
 						)}
-						{notes && <p className="page-context">{notes}</p>}
 						{editing && (!!editing.issues.length || editing.quantity_mode === 'mentions') && (
 							<label>
 								Как посчитать объём
@@ -781,19 +792,18 @@ export function DocumentResultsPage({
 								/>
 							</label>
 						)}
-						{!!(
-							job.payload.coverage?.drawings?.length ||
-							job.payload.coverage?.low_ocr?.length ||
-							job.payload.coverage?.questions
-						) &&
-							!job.payload.acknowledge_scope && (
-								<Checkbox
-									checked={acknowledge}
-									onChange={(event) => setAcknowledge(event.target.checked)}
-								>
-									Источники и полнота проверены. Геометрия чертежей не измерялась.
-								</Checkbox>
-							)}
+						{needsScope && !job.payload.acknowledge_scope && (
+							<Checkbox
+								className="document-check-scope"
+								checked={acknowledge}
+								onChange={(event) => setAcknowledge(event.target.checked)}
+							>
+								<span>Источники и полнота проверены</span>
+								{!!job.payload.coverage?.drawings?.length && (
+									<small>Геометрия чертежей не измерялась</small>
+								)}
+							</Checkbox>
+						)}
 					</div>
 				)}
 			</Modal>
