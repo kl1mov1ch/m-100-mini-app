@@ -168,7 +168,7 @@
 }
 .admin-work-row {
 	padding: 17px;
-	background: white;
+	background: var(--ios-surface);
 	border: 1px solid var(--ios-fill);
 	border-radius: 14px;
 }

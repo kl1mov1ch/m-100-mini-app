@@ -1,15 +1,28 @@
 import { App, Button, Tag } from 'antd';
 import 'dayjs/locale/ru';
 import { Plus, Settings2, Trash2, TriangleAlert } from 'lucide-react';
+import { useEffect, useEffectEvent } from 'react';
 
 import type { WorkspaceView } from '../App';
 import { CompactWorkEditor } from '../components/CompactRow';
+import { countLabel } from '../lib/format';
 import { TelegramAvatar } from '../components/TelegramAvatar';
 import { request } from '../lib/api';
 import type { User } from '../types';
 export function TeamPage({ workspace }: { workspace: WorkspaceView }) {
 	const { modal, message } = App.useApp();
 	const { users, setUserForm, setUserId, setUserName, setUserRole, loadUsers, session } = workspace;
+	const refresh = useEffectEvent(() => {
+		if (document.visibilityState === 'visible') void loadUsers(true);
+	});
+	useEffect(() => {
+		const timer = window.setInterval(refresh, 20000);
+		document.addEventListener('visibilitychange', refresh);
+		return () => {
+			window.clearInterval(timer);
+			document.removeEventListener('visibilitychange', refresh);
+		};
+	}, []);
 	const remove = (user: User) =>
 		modal.confirm({
 			closable: true,
@@ -55,9 +68,15 @@ export function TeamPage({ workspace }: { workspace: WorkspaceView }) {
 						key={u.telegram_id}
 						title={u.name}
 						description={
-							u.enabled ? (u.role === 'admin' ? 'Администратор' : 'Мастер') : 'Доступ отключён'
+							u.open_project
+								? 'Открыт · ' + u.open_project.name
+								: u.enabled
+									? u.role === 'admin'
+										? 'Администратор'
+										: 'Мастер'
+									: 'Доступ отключён'
 						}
-						value={(u.projects || 0) + ' объектов'}
+						value={countLabel(u.projects || 0, 'объект', 'объекта', 'объектов')}
 						attention={!u.enabled}
 						leading={
 							<TelegramAvatar
@@ -90,7 +109,7 @@ export function TeamPage({ workspace }: { workspace: WorkspaceView }) {
 												: 'Мастер'
 											: 'Доступ отключён'}
 									</Tag>
-									<small>{u.projects || 0} объектов</small>
+									<small>{countLabel(u.projects || 0, 'объект', 'объекта', 'объектов')}</small>
 								</div>
 							</div>
 							{u.telegram_id !== 'local-admin' && (
@@ -120,6 +139,20 @@ export function TeamPage({ workspace }: { workspace: WorkspaceView }) {
 								</div>
 							)}
 						</section>
+						<div className="object-panel">
+							<h3>Сейчас открыт</h3>
+							<p>{u.open_project?.name || 'Нет открытого объекта'}</p>
+							<h3>Назначенные объекты</h3>
+							{u.assigned_projects?.length ? (
+								<ul className="compact-list">
+									{u.assigned_projects.map((project) => (
+										<li key={project.id}>{project.name}</li>
+									))}
+								</ul>
+							) : (
+								<p>Объекты не назначены</p>
+							)}
+						</div>
 					</CompactWorkEditor>
 				))}
 			</div>

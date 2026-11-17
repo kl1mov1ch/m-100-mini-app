@@ -128,7 +128,7 @@
 	background: var(--ios-accent-fill);
 }
 .date-control-cell[aria-pressed='true']::after {
-	background: white;
+	background: var(--ios-surface);
 }
 
 @media (max-height: 650px) {

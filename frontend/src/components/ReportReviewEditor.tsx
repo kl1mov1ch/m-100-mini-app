@@ -1,3 +1,4 @@
+import { sortSearchOptions } from '../lib/search';
 import { Button, InputNumber, Select } from 'antd';
 import { Pencil, Trash2, Users } from 'lucide-react';
 import { forwardRef, useEffect, useImperativeHandle, useState } from 'react';
@@ -210,7 +211,8 @@ export const ReportReviewEditor = forwardRef<ReportReviewHandle, ReviewProps>(
 											classNames={{ popup: { root: 'work-position-options' } }}
 											aria-label="Заменить работу в общем отчёте"
 											showSearch
-											optionFilterProp="label"
+											filterOption={false}
+											filterSort={sortSearchOptions}
 											value={id}
 											options={options}
 											onChange={(value) => moveWork(id, value)}
@@ -238,7 +240,8 @@ export const ReportReviewEditor = forwardRef<ReportReviewHandle, ReviewProps>(
 					classNames={{ popup: { root: 'work-position-options' } }}
 					aria-label="Добавить работу в общий отчёт"
 					showSearch
-					optionFilterProp="label"
+					filterOption={false}
+					filterSort={sortSearchOptions}
 					placeholder="Добавить работу из сметы"
 					value={undefined}
 					options={options.filter((option) => !(quantities[option.value]! > 0))}

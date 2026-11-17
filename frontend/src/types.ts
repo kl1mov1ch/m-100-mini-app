@@ -6,6 +6,8 @@ export type User = {
 	avatar_url?: string;
 	username?: string;
 	projects?: number;
+	assigned_projects?: { id: string; name: string }[];
+	open_project?: { id: string; name: string } | null;
 };
 export type Project = {
 	id: string;

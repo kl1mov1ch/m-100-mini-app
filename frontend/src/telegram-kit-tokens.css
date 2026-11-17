@@ -1,0 +1,64 @@
+:root {
+	/* Colors.png · native and additional colors */
+	--kit-bg: #fff;
+	--kit-text: #000;
+	--kit-hint: #707579;
+	--kit-accent: #007aff;
+	--kit-accent-text: #007aff;
+	--kit-page: #efeff4;
+	--kit-button-text: #fff;
+	--kit-tertiary: #f4f4f7;
+	--kit-quaternary: #f6f6fa;
+	--kit-segment-active: #fff;
+	--kit-card: #fff;
+	--kit-secondary-hint: #a2acb0;
+	--kit-secondary-fill: #4378ff10;
+	--kit-divider: #00000015;
+	--kit-outline: #00000005;
+	--kit-green: #31d158;
+	--kit-destructive: #e53935;
+	--kit-destructive-fill: #f12e2e05;
+
+	/* Typography.png, Button.png, Segmented Control.png */
+	--kit-title: 34px;
+	--kit-section-title: 20px;
+	--kit-headline: 17px;
+	--kit-body: 16px;
+	--kit-subhead: 14px;
+	--kit-caption: 12px;
+	--kit-touch: 44px;
+	--kit-large-button: 50px;
+	/* Figma Button (iOS/Android), filled variants. */
+	--kit-button-radius: 8px;
+	--kit-button-transition: 75ms cubic-bezier(0, 0, 0.58, 1);
+	--kit-drag-indicator: rgb(0 0 0 / 15%);
+	--kit-segment-height: 44px;
+	--kit-segment-radius: 22px;
+	--kit-control-radius: 8px;
+}
+
+:root[data-theme='dark'] {
+	--kit-bg: #212121;
+	--kit-text: #fff;
+	--kit-hint: #aaa;
+	--kit-accent: #2990ff;
+	--kit-accent-text: #007aff;
+	--kit-page: #0f0f0f;
+	--kit-tertiary: #2a2a2a;
+	--kit-quaternary: #2f2f2f;
+	--kit-segment-active: #2f2f2f;
+	--kit-card: #323232;
+	--kit-secondary-hint: #78797e;
+	--kit-secondary-fill: #2990ff15;
+	--kit-divider: #ffffff05;
+	--kit-outline: #ffffff10;
+	--kit-green: #32e55e;
+	--kit-destructive-fill: #f12e2e15;
+	--kit-drag-indicator: rgb(255 255 255 / 15%);
+}
+
+:root[data-platform='apple'] {
+	--kit-segment-height: 32px;
+	--kit-segment-radius: 9px;
+	--kit-button-radius: 10px;
+}

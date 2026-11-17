@@ -1,3 +1,4 @@
+import { rankedSearch } from '../lib/search';
 import { Alert, App, Button, Input, InputNumber, Modal, Select, Tabs, Tag } from 'antd';
 import { Check, FileSpreadsheet, Search, Settings2, Sparkles, TriangleAlert } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -115,9 +116,13 @@ export function TableImportModal({ workspace }: { workspace: WorkspaceView }) {
 		}
 	};
 	const problems = preview.warnings.filter((warning) => warning.severity !== 'info');
-	const positions = preview.positions.filter((position) =>
-		`${position.name} ${position.source_row}`.toLowerCase().includes(query.toLowerCase()),
+	const ranked = rankedSearch(
+		preview.positions,
+		query,
+		(position) => position.name + ' ' + position.source_row,
 	);
+	const matches = ranked.filter(({ score }) => score >= 4);
+	const positions = (matches.length ? matches : ranked).map(({ item }) => item);
 	const setValue = (key: string, value: string | number | null) =>
 		setValues((current) => ({ ...current, [key]: value }));
 	const fixCell = (warning: ImportWarning, value: string | number | null) => {

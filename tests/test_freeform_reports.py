@@ -9,6 +9,20 @@ CATALOGUE = [
 ]
 
 
+def test_search_handles_transliteration_layout_and_unavailable_diameter():
+    catalogue = [
+        {"id": "pipe", "name": "Монтаж трубопровода", "unit": "м"},
+        {"id": "grille", "name": "Монтаж решётки Ø160", "unit": "шт."},
+    ]
+    for query in ("truboprovod", "nhe,jghjdjl", "трубопрвод"):
+        result = asyncio.run(matcher.search(query, catalogue, local_only=True))
+        assert result["suggestions"][0]["item_id"] == "pipe"
+    result = asyncio.run(matcher.search("решётка Ø180", catalogue, local_only=True))
+    assert result["suggestions"][0]["item_id"] == "grille"
+    assert "Размер отличается" in result["suggestions"][0]["reason"]
+    assert matcher.local_parse("решётка Ø180 2 шт.", catalogue)["lines"][0]["item_id"] is None
+
+
 def test_pipeline_volume_and_crew_stay_separate():
     catalogue = [{"id": "pipe", "name": "Трубопровод", "unit": "м"}]
     for text, expected in [

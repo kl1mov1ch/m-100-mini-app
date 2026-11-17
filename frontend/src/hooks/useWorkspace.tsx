@@ -98,6 +98,31 @@ export function useWorkspace() {
 	const selectionVersion = useRef(0);
 	const sessionVersion = useRef(0);
 	const active = session?.projects.find((p) => p.id === project);
+	const openProjectId = (page === 'object' || page === 'today') && active ? active.id : null;
+	const tracksOpenProject = useRef(false);
+	const sessionUserId = session?.user.telegram_id;
+	useEffect(() => {
+		if (!sessionUserId || (!openProjectId && !tracksOpenProject.current)) return;
+		const controller = new AbortController();
+		const publish = () => {
+			if (document.visibilityState !== 'visible') return;
+			tracksOpenProject.current = !!openProjectId;
+			void request(
+				'/session/open-project',
+				{ project_id: openProjectId },
+				undefined,
+				controller.signal,
+			).catch(() => {});
+		};
+		publish();
+		const timer = openProjectId ? window.setInterval(publish, 25000) : undefined;
+		document.addEventListener('visibilitychange', publish);
+		return () => {
+			controller.abort();
+			window.clearInterval(timer);
+			document.removeEventListener('visibilitychange', publish);
+		};
+	}, [openProjectId, sessionUserId, session?.user.role]);
 	const allPositions = data?.project?.id === project ? data.positions : [];
 	const positions = allPositions.filter((position) => !position.hidden && !position.extra);
 	const byId = Object.fromEntries(allPositions.map((p) => [p.id, p]));
@@ -814,11 +839,11 @@ export function useWorkspace() {
 			message.error((error as Error).message);
 		}
 	};
-	const loadUsers = async () => {
+	const loadUsers = async (quiet = false) => {
 		try {
 			setUsers(await request<User[]>('/admin/users'));
 		} catch (e) {
-			message.error((e as Error).message);
+			if (!quiet) message.error((e as Error).message);
 		}
 	};
 	const openSettings = () => {

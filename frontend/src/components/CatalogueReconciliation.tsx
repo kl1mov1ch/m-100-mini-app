@@ -1,3 +1,4 @@
+import { sortSearchOptions } from '../lib/search';
 import { Alert, Button, Checkbox, Select, Tag } from 'antd';
 import { Sparkles, TriangleAlert } from 'lucide-react';
 import { Money, nf, unit } from '../lib/format';
@@ -65,7 +66,8 @@ export function CatalogueReconciliation(props: ReconciliationProps) {
 								classNames={{ popup: { root: 'work-position-options' } }}
 								showSearch
 								allowClear={!row.required}
-								optionFilterProp="label"
+								filterOption={false}
+								filterSort={sortSearchOptions}
 								placeholder={
 									row.required
 										? 'Выберите работу — она есть в отчётах'

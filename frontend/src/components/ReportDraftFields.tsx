@@ -1,3 +1,4 @@
+import { sortSearchOptions } from '../lib/search';
 import { Alert, Button, InputNumber, Select } from 'antd';
 import { ChevronRight, Trash2 } from 'lucide-react';
 import type { WorkspaceView } from '../App';
@@ -173,7 +174,8 @@ export function ReportDraftFields({
 									classNames={{ popup: { root: 'work-position-options' } }}
 									aria-label={'Позиция сметы для работы ' + (index + 1)}
 									showSearch
-									optionFilterProp="label"
+									filterOption={false}
+									filterSort={sortSearchOptions}
 									placeholder="Найти в смете"
 									value={line.item_id || undefined}
 									onChange={selectPosition}

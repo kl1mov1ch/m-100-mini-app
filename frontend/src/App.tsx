@@ -1,22 +1,15 @@
 import { App as AntApp, Button, ConfigProvider, Drawer, Input, Modal, Select } from 'antd';
 import ruRU from 'antd/locale/ru_RU';
 import 'dayjs/locale/ru';
-import {
-	Building2,
-	Check,
-	ChevronDown,
-	ChevronRight,
-	History,
-	Plus,
-	Settings2,
-	X,
-} from 'lucide-react';
+import { Building2, History, Plus, Settings2 } from 'lucide-react';
 import { createRoot } from 'react-dom/client';
+import { useEffect, useState } from 'react';
 import { TableImportModal } from './components/TableImportModal';
 import { VoiceReportDrawer } from './components/VoiceReportDrawer';
 import { LaunchScreen } from './components/LaunchScreen';
 
 import { LiveSearch } from './components/LiveSearch';
+import { TelegramIcon } from './components/TelegramIcon';
 import './final-polish.css';
 import './connection-card.css';
 import { useWorkspace } from './hooks/useWorkspace';
@@ -42,7 +35,9 @@ import './telegram-ios.css';
 import './compact-workspace.css';
 import './compact-lists.css';
 import './desktop.css';
-import { telegramLightTheme } from './lib/telegram-theme';
+import './telegram-kit-tokens.css';
+import './telegram-kit-components.css';
+import { telegramTheme } from './lib/telegram-theme';
 import { useInputVisibility } from './hooks/useInputVisibility';
 import { useStartupScreen } from './hooks/useStartupScreen';
 import { useAppRelease } from './hooks/useAppRelease';
@@ -135,7 +130,7 @@ export function WorkspaceApp() {
 						<button className="object-switch" onClick={() => setProjectOpen(true)}>
 							<Building2 size={17} />
 							<span>{active?.name || 'Выберите объект'}</span>
-							<ChevronDown size={15} />
+							<TelegramIcon name="chevron-down" size={15} />
 						</button>
 						<span className="role-label">{isAdmin ? 'Администратор' : 'Мастер'}</span>
 					</div>
@@ -157,10 +152,12 @@ export function WorkspaceApp() {
 			</div>
 			<nav className="bottom-nav" aria-label="Разделы приложения">
 				{[
-					{ id: 'objects', label: 'Объекты', icon: Building2 },
-					...(!isAdmin ? [{ id: 'today', label: 'Отчёт', icon: Plus }] : []),
-					{ id: 'history', label: 'История', icon: History },
-					{ id: 'more', label: 'Настройки', icon: Settings2 },
+					{ id: 'objects', label: 'Объекты', icon: <TelegramIcon name="folder" size={22} /> },
+					...(!isAdmin
+						? [{ id: 'today', label: 'Отчёт', icon: <TelegramIcon name="report" size={22} /> }]
+						: []),
+					{ id: 'history', label: 'История', icon: <History size={22} /> },
+					{ id: 'more', label: 'Настройки', icon: <Settings2 size={22} /> },
 				].map((n) => (
 					<button
 						key={n.id}
@@ -179,7 +176,7 @@ export function WorkspaceApp() {
 								: ''
 						}
 					>
-						<n.icon size={22} />
+						{n.icon}
 						<span>{n.label}</span>
 					</button>
 				))}
@@ -222,7 +219,11 @@ export function WorkspaceApp() {
 								<b>{p.name}</b>
 								<small>{p.owner_name}</small>
 							</span>
-							{p.id === project ? <Check size={20} /> : <ChevronRight size={18} />}
+							{p.id === project ? (
+								<TelegramIcon name="check" size={20} />
+							) : (
+								<TelegramIcon name="chevron-right" size={18} />
+							)}
 						</button>
 					))}
 				</div>
@@ -306,19 +307,34 @@ export function WorkspaceApp() {
 	);
 }
 export function renderApp() {
-	createRoot(document.getElementById('root')!).render(
+	createRoot(document.getElementById('root')!).render(<ThemedWorkspace />);
+}
+
+function ThemedWorkspace() {
+	const [, setThemeVersion] = useState(0);
+	const telegram = window.Telegram?.WebApp;
+	useEffect(() => {
+		if (!telegram?.initData) return;
+		const refreshTheme = () => setThemeVersion((version) => version + 1);
+		telegram.onEvent('themeChanged', refreshTheme);
+		return () => telegram.offEvent('themeChanged', refreshTheme);
+	}, [telegram]);
+	return (
 		<ConfigProvider
 			locale={ruRU}
-			theme={telegramLightTheme}
-			modal={{ closeIcon: <X size={20} aria-hidden />, closable: { 'aria-label': 'Закрыть' } }}
+			theme={telegramTheme(telegram?.colorScheme === 'dark')}
+			modal={{
+				closeIcon: <TelegramIcon name="close" size={20} />,
+				closable: { 'aria-label': 'Закрыть' },
+			}}
 			drawer={{
-				closeIcon: <X size={20} aria-hidden />,
+				closeIcon: <TelegramIcon name="close" size={20} />,
 				closable: { placement: 'end', 'aria-label': 'Закрыть' },
 			}}
 		>
 			<AntApp message={{ maxCount: 2 }}>
 				<WorkspaceApp />
 			</AntApp>
-		</ConfigProvider>,
+		</ConfigProvider>
 	);
 }

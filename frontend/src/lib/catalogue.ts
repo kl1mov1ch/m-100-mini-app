@@ -1,3 +1,4 @@
+import { rankedSearch } from './search';
 import type { Position } from '../types';
 import { unit } from './format';
 import { positionOverrun } from './position-volume';
@@ -54,18 +55,13 @@ export function selectCatalogue(
 		sort: CatalogueSort;
 	},
 ) {
-	const term = filters.query.trim().toLocaleLowerCase('ru');
-	return positions
+	const term = filters.query.trim();
+	const eligible = positions
 		.filter(
 			(position) =>
 				(filters.category === 'all' || catalogueCategory(position) === filters.category) &&
 				(filters.section === 'all' || position.section?.trim() === filters.section) &&
-				catalogueStatusMatches(position, filters.status) &&
-				[position.name, position.section, position.source_sheet]
-					.filter(Boolean)
-					.join(' ')
-					.toLocaleLowerCase('ru')
-					.includes(term),
+				catalogueStatusMatches(position, filters.status),
 		)
 		.sort((left, right) => {
 			const excessOrder =
@@ -85,4 +81,10 @@ export function selectCatalogue(
 				left.source_row - right.source_row
 			);
 		});
+	if (!term) return eligible;
+	const ranked = rankedSearch(eligible, term, (item) =>
+		[item.name, item.section, item.source_sheet, item.unit].join(' '),
+	);
+	const matches = ranked.filter(({ score }) => score >= 4);
+	return (matches.length ? matches : ranked.slice(0, 8)).map(({ item }) => item);
 }

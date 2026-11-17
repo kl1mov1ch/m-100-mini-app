@@ -1,6 +1,8 @@
 import json
 import os
+from collections import defaultdict
 from datetime import date
+from time import time
 from urllib.parse import parse_qsl, urlparse
 
 import httpx
@@ -14,10 +16,29 @@ from ..schemas import AiConnection, ProjectBody, UserBody
 from ..security import admin
 
 router = APIRouter()
+OPEN_PROJECT_PREFIX = "open_project:"
+OPEN_PROJECT_TTL = 75
 
 
 class ProfileBody(BaseModel):
     name: str = Field(min_length=1, max_length=100)
+
+
+class OpenProjectBody(BaseModel):
+    project_id: str | None = Field(default=None, min_length=1, max_length=100)
+
+
+@router.post("/api/session/open-project")
+def update_open_project(request: Request, body: OpenProjectBody):
+    user = request.state.user
+    key = OPEN_PROJECT_PREFIX + user["telegram_id"]
+    if body.project_id:
+        workspaces.project(user, body.project_id)
+        workspaces.set_shared({key: json.dumps({"id": body.project_id, "seen": int(time())})})
+    else:
+        with workspaces.registry() as db:
+            db.execute("DELETE FROM shared_settings WHERE key=?", (key,))
+    return {"ok": True}
 
 
 @router.post("/api/profile")
@@ -78,12 +99,31 @@ def session(request: Request, date: date | None = None):
 def users(request: Request):
     admin(request)
     with workspaces.registry() as db:
-        return [
+        accounts = [
             dict(r)
             for r in db.execute(
                 "SELECT u.*,count(p.id) projects FROM users u LEFT JOIN projects p ON p.owner_id=u.telegram_id WHERE u.enabled=1 GROUP BY u.telegram_id ORDER BY u.role,u.name"
             )
         ]
+        projects = defaultdict(list)
+        by_id = {}
+        for row in db.execute("SELECT id, name, owner_id FROM projects ORDER BY name, id"):
+            item = {"id": row["id"], "name": row["name"]}
+            projects[row["owner_id"]].append(item)
+            by_id[row["id"]] = (item, row["owner_id"])
+        opened = {}
+        for row in db.execute(
+            "SELECT key,value FROM shared_settings WHERE key LIKE ?", (OPEN_PROJECT_PREFIX + "%",)
+        ):
+            state = json.loads(row["value"])
+            if time() - state["seen"] < OPEN_PROJECT_TTL and state["id"] in by_id:
+                opened[row["key"][len(OPEN_PROJECT_PREFIX) :]] = by_id[state["id"]]
+    for account in accounts:
+        ident = account["telegram_id"]
+        current, owner = opened.get(ident, (None, None))
+        account["assigned_projects"] = projects[ident]
+        account["open_project"] = current if owner == ident or account["role"] == "admin" else None
+    return accounts
 
 
 @router.post("/api/admin/users")
@@ -114,6 +154,7 @@ def delete_user(request: Request, telegram_id: str):
     with workspaces.registry() as db:
         db.execute("UPDATE users SET enabled=0 WHERE telegram_id=?", (telegram_id,))
         db.execute("DELETE FROM profile_avatars WHERE telegram_id=?", (telegram_id,))
+        db.execute("DELETE FROM shared_settings WHERE key=?", (OPEN_PROJECT_PREFIX + telegram_id,))
     return {"ok": True}
 
 

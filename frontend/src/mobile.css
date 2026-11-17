@@ -1050,7 +1050,7 @@ small {
 	z-index: 50;
 	display: flex;
 	justify-content: space-around;
-	background: #ffffffef;
+	background: var(--ios-surface);
 	backdrop-filter: blur(18px);
 	border: 1px solid var(--ios-fill);
 	border-radius: 19px;
@@ -1817,7 +1817,7 @@ small {
 		border-radius: 0;
 		box-shadow: none;
 		padding: 11px 10px calc(11px + env(safe-area-inset-bottom));
-		background: #ffffffed;
+		background: var(--ios-surface);
 	}
 	.bottom-nav > button {
 		font-size: 9px;

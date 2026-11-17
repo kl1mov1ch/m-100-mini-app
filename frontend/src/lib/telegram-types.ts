@@ -4,6 +4,9 @@ export type TelegramWebApp = {
 	initData: string;
 	initDataUnsafe?: { user?: { allows_write_to_pm?: boolean } };
 	version: string;
+	platform?: string;
+	colorScheme?: 'light' | 'dark';
+	themeParams?: Record<string, string | undefined>;
 	viewportHeight: number;
 	safeAreaInset?: TelegramInset;
 	contentSafeAreaInset?: TelegramInset;

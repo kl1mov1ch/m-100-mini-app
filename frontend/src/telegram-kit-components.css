@@ -1,0 +1,257 @@
+/* Segmented Control.png · platform variants */
+.ant-segmented.ant-segmented {
+	min-height: var(--kit-segment-height);
+	padding: 2px;
+	border-radius: var(--kit-segment-radius);
+	background: var(--kit-tertiary);
+}
+
+.ant-segmented .ant-segmented-item,
+.ant-segmented .ant-segmented-thumb {
+	border-radius: calc(var(--kit-segment-radius) - 2px);
+}
+
+.ant-segmented .ant-segmented-item-selected,
+.ant-segmented .ant-segmented-thumb {
+	background: var(--kit-segment-active);
+}
+
+:root:not([data-platform='apple']) .ant-segmented .ant-segmented-item-selected {
+	box-shadow: none;
+}
+
+.application .ant-segmented .ant-segmented-item-label {
+	min-height: calc(var(--kit-segment-height) - 4px);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding-inline: 4px;
+	font-size: var(--kit-caption);
+	line-height: 1.2;
+}
+
+.application .ant-segmented .ant-segmented-item-selected .ant-segmented-item-label {
+	font-weight: 600;
+}
+
+/* Button.png · fill, bezeled and plain variants */
+.ant-btn.ant-btn,
+.ant-btn.ant-btn:is(:hover, :active) {
+	box-shadow: none;
+}
+
+.ant-btn.ant-btn-default:not(:disabled, .ant-btn-dangerous) {
+	background: var(--kit-secondary-fill);
+}
+
+.ant-btn.ant-btn-text:not(:disabled, .ant-btn-dangerous) {
+	color: var(--ios-accent);
+}
+
+.ant-btn.ant-btn-lg {
+	min-height: var(--kit-large-button);
+	border-radius: var(--kit-button-radius);
+}
+
+.ant-btn.ant-btn-primary:not(.ant-btn-dangerous, .ant-btn-background-ghost) {
+	transition:
+		background-color var(--kit-button-transition),
+		opacity var(--kit-button-transition);
+}
+
+.ant-btn.ant-btn-primary:enabled:not(
+		.ant-btn-dangerous,
+		.ant-btn-background-ghost,
+		[aria-disabled='true']
+	) {
+	background-color: var(--ios-accent);
+}
+
+@media (hover: hover) {
+	:root[data-platform='apple']
+		.ant-btn.ant-btn-primary:enabled:not(
+			.ant-btn-dangerous,
+			.ant-btn-background-ghost,
+			[aria-disabled='true']
+		):hover {
+		opacity: 0.85;
+	}
+
+	:root:not([data-platform='apple'])
+		.ant-btn.ant-btn-primary:enabled:not(
+			.ant-btn-dangerous,
+			.ant-btn-background-ghost,
+			[aria-disabled='true']
+		):hover {
+		background-color: color-mix(in srgb, var(--ios-accent) 85%, white);
+	}
+}
+
+:root[data-platform='apple']
+	.ant-btn.ant-btn-primary:enabled:not(
+		.ant-btn-dangerous,
+		.ant-btn-background-ghost,
+		[aria-disabled='true']
+	):active {
+	opacity: 0.65;
+}
+
+:root:not([data-platform='apple'])
+	.ant-btn.ant-btn-primary:enabled:not(
+		.ant-btn-dangerous,
+		.ant-btn-background-ghost,
+		[aria-disabled='true']
+	):active {
+	background-color: color-mix(in srgb, var(--ios-accent) 75%, white);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ant-btn.ant-btn-primary:not(.ant-btn-dangerous, .ant-btn-background-ghost) {
+		transition: none;
+	}
+}
+
+/* Typography.png; Cell.png */
+.content h1 {
+	font-size: var(--kit-title);
+	letter-spacing: normal;
+}
+
+.content h2 {
+	font-size: var(--kit-section-title);
+}
+
+.compact-list.compact-list {
+	border-color: var(--kit-outline);
+	border-radius: var(--kit-control-radius);
+	box-shadow: none;
+}
+
+.compact-row.compact-row {
+	padding-inline: 16px;
+}
+
+.compact-row-main > strong {
+	font-size: var(--kit-body);
+	font-weight: 400;
+}
+
+.compact-row-description {
+	font-size: var(--kit-subhead);
+}
+
+/* Card.png, Badge.png, Banner.png */
+.application :is(.settings-card, .report-metrics, .object-panel, .overview-hero, .daily-earnings) {
+	background: var(--kit-card);
+}
+
+.ant-tag {
+	border-radius: 999px;
+}
+
+.ant-alert.ant-alert-info {
+	border-color: var(--kit-outline);
+	background: var(--kit-quaternary);
+}
+
+/* List.png, Icon Button.png */
+:root[data-platform='apple']
+	:is(.application, .ant-modal)
+	:is(.ant-input, .ant-input-affix-wrapper):not(
+		.ant-input-status-error,
+		.ant-input-affix-wrapper-status-error
+	) {
+	border-color: transparent;
+}
+
+:root[data-platform='apple']
+	:is(.application, .ant-modal)
+	:is(.ant-input, .ant-input-affix-wrapper):is(:focus, :focus-within) {
+	border-color: var(--ios-accent);
+}
+
+.plain-icon:enabled:is(:hover, :focus-visible) {
+	background: var(--kit-secondary-fill);
+}
+
+/* Modal.png · grabber and centered Apple sheet heading */
+.ant-modal .ant-modal-content::before {
+	content: '';
+	position: absolute;
+	inset-block-start: 8px;
+	inset-inline-start: calc(50% - 18px);
+	width: 36px;
+	height: 4px;
+	border-radius: 4px;
+	background: var(--kit-drag-indicator);
+	pointer-events: none;
+}
+
+:root[data-platform='apple'] .ant-modal:not(.ant-modal-confirm) .ant-modal-title {
+	padding-inline: 44px;
+	text-align: center;
+}
+
+:root[data-platform='apple'] .ant-modal .ant-modal-close {
+	background: var(--kit-tertiary);
+	border-radius: 50%;
+}
+
+/* Tab Bar.png · selected icon on a pill outside Apple platforms */
+@media (max-width: 959px) {
+	.application > .bottom-nav {
+		background: var(--tg-theme-bottom-bar-bg-color, var(--ios-surface));
+		box-shadow: none;
+	}
+
+	.application > .bottom-nav > button {
+		position: relative;
+		color: var(--kit-secondary-hint);
+	}
+
+	.application > .bottom-nav > button.active {
+		color: var(--ios-accent);
+	}
+
+	.application > .bottom-nav > button > svg {
+		position: relative;
+	}
+
+	:root:not([data-platform='apple']) .application > .bottom-nav > button.active::before {
+		content: '';
+		position: absolute;
+		inset-block-start: 0;
+		left: 50%;
+		transform: translateX(-50%);
+		width: min(64px, 94%);
+		height: 28px;
+		border-radius: 20px;
+		background: var(--kit-secondary-fill);
+	}
+}
+
+/* Cell/Right.png · switch */
+:root[data-platform='apple'] .notification-switch-track {
+	flex-basis: 51px;
+	width: 51px;
+	height: 31px;
+	padding: 2px;
+	background: var(--kit-page);
+}
+
+:root[data-platform='apple'] .notification-switch-track::after {
+	width: 27px;
+	height: 27px;
+}
+
+:root[data-platform='apple']
+	.notification-schedule-switch[aria-checked='true']
+	.notification-switch-track {
+	background: var(--kit-accent);
+}
+
+:root[data-platform='apple']
+	.notification-schedule-switch[aria-checked='true']
+	.notification-switch-track::after {
+	transform: translateX(20px);
+}

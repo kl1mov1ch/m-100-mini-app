@@ -112,11 +112,11 @@
 	gap: 0;
 	border: 1px solid var(--ios-separator);
 	border-radius: 16px;
-	background: white;
+	background: var(--ios-surface);
 	overflow: hidden;
 }
 .report-metrics > div {
-	background: white !important;
+	background: var(--ios-surface) !important;
 	border: 0 !important;
 	border-radius: 0;
 	padding: 14px;
@@ -232,7 +232,7 @@
 		max-width: 100% !important;
 		width: 100% !important;
 		padding-bottom: var(--app-safe-bottom, 0px);
-		background: white;
+		background: var(--ios-surface);
 		border-radius: 20px 20px 0 0;
 		box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.125);
 	}

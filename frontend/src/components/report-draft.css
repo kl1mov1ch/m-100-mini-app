@@ -1,5 +1,5 @@
 .quick-report-composer {
-	background: white;
+	background: var(--ios-surface);
 	border: 1px solid var(--ios-separator);
 	border-radius: 20px;
 	padding: 18px;

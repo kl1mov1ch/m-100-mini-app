@@ -1,6 +1,7 @@
-import { App, Button, Input, Segmented, Select } from 'antd';
-import { ChevronDown, Send } from 'lucide-react';
-import { type ClipboardEvent, useEffect, useState } from 'react';
+import { sortSearchOptions } from '../lib/search';
+import { App, Button, Input, Modal, Segmented, Select } from 'antd';
+import { ChevronDown, Clock3, Send } from 'lucide-react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import dayjs from '../lib/date';
 import { request } from '../lib/api';
 import type { WorkspaceView } from '../App';
@@ -45,10 +46,149 @@ function deliveryStatus(status: string) {
 	return 'Не доставлено';
 }
 
-function scheduleTime(hours: string, minutes: string) {
-	if (![hours, minutes].every((value) => /^\d{1,2}$/.test(value))) return null;
-	if (Number(hours) > 23 || Number(minutes) > 59) return null;
-	return hours.padStart(2, '0') + ':' + minutes.padStart(2, '0');
+const twoDigits = (value: number) => String(value).padStart(2, '0');
+
+function TimeWheel({
+	label,
+	count,
+	initial,
+	current,
+	ready,
+	onChange,
+}: {
+	label: string;
+	count: number;
+	initial: number;
+	current: number;
+	ready: boolean;
+	onChange: (value: number) => void;
+}) {
+	const wheel = useRef<HTMLDivElement>(null);
+	const move = (value: number) => {
+		const node = wheel.current;
+		if (!node) return;
+		const next = Math.max(0, Math.min(count - 1, value));
+		node.scrollTop = next * (node.children[0] as HTMLElement).offsetHeight;
+		onChange(next);
+	};
+	useLayoutEffect(() => {
+		if (ready) move(initial);
+	}, [initial, ready]);
+	return (
+		<div className="notification-wheel">
+			<span>{label}</span>
+			<div
+				ref={wheel}
+				className="notification-wheel-options"
+				aria-hidden={!ready}
+				role="spinbutton"
+				aria-label={label}
+				aria-valuemin={0}
+				aria-valuemax={count - 1}
+				aria-valuenow={current}
+				tabIndex={ready ? 0 : -1}
+				onScroll={(event) => {
+					const node = event.currentTarget;
+					const height = (node.children[0] as HTMLElement).offsetHeight;
+					if (height)
+						onChange(Math.max(0, Math.min(count - 1, Math.round(node.scrollTop / height))));
+				}}
+				onKeyDown={(event) => {
+					const values: Record<string, number> = {
+						ArrowUp: current - 1,
+						ArrowDown: current + 1,
+						Home: 0,
+						End: count - 1,
+					};
+					if (!Object.hasOwn(values, event.key)) return;
+					event.preventDefault();
+					move(values[event.key]);
+				}}
+			>
+				{Array.from({ length: count }, (_, value) => (
+					<button
+						type="button"
+						tabIndex={-1}
+						key={value}
+						data-current={current === value}
+						onClick={() => move(value)}
+					>
+						{twoDigits(value)}
+					</button>
+				))}
+			</div>
+		</div>
+	);
+}
+
+function ScheduleTime({ value, onChange }: { value: string; onChange: (time: string) => void }) {
+	const [open, setOpen] = useState(false);
+	const [ready, setReady] = useState(false);
+	const [hours, minutes] = value.split(':').map(Number);
+	const [hour, setHour] = useState(hours);
+	const [minute, setMinute] = useState(minutes);
+	return (
+		<>
+			<button
+				className="notification-time-trigger"
+				type="button"
+				aria-haspopup="dialog"
+				onClick={() => {
+					setHour(hours);
+					setMinute(minutes);
+					setReady(false);
+					setOpen(true);
+				}}
+			>
+				<Clock3 size={17} aria-hidden />
+				<span>Время по Минску</span>
+				<strong>{value}</strong>
+			</button>
+			<Modal
+				className="notification-time-modal"
+				title="Время отправки"
+				open={open}
+				afterOpenChange={setReady}
+				destroyOnHidden
+				onCancel={() => setOpen(false)}
+				footer={
+					<Button
+						type="primary"
+						disabled={!ready}
+						onClick={() => {
+							onChange(twoDigits(hour) + ':' + twoDigits(minute));
+							setOpen(false);
+						}}
+					>
+						Выбрать время
+					</Button>
+				}
+			>
+				<div className="notification-wheel-grid">
+					{open && (
+						<>
+							<TimeWheel
+								label="Часы"
+								count={24}
+								initial={hours}
+								current={hour}
+								ready={ready}
+								onChange={setHour}
+							/>
+							<TimeWheel
+								label="Минуты"
+								count={60}
+								initial={minutes}
+								current={minute}
+								ready={ready}
+								onChange={setMinute}
+							/>
+						</>
+					)}
+				</div>
+			</Modal>
+		</>
+	);
 }
 
 function DeliveryHistory({ deliveries }: { deliveries: Delivery[] }) {
@@ -130,20 +270,6 @@ export function RemindersPage({ workspace }: { workspace: WorkspaceView }) {
 	if (!config || !data) return <div role="status">Загружаем уведомления…</div>;
 
 	const update = (patch: Partial<ReminderConfig>) => setConfig({ ...config, ...patch });
-	const [hours = '', minutes = ''] = config.time.split(':');
-	const time = scheduleTime(hours, minutes);
-	const updateTime = (part: 'hours' | 'minutes', value: string) => {
-		const digits = value.replace(/\D/g, '').slice(0, 2);
-		update({ time: part === 'hours' ? digits + ':' + minutes : hours + ':' + digits });
-	};
-	const pasteTime = (event: ClipboardEvent<HTMLInputElement>) => {
-		const match = /^(\d{1,2}):(\d{1,2})$/.exec(event.clipboardData.getData('text').trim());
-		if (!match) return;
-		event.preventDefault();
-		const pasted = scheduleTime(match[1], match[2]);
-		if (pasted) update({ time: pasted });
-		else message.warning('Укажите время от 00:00 до 23:59');
-	};
 	const selected = new Set(config.recipient_ids);
 	const recipientCount =
 		config.audience === 'missing'
@@ -153,10 +279,9 @@ export function RemindersPage({ workspace }: { workspace: WorkspaceView }) {
 				: data.users.filter((user) => selected.has(user.telegram_id)).length;
 	const valid = !!config.text.trim() && (config.audience !== 'selected' || recipientCount > 0);
 	const save = async () => {
-		if (!time) return;
 		setBusy(true);
 		try {
-			await request('/admin/reminders/settings', { ...config, time });
+			await request('/admin/reminders/settings', config);
 			message.success('Расписание сохранено');
 			await load();
 		} catch (error) {
@@ -229,7 +354,8 @@ export function RemindersPage({ workspace }: { workspace: WorkspaceView }) {
 							placeholder="Найти пользователя"
 							mode="multiple"
 							maxTagCount="responsive"
-							optionFilterProp="label"
+							filterOption={false}
+							filterSort={sortSearchOptions}
 							value={config.recipient_ids}
 							onChange={(recipient_ids) => update({ recipient_ids })}
 							options={data.users.map(({ telegram_id, name, role }) => ({
@@ -240,15 +366,16 @@ export function RemindersPage({ workspace }: { workspace: WorkspaceView }) {
 					)}
 					<small>Получателей сейчас · {recipientCount}</small>
 				</div>
-				<label className="notification-field">
-					<span>Текст сообщения</span>
+				<div className="notification-field">
+					<span id="notification-message-label">Текст сообщения</span>
 					<Input.TextArea
+						aria-labelledby="notification-message-label"
 						value={config.text}
 						maxLength={1500}
 						autoSize={{ minRows: 3, maxRows: 8 }}
 						onChange={(event) => update({ text: event.target.value })}
 					/>
-				</label>
+				</div>
 				<div className="notification-actions">
 					<Button
 						icon={<Send size={16} />}
@@ -264,20 +391,20 @@ export function RemindersPage({ workspace }: { workspace: WorkspaceView }) {
 			</section>
 			<section className="settings-card notifications-card">
 				<h2>Расписание</h2>
-				<label className="notification-schedule-switch">
+				<button
+					type="button"
+					role="switch"
+					aria-label="Автоматическая отправка"
+					aria-checked={config.enabled}
+					className="notification-schedule-switch"
+					onClick={() => update({ enabled: !config.enabled })}
+				>
 					<span>
 						<strong>Автоматическая отправка</strong>
 						<small>{config.enabled ? 'Включена' : 'Выключена'}</small>
 					</span>
-					<input
-						type="checkbox"
-						role="switch"
-						aria-label="Автоматическая отправка"
-						checked={config.enabled}
-						onChange={(event) => update({ enabled: event.target.checked })}
-					/>
 					<span className="notification-switch-track" aria-hidden />
-				</label>
+				</button>
 				<div className="notification-schedule-fields">
 					<div className="notification-field">
 						<span>Дни отправки</span>
@@ -300,42 +427,12 @@ export function RemindersPage({ workspace }: { workspace: WorkspaceView }) {
 							))}
 						</div>
 					</div>
-					<fieldset className="notification-field notification-time">
-						<legend>Время по Минску</legend>
-						<div>
-							<Input
-								aria-label="Часы"
-								inputMode="numeric"
-								value={hours}
-								placeholder="ЧЧ"
-								onFocus={(event) => event.target.select()}
-								onPaste={pasteTime}
-								status={time ? undefined : 'error'}
-								onChange={(event) => updateTime('hours', event.target.value)}
-							/>
-							<span aria-hidden>:</span>
-							<Input
-								aria-label="Минуты"
-								inputMode="numeric"
-								value={minutes}
-								placeholder="ММ"
-								onFocus={(event) => event.target.select()}
-								onPaste={pasteTime}
-								status={time ? undefined : 'error'}
-								onChange={(event) => updateTime('minutes', event.target.value)}
-							/>
-						</div>
-						{!time && (
-							<small className="notification-delivery-failed">
-								Укажите время от 00:00 до 23:59
-							</small>
-						)}
-					</fieldset>
+					<ScheduleTime value={config.time} onChange={(time) => update({ time })} />
 				</div>
 				<Button
 					type="primary"
 					loading={busy}
-					disabled={!valid || !config.weekdays.length || !time}
+					disabled={!valid || !config.weekdays.length}
 					onClick={save}
 				>
 					Сохранить расписание

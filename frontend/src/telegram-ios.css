@@ -1,31 +1,41 @@
 :root {
 	color-scheme: light;
 	--ios-font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif;
-	--ios-background: #efeff4;
-	--ios-surface: #ffffff;
-	--ios-fill: #f2f2f7;
-	--ios-separator: #e0e0e6;
-	--ios-label: #18181a;
-	--ios-secondary: #57575c;
-	--ios-tertiary: #68686e;
-	--ios-accent: #0068d7;
-	--ios-accent-fill: #e8f2ff;
-	--ios-success: #187943;
-	--ios-success-fill: #edf8f0;
-	--ios-success-line: #c5e8d1;
+	--ios-background: var(--tg-theme-secondary-bg-color, var(--kit-page));
+	--ios-surface: var(--tg-theme-section-bg-color, var(--tg-theme-bg-color, var(--kit-bg)));
+	--ios-fill: var(--kit-tertiary);
+	--ios-separator: var(--tg-theme-section-separator-color, var(--kit-divider));
+	--ios-label: var(--tg-theme-text-color, var(--kit-text));
+	--ios-secondary: var(--tg-theme-subtitle-text-color, var(--kit-hint));
+	--ios-tertiary: var(--tg-theme-hint-color, var(--kit-hint));
+	--ios-accent: var(
+		--tg-theme-accent-text-color,
+		var(--tg-theme-link-color, var(--kit-accent-text))
+	);
+	--ios-accent-fill: var(--kit-secondary-fill);
+	--ios-success: var(--kit-green);
+	--ios-success-fill: color-mix(in srgb, var(--kit-green) 10%, var(--ios-surface));
+	--ios-success-line: color-mix(in srgb, var(--kit-green) 25%, var(--ios-surface));
 	--ios-warning-text: #805d16;
 	--ios-warning-fill: #fffbf0;
 	--ios-warning-line: #e7d49e;
-	--ios-danger: #bd252d;
-	--ios-danger-fill: #fff0ef;
-	--ios-danger-line: #f2c5c5;
-	--ios-group-radius: 12px;
-	--ios-group-shadow: 0 1px 2px #18181a08, 0 4px 14px #18181a08;
-	--ios-button-shadow: 0 1px 2px #18181a14, 0 3px 8px #18181a12;
-	--ios-primary-button-shadow: 0 1px 2px #00397624, 0 3px 8px #0068d72b;
+	--ios-danger: var(--tg-theme-destructive-text-color, var(--kit-destructive));
+	--ios-danger-fill: var(--kit-destructive-fill);
+	--ios-danger-line: color-mix(in srgb, var(--kit-destructive) 25%, var(--ios-surface));
+	--ios-group-radius: var(--kit-control-radius);
+	--ios-group-shadow: none;
+	--ios-button-shadow: none;
+	--ios-primary-button-shadow: none;
 	font-family: var(--ios-font);
 	color: var(--ios-label);
 	background: var(--ios-background);
+}
+
+:root[data-theme='dark'] {
+	color-scheme: dark;
+	--ios-warning-text: #ffcd68;
+	--ios-warning-fill: #392e1e;
+	--ios-warning-line: #624e2c;
 }
 
 .application {

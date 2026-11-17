@@ -1,6 +1,6 @@
 import { Button, Calendar, Modal } from 'antd';
 import type { Dayjs } from 'dayjs';
-import { CalendarDays, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { TelegramIcon } from './TelegramIcon';
 import { useId, useState } from 'react';
 import dayjs from '../lib/date';
 import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
@@ -65,14 +65,14 @@ export function DatePicker({
 				}}
 			>
 				<span>{value?.format(format) || placeholder}</span>
-				<CalendarDays size={17} aria-hidden />
+				<TelegramIcon name="calendar" size={17} />
 			</Button>
 			{allowClear && value && (
 				<Button
 					type="text"
 					className="date-control-clear"
 					aria-label={'Очистить: ' + label}
-					icon={<X size={16} />}
+					icon={<TelegramIcon name="close" size={16} />}
 					onClick={() => choose(null)}
 				/>
 			)}
@@ -94,7 +94,7 @@ export function DatePicker({
 								<Button
 									type="text"
 									aria-label="Назад"
-									icon={<ChevronLeft size={20} />}
+									icon={<TelegramIcon name="chevron-left" size={20} />}
 									onClick={() => move(-1)}
 								/>
 								<Button type="text" onClick={() => setMode(mode === 'month' ? 'year' : 'month')}>
@@ -103,7 +103,7 @@ export function DatePicker({
 								<Button
 									type="text"
 									aria-label="Вперёд"
-									icon={<ChevronRight size={20} />}
+									icon={<TelegramIcon name="chevron-right" size={20} />}
 									onClick={() => move(1)}
 								/>
 							</div>

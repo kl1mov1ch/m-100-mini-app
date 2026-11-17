@@ -1,5 +1,3 @@
-import { telegramLightBackground } from './telegram-theme';
-
 export async function initializeTelegram(): Promise<void> {
 	if (!location.hash.includes('tgWebAppData=') || window.Telegram?.WebApp) return;
 	await new Promise<void>((resolve, reject) => {
@@ -20,6 +18,12 @@ export async function initializeTelegram(): Promise<void> {
 
 export function configureTelegram(): void {
 	const app = window.Telegram?.WebApp;
+	const root = document.documentElement;
+	const apple =
+		app?.initData && app.platform
+			? /^(ios|macos)$/.test(app.platform)
+			: /iPhone|iPad|Macintosh/.test(navigator.userAgent);
+	root.dataset.platform = apple ? 'apple' : 'other';
 	if (!app?.initData) return;
 	document.documentElement.dataset.telegram = 'true';
 	const updateViewport = () => {
@@ -37,11 +41,22 @@ export function configureTelegram(): void {
 		app.onEvent('safeAreaChanged', updateViewport);
 		app.onEvent('contentSafeAreaChanged', updateViewport);
 	}
-	if (app.isVersionAtLeast('6.1')) {
-		app.setHeaderColor('#ffffff');
-		app.setBackgroundColor(telegramLightBackground);
-	}
-	if (app.isVersionAtLeast('7.10')) app.setBottomBarColor?.('#ffffff');
+	const updateTheme = () => {
+		const dark = app.colorScheme === 'dark';
+		document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+		const colors = app.themeParams;
+		const tokens = getComputedStyle(root);
+		const surface = colors?.bg_color ?? tokens.getPropertyValue('--kit-bg').trim();
+		const background = colors?.secondary_bg_color ?? tokens.getPropertyValue('--kit-page').trim();
+		if (app.isVersionAtLeast('6.1')) {
+			app.setHeaderColor(colors?.header_bg_color ?? surface);
+			app.setBackgroundColor(background);
+		}
+		if (app.isVersionAtLeast('7.10'))
+			app.setBottomBarColor?.(colors?.bottom_bar_bg_color ?? surface);
+	};
+	updateTheme();
+	app.onEvent('themeChanged', updateTheme);
 	app.expand();
 }
 

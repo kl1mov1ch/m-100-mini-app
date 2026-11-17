@@ -36,6 +36,35 @@ def create(client, ident="local-admin", sample=True, name="Объект"):
     return r.json()["id"]
 
 
+def test_admin_can_see_assigned_and_recently_open_projects(client, monkeypatch):
+    from backend.api import accounts
+
+    grant(client, "1001")
+    grant(client, "1002")
+    assigned = create(client, "1001", name="Первый")
+    current = create(client, "1001", name="Второй")
+    foreign = create(client, "1002", name="Чужой")
+    headers = {"X-Preview-User": "1001"}
+    endpoint = "/api/session/open-project"
+    assert client.post(endpoint, json={"project_id": foreign}, headers=headers).status_code == 403
+    monkeypatch.setattr(accounts, "time", lambda: 1000)
+    assert client.post(endpoint, json={"project_id": current}, headers=headers).status_code == 200
+    assert client.get("/api/admin/users", headers=headers).status_code == 403
+
+    def user_info():
+        return next(
+            item for item in client.get("/api/admin/users").json() if item["telegram_id"] == "1001"
+        )
+
+    assert user_info()["open_project"] == {"id": current, "name": "Второй"}
+    assert {project["id"] for project in user_info()["assigned_projects"]} == {assigned, current}
+    monkeypatch.setattr(accounts, "time", lambda: 1000 + accounts.OPEN_PROJECT_TTL)
+    assert user_info()["open_project"] is None
+    assert client.post(endpoint, json={"project_id": assigned}, headers=headers).status_code == 200
+    assert client.post(endpoint, json={"project_id": None}, headers=headers).status_code == 200
+    assert user_info()["open_project"] is None
+
+
 def test_master_isolation_including_uploads(client):
     grant(client, "1001", "Мастер 1")
     grant(client, "1002", "Мастер 2")
@@ -105,7 +134,10 @@ def test_project_and_work_notes_preserve_scope_and_skip_duplicate_sync(client, m
     assert client.post(note_url, json=note, headers=other).status_code == 403
     assert client.post(note_url, json=note, headers=headers).json()["note"] == note["note"]
     assert client.post(note_url, json=note, headers=headers).status_code == 409
-    assert client.get("/api/bootstrap", headers=headers).json()["config"]["object_note"] == note["note"]
+    assert (
+        client.get("/api/bootstrap", headers=headers).json()["config"]["object_note"]
+        == note["note"]
+    )
     assert client.get("/api/documents", headers=headers).status_code == 404
 
     day = service.today()

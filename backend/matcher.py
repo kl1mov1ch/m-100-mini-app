@@ -482,13 +482,12 @@ def make_line(raw, quantity, pool):
     }
 
 
+def search_dimensions(text):
+    return text.replace("три на два с половиной", "3х2.5").replace("шестерка", "6-ка")
+
+
 def ranked(text, catalogue):
-    q = norm(text)
-    q = (
-        q.replace("три на два с половиной", "3х2.5")
-        .replace("шестёрка", "6-ка")
-        .replace("шестерка", "6-ка")
-    )
+    q = search_dimensions(norm(text))
     selected = {item["id"] for item in candidates(q, catalogue)}
     semantic = {row[3]["id"]: 15 * row[0] for row in suggestions(q, catalogue)}
     cat = category(q)
@@ -505,6 +504,52 @@ def ranked(text, catalogue):
         )
 
     return sorted(size_pool(q, catalogue), key=score, reverse=True)
+
+
+_CYRILLIC = "абвгдежзийклмнопрстуфхцчшщъыьэюя"
+_LATIN = "a b v g d e zh z i i k l m n o p r s t u f kh ts ch sh shch _ y _ e yu ya"
+_TRANSLIT = str.maketrans(dict(zip(_CYRILLIC, (x.replace("_", "") for x in _LATIN.split()))))
+_LAYOUT = str.maketrans("qwertyuiop[]asdfghjkl;'zxcvbnm,.", "йцукенгшщзхъфывапролджэячсмитьбю")
+
+
+def search_key(value):
+    return norm(value).translate(_TRANSLIT).replace("kh", "h").replace("j", "i")
+
+
+def loose_rank(text, catalogue):
+    original = text.strip().lower()
+    variants = (search_key(original), search_key(original.translate(_LAYOUT)))
+    terms = [re.findall(r"[a-z0-9]+(?:\.\d+)?", variant) for variant in variants]
+    compatible = size_pool(search_dimensions(norm(text)), catalogue)
+    known = [item["id"] for item in ranked(text, catalogue)]
+    priority = {ident: index for index, ident in enumerate(known)}
+
+    def rank(item):
+        label = search_key(
+            " ".join(str(item.get(key) or "") for key in ("name", "section", "unit"))
+        )
+        values = re.findall(r"[a-z0-9]+(?:\.\d+)?", label)
+        digit_values = set(re.findall(NUMBER, label))
+        scores = []
+        for query in terms:
+            score = 0
+            for token in query:
+                if token in values or token in digit_values:
+                    score += 12
+                elif token[0].isdigit():
+                    score -= 14
+                elif any(value.startswith(token) for value in values):
+                    score += 9
+                elif any(token in value for value in values):
+                    score += 6
+                elif len(token) > 2 and any(
+                    SequenceMatcher(None, token, value).ratio() >= 0.75 for value in values
+                ):
+                    score += 4
+            scores.append(score)
+        return max(scores, default=0), -priority.get(item["id"], len(catalogue))
+
+    return sorted(compatible or catalogue, key=rank, reverse=True)
 
 
 def provider(settings=None):
@@ -559,13 +604,18 @@ async def complete(system, text, settings=None):
 
 
 async def search(text, catalogue, settings=None, local_only=False):
-    fallback = ranked(text, catalogue)[:8]
+    fallback = loose_rank(text, catalogue)[:8]
+    requested_sizes = technical_sizes(search_dimensions(norm(text)))
     result = {
         "engine": "local",
         "suggestions": [
             {
                 "item_id": p["id"],
-                "reason": "Близкий вариант по словам и параметрам. Проверьте точное название.",
+                "reason": (
+                    "Размер отличается. Сверьте параметры по смете."
+                    if requested_sizes and not requested_sizes <= technical_sizes(p["name"])
+                    else "Вариант для проверки. Сверьте название и параметры."
+                ),
             }
             for p in fallback
         ],

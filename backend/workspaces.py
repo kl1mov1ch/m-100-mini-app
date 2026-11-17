@@ -215,7 +215,8 @@ def shared():
         return {
             r["key"]: r["value"]
             for r in db.execute(
-                "SELECT * FROM shared_settings WHERE key NOT LIKE 'profile_disk_webhook:%'"
+                "SELECT * FROM shared_settings WHERE key NOT LIKE 'profile_disk_webhook:%' "
+                "AND key NOT LIKE 'open_project:%'"
             )
         }
 
