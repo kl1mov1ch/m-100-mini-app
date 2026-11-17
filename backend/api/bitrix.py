@@ -13,6 +13,7 @@ from .. import (
     store,
     tables,
     workbook_revision,
+    workspaces,
 )
 from ..bitrix_refresh import freshness, refresh_project, review_issues
 from ..clock import now
@@ -116,6 +117,73 @@ async def journal(request: Request):
 @router.post("/api/bitrix/refresh")
 async def refresh(request: Request, force: bool = False):
     return await refresh_project(request.state.project, max_age=15 if force else 90)
+
+
+def table_notice(db, project, user):
+    if store.setting(db, "source") != "bitrix":
+        return None
+    status = freshness(db)
+    issues = list(review_issues(db) or []) if status and status["status"] == "review" else []
+    conflict = (
+        conflict_state(db, issues)[0]
+        if issues and user["role"] == "master" and user["telegram_id"] == project["owner_id"]
+        else None
+    )
+    if status and status["status"] == "unavailable":
+        issues.append({"kind": "connection", "title": "Битрикс24 не ответил"})
+    for row in db.execute("SELECT date FROM reports WHERE sync_status='error' ORDER BY date DESC"):
+        issues.append(
+            {
+                "kind": "sync",
+                "title": "Отчёт не отправился в Битрикс24",
+                "date": row["date"],
+            }
+        )
+    if issues:
+        return {
+            "project_id": project["id"],
+            "project_name": project["name"],
+            "issues": issues,
+            "version": conflict["version"] if conflict else None,
+        }
+    return None
+
+
+@router.get("/api/profile/table-notifications")
+def table_notifications(request: Request):
+    user = request.state.user
+    notices = []
+    for project in workspaces.visible(user):
+        with store.connect(project["db_path"]) as db:
+            notice = table_notice(db, project, user)
+        if notice:
+            notices.append(notice)
+    return notices
+
+
+class TableNoticeRefresh(BaseModel):
+    version: str | None = Field(default=None, max_length=64)
+
+
+@router.post("/api/profile/table-notifications/{project_id}/refresh")
+async def refresh_table_notice(request: Request, project_id: str, body: TableNoticeRefresh):
+    user = request.state.user
+    project = workspaces.project(user, project_id)
+    if body.version and (user["role"] != "master" or user["telegram_id"] != project["owner_id"]):
+        raise HTTPException(403, "Применить данные может мастер объекта.")
+    async with workspaces.mutation_lock(project_id):
+        if not workspaces.exists(project_id):
+            raise HTTPException(404, "Объект удалён")
+        checked = await refresh_project(project, max_age=0)
+        if not checked or checked["status"] == "unavailable":
+            raise HTTPException(409, "Таблица недоступна. Попробуйте обновить позже.")
+        if body.version and checked["status"] == "review":
+            await resolve(project, user, ConflictResolution(direction="app", version=body.version))
+            verified = await refresh_project(project, max_age=0)
+            if not verified or verified["status"] == "unavailable":
+                raise HTTPException(409, "Данные загружены. Повторная проверка таблицы недоступна.")
+        with store.connect(project["db_path"]) as db:
+            return table_notice(db, project, user)
 
 
 @router.post("/api/bitrix/consult")

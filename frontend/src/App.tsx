@@ -1,4 +1,4 @@
-import { App as AntApp, Button, ConfigProvider, Drawer, Input, Modal, Select } from 'antd';
+import { App as AntApp, Badge, Button, ConfigProvider, Drawer, Input, Modal, Select } from 'antd';
 import ruRU from 'antd/locale/ru_RU';
 import 'dayjs/locale/ru';
 import { Building2, History, Plus, Settings2 } from 'lucide-react';
@@ -21,6 +21,7 @@ import { ObjectsPage } from './pages/ObjectsPage';
 import { ObjectPage } from './pages/ObjectPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { useTableNotifications } from './pages/TableNotifications';
 import { TeamPage } from './pages/TeamPage';
 import { RemindersPage } from './pages/RemindersPage';
 import './reports.css';
@@ -94,6 +95,7 @@ export function WorkspaceApp() {
 	} = controller;
 	useStartupScreen(Boolean(failure || (session && (!session.projects.length || data))));
 	const notifications = useTelegramNotifications(session?.user.telegram_id);
+	const tableInbox = useTableNotifications(session?.user.telegram_id, session?.user.role);
 	useAppRelease(
 		!session ||
 			busy ||
@@ -145,7 +147,13 @@ export function WorkspaceApp() {
 						))}
 					{page === 'history' && <ReportsPage workspace={workspace} />}
 					{page === 'changes' && <ChangesPage workspace={workspace} />}
-					{page === 'more' && <SettingsPage workspace={workspace} notifications={notifications} />}
+					{page === 'more' && (
+						<SettingsPage
+							workspace={workspace}
+							notifications={notifications}
+							tableInbox={tableInbox}
+						/>
+					)}
 					{page === 'team' && <TeamPage workspace={workspace} />}
 					{page === 'reminders' && <RemindersPage workspace={workspace} />}
 				</main>
@@ -176,7 +184,13 @@ export function WorkspaceApp() {
 								: ''
 						}
 					>
-						{n.icon}
+						{n.id === 'more' ? (
+							<Badge count={tableInbox.count} size="small" offset={[3, 0]}>
+								{n.icon}
+							</Badge>
+						) : (
+							n.icon
+						)}
 						<span>{n.label}</span>
 					</button>
 				))}

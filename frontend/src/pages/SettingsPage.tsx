@@ -8,12 +8,15 @@ import { useId } from 'react';
 import type { useTelegramNotifications } from '../hooks/useTelegramNotifications';
 
 import type { WorkspaceView } from '../App';
+import { TableNotifications, type useTableNotifications } from './TableNotifications';
 export function SettingsPage({
 	workspace,
 	notifications,
+	tableInbox,
 }: {
 	workspace: WorkspaceView;
 	notifications: ReturnType<typeof useTelegramNotifications>;
+	tableInbox: ReturnType<typeof useTableNotifications>;
 }) {
 	const aiKeyFieldId = useId();
 	const {
@@ -34,6 +37,7 @@ export function SettingsPage({
 				<h1>Настройки</h1>
 			</div>
 			<ProfileCard workspace={workspace} />
+			<TableNotifications key={session.user.role} workspace={workspace} inbox={tableInbox} />
 			{notifications.supported && !notifications.granted && (
 				<button
 					className="settings-menu"

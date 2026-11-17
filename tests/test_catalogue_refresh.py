@@ -17,6 +17,30 @@ from backend.table_editing import DailyColumnChange, apply_changes
 from backend.workbook_journal import is_journal
 
 
+def test_admin_can_open_source_excel_without_exposing_webhook(client, monkeypatch):
+    grant(client, "9001")
+    grant(client, "9002")
+    ident = create(client, "9001", sample=False)
+    project = workspaces.project(workspaces.user("9001"), ident)
+    with store.connect(project["db_path"]) as db:
+        store.set_setting(db, "source", "bitrix")
+        store.set_setting(db, "file_id", "123")
+        store.set_setting(db, "webhook", "https://company.bitrix24.by/rest/1/private/")
+
+    original = "https://company.bitrix24.by/company/personal/user/1/disk/file/estimate.xlsx"
+
+    async def metadata(webhook, method, payload):
+        assert method == "disk.file.get"
+        assert payload == {"id": 123}
+        return {"ID": "123", "NAME": "estimate.xlsx", "DETAIL_URL": original}
+
+    monkeypatch.setattr(bitrix, "rest", metadata)
+    endpoint = "/api/object/table/source"
+    headers = {"X-Project-Id": ident}
+    assert client.get(endpoint, headers=headers).json() == {"url": original}
+    assert client.get(endpoint, headers={**headers, "X-Preview-User": "9002"}).status_code == 403
+
+
 def test_original_sheet_review_rebuilds_working_sheets_after_confirmation(client, monkeypatch):
     grant(client, "9001")
     ident = create(client, "9001", sample=False)
@@ -386,12 +410,25 @@ def test_resolve_conflict_in_either_direction_and_reject_changed_snapshot(client
     edit_remote(None)
     conflict = review()
     assert conflict["deleted"] == 1
+    inbox = "/api/profile/table-notifications"
+    notices = client.get(inbox, headers=headers).json()
+    assert len(notices) == 1 and notices[0]["project_id"] == ident
+    assert any(issue["kind"] == "report" and issue["remote"] == 0 for issue in notices[0]["issues"])
+    admin_notice = next(
+        notice for notice in client.get(inbox).json() if notice["project_id"] == ident
+    )
+    assert admin_notice["version"] is None
+    refresh_notice = f"{inbox}/{ident}/refresh"
+    assert client.post(refresh_notice, json={"version": conflict["version"]}).status_code == 403
     result = client.post(
-        "/api/bitrix/reconcile",
+        refresh_notice,
         headers=headers,
-        json={"direction": "app", "version": conflict["version"]},
+        json={"version": notices[0]["version"]},
     )
     assert result.is_success, result.text
+    assert all(
+        notice["project_id"] != ident for notice in client.get(inbox, headers=headers).json()
+    )
     saved = client.get("/api/report/" + today(), headers=headers).json()
     assert saved["lines"] == [] and len(writes) == 1
 

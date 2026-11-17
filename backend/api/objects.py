@@ -5,7 +5,7 @@ import httpx
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
-from .. import catalogue, matcher, object_plan, store, workspaces
+from .. import bitrix, bitrix_disk, catalogue, matcher, object_plan, store, workspaces
 from ..bitrix_refresh import freshness
 from ..clock import now
 from ..imports import remove_project_imports
@@ -62,6 +62,25 @@ def management(request: Request):
                 "SELECT count(*) FROM reports WHERE sync_status IN ('pending','error')"
             ).fetchone()[0],
         }
+
+
+@router.get("/table/source")
+async def table_source():
+    with store.connect() as db:
+        if store.setting(db, "source") != "bitrix":
+            return {"url": ""}
+        public_url = store.setting(db, "public_url")
+        webhook = store.setting(db, "webhook")
+        file_id = int(store.setting(db, "file_id", "0"))
+    try:
+        if public_url:
+            return {"url": bitrix.validate_public(public_url)}
+        if not webhook or not file_id:
+            return {"url": ""}
+        meta = await bitrix.rest(webhook, "disk.file.get", {"id": file_id})
+        return {"url": bitrix_disk.public_file(meta, webhook)["url"]}
+    except (httpx.HTTPError, KeyError, TypeError, ValueError) as error:
+        raise HTTPException(502, "Не удалось получить ссылку на исходный Excel.") from error
 
 
 class DeleteObject(BaseModel):

@@ -1,9 +1,13 @@
-import { Empty, Spin } from 'antd';
+import { Button, Empty, Spin } from 'antd';
+import { ExternalLink } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { useReportDateSwipe } from '../hooks/useReportDateSwipe';
 import { DatePicker } from './ResponsiveDatePicker';
 import { reportStatus, Status } from './SyncStatus';
 import { Money, nf, unit } from '../lib/format';
 import { estimateBalance } from '../lib/position-volume';
+import { openExternalLink } from '../lib/telegram';
+import { request } from '../lib/api';
 import { CompactWorkEditor } from './CompactRow';
 import { WorkEstimate, WorkOverruns } from './WorkEstimate';
 import dayjs from '../lib/date';
@@ -12,8 +16,31 @@ import type { WorkspaceView } from '../App';
 export function AdminDailyReport({ workspace }: { workspace: WorkspaceView }) {
 	const dateSwipe = useReportDateSwipe(workspace);
 	const { data, active, day, changeDay, lines, byId, amount, report } = workspace;
+	const project =
+		active && data?.project?.id === active.id && data.config.source === 'bitrix'
+			? active.id
+			: undefined;
+	const config = project ? data?.config : undefined;
+	const knownUrl = [config?.public_url, config?.detail_url].find((url) =>
+		url?.startsWith('https://'),
+	);
+	const [source, setSource] = useState<{ project: string; url: string }>();
+	useEffect(() => {
+		setSource(undefined);
+		if (!project || knownUrl) return;
+		const controller = new AbortController();
+		void request<{ url: string }>('/object/table/source', undefined, project, controller.signal)
+			.then(({ url }) => {
+				if (!controller.signal.aborted) setSource({ project, url });
+			})
+			.catch(() => {
+				if (!controller.signal.aborted) setSource({ project, url: '' });
+			});
+		return () => controller.abort();
+	}, [project, knownUrl]);
 	if (!active) return <Empty description="Выберите объект" image={Empty.PRESENTED_IMAGE_SIMPLE} />;
-	if (!data) return <Spin />;
+	if (!data || data.project?.id !== active.id) return <Spin />;
+	const original = knownUrl || (source?.project === project ? source?.url : undefined);
 	const current = data.history.find((item) => item.date === day);
 	const entries = lines.flatMap((line) => {
 		const position = line.item_id ? byId[line.item_id] : undefined;
@@ -40,6 +67,20 @@ export function AdminDailyReport({ workspace }: { workspace: WorkspaceView }) {
 					onChange={(value) => value && void changeDay(value.format('YYYY-MM-DD'))}
 				/>
 			</div>
+			{data.config.source === 'bitrix' && original && (
+				<Button
+					href={original}
+					onClick={(event) => openExternalLink(event, original)}
+					target="_blank"
+					rel="noopener noreferrer"
+					icon={<ExternalLink size={16} aria-hidden />}
+				>
+					Исходный Excel в Битрикс24
+				</Button>
+			)}
+			{project && source?.project === project && !original && (
+				<p className="table-connection-notice">Ссылка на исходный Excel недоступна.</p>
+			)}
 			{data.config.object_note && <p className="object-note-read">{data.config.object_note}</p>}
 			{report?.day_note && (
 				<section className="object-note-read">
@@ -112,6 +153,11 @@ export function AdminDailyReport({ workspace }: { workspace: WorkspaceView }) {
 								{position && (
 									<p className="position-rate">
 										<Money value={position.rate} /> / {unit(position.unit)}
+									</p>
+								)}
+								{position?.source_sheet && position.source_row > 0 && (
+									<p className="position-rate">
+										{position.source_sheet} · строка {position.source_row}
 									</p>
 								)}
 							</section>

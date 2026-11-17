@@ -1,0 +1,38 @@
+.table-notifications,
+.table-notice-card,
+.table-notice-card ul,
+.table-notice-card li {
+	display: grid;
+	gap: 8px;
+}
+
+.table-notice-card {
+	padding: 12px;
+	border: 1px solid var(--kit-divider);
+	border-radius: var(--kit-control-radius);
+}
+
+.table-notice-card h3,
+.table-notice-card ul {
+	margin: 0;
+}
+
+.table-notice-card ul {
+	padding: 0;
+	list-style: none;
+}
+
+.table-notice-card li {
+	gap: 2px;
+	padding: 8px 0;
+	border-top: 1px solid var(--kit-divider);
+	overflow-wrap: anywhere;
+}
+
+.table-notice-card small {
+	color: var(--kit-hint);
+}
+
+.table-notice-card small:empty {
+	display: none;
+}
