@@ -8,6 +8,7 @@ export function useConfirmWorkRemoval() {
 		remove: () => void,
 	) => {
 		modal.confirm({
+			closable: true,
 			title: 'Убрать работу из отчёта?',
 			icon: null,
 			className: 'action-confirm-sheet',

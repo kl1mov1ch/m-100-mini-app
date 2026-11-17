@@ -39,6 +39,7 @@ export function ProfileWebhooks({ workspace }: { workspace: WorkspaceView }) {
 	};
 	const remove = (item: DiskWebhook) =>
 		modal.confirm({
+			closable: true,
 			className: 'action-confirm-sheet',
 			title: 'Удалить сохранённый вебхук?',
 			icon: null,

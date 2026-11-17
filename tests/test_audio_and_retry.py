@@ -25,6 +25,7 @@ def test_transient_bitrix_error_preserves_report_and_schedules_retry(client, mon
     with store.connect(project["db_path"]) as database:
         store.set_setting(database, "source", "bitrix")
         store.set_setting(database, "webhook", "configured")
+        store.set_setting(database, "file_id", "1")
 
     async def unavailable(*args):
         raise httpx.ConnectError("Temporary network error")

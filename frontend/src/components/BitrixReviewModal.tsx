@@ -130,6 +130,7 @@ export function BitrixReviewModal({
 	const replace = (direction: 'app' | 'table') => {
 		if (!conflicts || saving) return;
 		modal.confirm({
+			closable: true,
 			title: direction === 'app' ? 'Заменить в приложении?' : 'Заменить в таблице?',
 			content:
 				direction === 'app'

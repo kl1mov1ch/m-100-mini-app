@@ -337,14 +337,18 @@ h3 {
 	border-color: var(--ios-accent);
 }
 
-.ant-modal .ant-modal-close,
-.ant-modal .ant-modal-close:is(:hover, :active, :focus-visible) {
+:is(.ant-modal .ant-modal-close, .ant-drawer .ant-drawer-close) {
 	background: transparent;
 	box-shadow: none;
 	border-radius: 8px;
 	color: var(--ios-secondary);
 	width: 44px;
 	height: 44px;
+	min-width: 44px;
+}
+:is(.ant-modal .ant-modal-close, .ant-drawer .ant-drawer-close):focus-visible {
+	outline: 2px solid var(--ios-accent);
+	outline-offset: -3px;
 }
 
 .ant-alert :is(.ant-alert-message, .ant-alert-description),

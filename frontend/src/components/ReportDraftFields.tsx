@@ -1,5 +1,5 @@
 import { Alert, Button, InputNumber, Select } from 'antd';
-import { Trash2, Users } from 'lucide-react';
+import { ChevronRight, Trash2 } from 'lucide-react';
 import type { WorkspaceView } from '../App';
 import { useConfirmWorkRemoval } from '../hooks/useConfirmWorkRemoval';
 import { Money, unit, countLabel, nf } from '../lib/format';
@@ -8,7 +8,38 @@ import { WorkEstimate } from './WorkEstimate';
 import './report-draft.css';
 import { CompactWorkEditor } from './CompactRow';
 
-export function ReportDraftFields({ workspace }: { workspace: WorkspaceView }) {
+const lengthFactors: Record<string, number> = { м: 1, км: 1000, см: 0.01, мм: 0.001 };
+const volumeFormat = new Intl.NumberFormat('ru-BY', { maximumFractionDigits: 9 });
+
+function measureKey(value: string) {
+	const label = unit(value.trim()).toLocaleLowerCase('ru').replace(/\.$/, '');
+	if (/^штук[аи]?$/.test(label)) return 'шт';
+	return label.replace('²', '2').replace('³', '3');
+}
+
+function selectedQuantity(
+	quantity: number | null,
+	source: string | null | undefined,
+	target: string,
+) {
+	if (quantity == null || !source) return quantity;
+	const sourceKey = measureKey(source),
+		targetKey = measureKey(target);
+	if (sourceKey === targetKey) return quantity;
+	const from = lengthFactors[sourceKey],
+		to = lengthFactors[targetKey];
+	if (!from || !to) return null;
+	const converted = Number(((quantity * from) / to).toPrecision(15));
+	return converted > 0 && converted <= 1e8 ? converted : null;
+}
+
+export function ReportDraftFields({
+	workspace,
+	showSubmit = true,
+}: {
+	workspace: WorkspaceView;
+	showSubmit?: boolean;
+}) {
 	const confirmRemoval = useConfirmWorkRemoval();
 	const {
 		parsed,
@@ -18,10 +49,8 @@ export function ReportDraftFields({ workspace }: { workspace: WorkspaceView }) {
 		byId,
 		patchParsedLine,
 		removeParsedLine,
-		parsedCrew,
 		parsedCrewAmbiguous,
-		updateParsedCrew,
-		crew,
+		parsedIncomplete,
 		report,
 		estimateLines,
 		lines,
@@ -35,10 +64,7 @@ export function ReportDraftFields({ workspace }: { workspace: WorkspaceView }) {
 			</div>
 		) : null;
 	}
-	const valid =
-		parsed.length > 0 &&
-		!parsedCrewAmbiguous &&
-		parsed.every((line) => line.item_id && line.quantity && line.quantity > 0);
+	const valid = !parsedCrewAmbiguous && parsedIncomplete === 0;
 	const daily = new Map<string, number>();
 	for (const line of [...lines, ...parsed]) {
 		if (line.item_id)
@@ -47,46 +73,48 @@ export function ReportDraftFields({ workspace }: { workspace: WorkspaceView }) {
 	return (
 		<div className="report-draft-fields">
 			<div className="draft-status">
-				<b>{countLabel(parsed.length, 'работа', 'работы', 'работ')} из сметы</b>
+				<b>{countLabel(parsed.length, 'позиция', 'позиции', 'позиций')} к проверке</b>
+				{parsing ? (
+					<span role="status">Уточняем варианты…</span>
+				) : (
+					parsedIncomplete > 0 && <span>Уточнить: {parsedIncomplete}</span>
+				)}
 			</div>
 			{parseNote && <Alert type="warning" showIcon message={parseNote} />}
-			{parsedCrewAmbiguous && (
-				<Alert type="warning" showIcon message="Уточните количество работников" />
-			)}
-			<label className="draft-crew">
-				<span>
-					<Users size={17} /> Работников
-				</span>
-				<InputNumber
-					aria-label="Работников в распознанном отчёте"
-					min={1}
-					max={1000}
-					precision={0}
-					value={parsedCrew || crew}
-					onChange={updateParsedCrew}
-				/>
-			</label>
 			<div className="compact-list">
 				{parsed.map((line, index) => {
 					const position = line.item_id ? byId[line.item_id] : null;
 					const balance = position
 						? estimateBalance(position, estimateLines[position.id], daily.get(position.id))
 						: null;
-					const candidates = positions.filter((item) => (line.candidates || []).includes(item.id));
+					const candidates = (line.candidates || [])
+						.map((id) => byId[id])
+						.filter((item) => item && !item.hidden && !item.extra);
 					const others = positions.filter(
 						(item) => !candidates.some((candidate) => candidate.id === item.id),
 					);
 					const options = (items: typeof positions) =>
 						items.map((item) => ({ value: item.id, label: `${item.name} · ${unit(item.unit)}` }));
+					const selectPosition = (id: string) => {
+						const next = byId[id];
+						patchParsedLine(index, {
+							item_id: id,
+							reason: '',
+							quantity: selectedQuantity(line.quantity, line.unit, next.unit),
+							unit: next.unit,
+						});
+					};
 					return (
 						<CompactWorkEditor
 							key={(line.raw || line.item_id || 'work') + ':' + index}
 							title={position?.name || line.raw || 'Работа ' + (index + 1)}
+							modalTitle={position ? undefined : 'Выберите работу из сметы'}
+							modalClassName="draft-work-editor"
 							description={
 								<>
 									{line.quantity == null
 										? 'Уточните объём'
-										: nf.format(line.quantity) +
+										: volumeFormat.format(line.quantity) +
 											' ' +
 											unit(position?.unit || line.unit || 'ед.')}{' '}
 									· {position ? 'Из сметы' : 'Выберите позицию'}
@@ -101,11 +129,10 @@ export function ReportDraftFields({ workspace }: { workspace: WorkspaceView }) {
 										: 'Распознано'
 							}
 							attention={!position || !line.quantity || !!balance?.excess}
-							hint="Правки остаются в черновике до подтверждения отчёта."
 						>
 							<section className="draft-work work-detail">
 								<div className="draft-work-heading">
-									<b>{line.raw || `Работа ${index + 1}`}</b>
+									{line.raw && <span>{line.raw}</span>}
 									<Button
 										type="text"
 										size="small"
@@ -123,15 +150,33 @@ export function ReportDraftFields({ workspace }: { workspace: WorkspaceView }) {
 										}
 									/>
 								</div>
+								{!position && line.reason && (
+									<small className="draft-review-hint">{line.reason}</small>
+								)}
+								{!position && candidates.length > 0 && (
+									<div className="draft-suggestions">
+										<strong>Похожие работы</strong>
+										{candidates.slice(0, 3).map((item) => (
+											<button type="button" key={item.id} onClick={() => selectPosition(item.id)}>
+												<span>
+													<b>{item.name}</b>
+													<small>
+														{unit(item.unit)} · <Money value={item.rate} /> / {unit(item.unit)}
+													</small>
+												</span>
+												<ChevronRight size={16} aria-hidden />
+											</button>
+										))}
+									</div>
+								)}
 								<Select
-									virtual={false}
 									classNames={{ popup: { root: 'work-position-options' } }}
 									aria-label={'Позиция сметы для работы ' + (index + 1)}
 									showSearch
 									optionFilterProp="label"
-									placeholder="Выберите вариант из сметы"
+									placeholder="Найти в смете"
 									value={line.item_id || undefined}
-									onChange={(value) => patchParsedLine(index, { item_id: value, reason: '' })}
+									onChange={selectPosition}
 									options={[
 										...(candidates.length
 											? [{ label: 'Подходящие варианты', options: options(candidates) }]
@@ -145,7 +190,7 @@ export function ReportDraftFields({ workspace }: { workspace: WorkspaceView }) {
 										<InputNumber
 											aria-label={'Распознанный объём работы ' + (index + 1)}
 											controls={false}
-											min={0.01}
+											min={0}
 											max={1e8}
 											value={line.quantity}
 											onChange={(value) => patchParsedLine(index, { quantity: value })}
@@ -167,11 +212,6 @@ export function ReportDraftFields({ workspace }: { workspace: WorkspaceView }) {
 										</p>
 									</>
 								)}
-								{!position && (
-									<small className="draft-review-hint">
-										Выберите подходящую работу из вариантов
-									</small>
-								)}
 							</section>
 						</CompactWorkEditor>
 					);
@@ -182,18 +222,20 @@ export function ReportDraftFields({ workspace }: { workspace: WorkspaceView }) {
 					Новые объёмы прибавятся к текущим. Общий итог можно изменить перед отправкой.
 				</p>
 			)}
-			<Button
-				block
-				type="primary"
-				size="large"
-				disabled={
-					!valid || parsing || workspace.audioInput.recording || workspace.audioInput.pending
-				}
-				loading={busy}
-				onClick={confirmParsedReport}
-			>
-				Проверить и отправить
-			</Button>
+			{showSubmit && (
+				<Button
+					block
+					type="primary"
+					size="large"
+					disabled={
+						!valid || parsing || workspace.audioInput.recording || workspace.audioInput.pending
+					}
+					loading={busy}
+					onClick={confirmParsedReport}
+				>
+					Проверить и отправить
+				</Button>
+			)}
 		</div>
 	);
 }

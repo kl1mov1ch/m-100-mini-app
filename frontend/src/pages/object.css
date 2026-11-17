@@ -45,6 +45,46 @@
 	font-size: 12px;
 	color: var(--ios-secondary);
 }
+.page-title > .report-date-actions {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex-shrink: 0;
+}
+.report-note-button.ant-btn {
+	min-height: 42px;
+	padding-inline: 8px;
+	gap: 5px;
+	font-size: 12px;
+}
+.report-note-button[data-filled='true'] {
+	color: var(--ios-accent);
+	border-color: var(--ios-accent);
+}
+@media (max-width: 360px) {
+	.report-date-actions .report-note-button.ant-btn {
+		width: 42px;
+		padding: 0;
+	}
+	.report-date-actions .report-note-button > span:not(.ant-btn-icon) {
+		display: none;
+	}
+}
+.note-actions {
+	display: flex;
+	align-items: center;
+	gap: 5px;
+	flex-wrap: wrap;
+}
+.note-actions .ant-btn {
+	min-height: 40px;
+	box-shadow: none;
+}
+.note-actions .note-restore.ant-btn {
+	min-height: 32px;
+	padding-inline: 5px;
+	color: var(--ios-secondary);
+}
 .object-note-read {
 	margin: 0;
 	padding: 9px 11px;

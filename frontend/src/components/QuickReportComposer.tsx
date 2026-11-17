@@ -3,6 +3,7 @@ import { Mic, Square } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { WorkspaceView } from '../App';
 import { ReportDraftFields } from './ReportDraftFields';
+import { DailyEarnings } from './DailyEarnings';
 import { shortName, unit } from '../lib/format';
 
 export function QuickReportComposer({
@@ -81,6 +82,9 @@ export function QuickReportComposer({
 						}}
 					/>
 				</div>
+			)}
+			{!inline && !disabled && workspace.data?.project?.id === project && (
+				<DailyEarnings workspace={workspace} />
 			)}
 			<Input.TextArea
 				aria-label="Сообщение о выполненных работах"

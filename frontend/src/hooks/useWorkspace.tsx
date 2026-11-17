@@ -62,7 +62,8 @@ export function useWorkspace() {
 		[estimateReport, setEstimateReport] = useState<Report | null>(null),
 		[lines, setLines] = useState<Line[]>([]),
 		[crew, setCrew] = useState(1),
-		[reportText, setReportText] = useState('');
+		[reportText, setReportText] = useState(''),
+		[dayNote, setDayNote] = useState('');
 	const [workPicker, setWorkPicker] = useState(false),
 		[replaceIndex, setReplaceIndex] = useState<number | null>(null),
 		[textOpen, setTextOpen] = useState(false),
@@ -70,7 +71,6 @@ export function useWorkspace() {
 		[parsed, setParsed] = useState<Line[]>([]),
 		[parsing, setParsing] = useState(false),
 		[parseNote, setParseNote] = useState('');
-	const [parsedCrew, setParsedCrew] = useState<number | null>(null);
 	const [parsedCrewAmbiguous, setParsedCrewAmbiguous] = useState(false);
 	const parsedEditVersion = useRef(0);
 	const matchRequest = useRef<AbortController | null>(null);
@@ -143,6 +143,7 @@ export function useWorkspace() {
 			setReport(null);
 			setLines([]);
 			setReportText('');
+			setDayNote('');
 			setCrew(1);
 			setDay(next.today);
 			setSummaryDate(next.today);
@@ -185,6 +186,7 @@ export function useWorkspace() {
 			setLines(r.lines);
 			setCrew(r.crew_count);
 			setReportText(r.text || '');
+			setDayNote(r.day_note || '');
 			if (!isAdmin && d.config.pending_import && !onlyIfClean) {
 				const p = await request<ImportPreview>('/imports/pending', undefined, id);
 				if (p && version === selectionVersion.current) {
@@ -236,7 +238,6 @@ export function useWorkspace() {
 	}, [!!session, project, summaryDate]);
 	useEffect(() => {
 		setParsed([]);
-		setParsedCrew(null);
 		setParsedCrewAmbiguous(false);
 		setParseNote('');
 		setParsing(false);
@@ -253,17 +254,18 @@ export function useWorkspace() {
 		const controller = new AbortController();
 		matchRequest.current = controller;
 		setParsed([]);
-		setParsedCrew(null);
 		setParsedCrewAmbiguous(false);
 		setParsing(true);
 		setParseNote('');
 		parsedEditVersion.current = 0;
 		const apply = (result: ParsedReport) => {
 			setParsed(result.lines);
-			setParsedCrew(result.crew_count);
+			if (result.crew_count != null && !result.crew_ambiguous) setCrew(result.crew_count);
 			setParsedCrewAmbiguous(result.crew_ambiguous);
 			setParseNote(
-				result.lines.length ? '' : 'Работы не найдены. Уточните название и объём в сообщении.',
+				result.lines.length || result.crew_count != null || result.crew_ambiguous
+					? ''
+					: 'Работы не найдены. Уточните название и объём в сообщении.',
 			);
 		};
 		try {
@@ -307,6 +309,7 @@ export function useWorkspace() {
 			setLines(r.lines);
 			setCrew(r.crew_count);
 			setReportText(r.text || '');
+			setDayNote(r.day_note || '');
 		} catch (e) {
 			message.error((e as Error).message);
 		}
@@ -355,8 +358,14 @@ export function useWorkspace() {
 	};
 	const patchLine = (index: number, quantity: number | null) =>
 		setLines((ls) => ls.map((l, i) => (i === index ? { ...l, quantity } : l)));
+	const previewLines = [...lines, ...parsed];
+	const previewCount = new Set(previewLines.flatMap((line) => (line.item_id ? [line.item_id] : [])))
+		.size;
+	const parsedIncomplete = parsed.filter(
+		(line) => !line.item_id || !byId[line.item_id] || !line.quantity || line.quantity <= 0,
+	).length;
 	const amount = calculateAmount(
-		lines.map((line) => ({
+		previewLines.map((line) => ({
 			quantity: line.quantity,
 			rate: line.item_id ? byId[line.item_id]?.rate || 0 : 0,
 		})),
@@ -378,9 +387,9 @@ export function useWorkspace() {
 		(id) => oldLines[id] !== nextLines[id],
 	);
 	const savedNotes = new Map(report?.lines.map((line) => [line.item_id, line.note || '']));
-	const notesChanged = lines.some(
-		(line) => (line.note?.trim() || '') !== (savedNotes.get(line.item_id) || ''),
-	);
+	const notesChanged =
+		dayNote.trim() !== (report?.day_note || '') ||
+		lines.some((line) => (line.note?.trim() || '') !== (savedNotes.get(line.item_id) || ''));
 	const dirty =
 		deltaIds.length > 0 ||
 		notesChanged ||
@@ -524,9 +533,12 @@ export function useWorkspace() {
 										);
 									}
 								: undefined;
-	useTelegramNavigation(telegramBack, (!!report && dirty) || (textOpen && !!freeText.trim()));
+	useTelegramNavigation(
+		telegramBack,
+		(!!report && dirty) || parsed.length > 0 || (textOpen && !!freeText.trim()),
+	);
 	const valid =
-		(lines.length > 0 || !!report?.lines.length) &&
+		(lines.length > 0 || !!report?.lines.length || !!dayNote.trim()) &&
 		lines.every((l) => l.item_id && l.quantity !== null && l.quantity > 0) &&
 		new Set(lines.map((l) => l.item_id)).size === lines.length;
 	const submit = async (allow = false) => {
@@ -545,12 +557,14 @@ export function useWorkspace() {
 					})),
 					crew_count: crew,
 					text: reportText,
+					day_note: dayNote,
 					allow_exceed: allow,
 				},
 				project,
 			);
 			setReport(r);
 			setLines(r.lines);
+			setDayNote(r.day_note || '');
 			if (r.changed === false) message.info('Изменений нет');
 			else if (r.notes_only) message.success('Примечания сохранены');
 			else if (r.sync_status === 'synced')
@@ -580,6 +594,7 @@ export function useWorkspace() {
 			nextCrew === report.crew_count &&
 			nextText === report.text;
 		const reviewModal = modal.confirm({
+			closable: true,
 			title: active ? 'Отчёт · ' + active.name : 'Общий отчёт за день',
 			icon: null,
 			width: 620,
@@ -628,6 +643,7 @@ export function useWorkspace() {
 							...values,
 							lines: values.lines.map((line) => ({ ...line, note: workNotes.get(line.item_id) })),
 							text: nextText,
+							day_note: dayNote,
 							allow_exceed: exceeds,
 						},
 						project,
@@ -636,6 +652,7 @@ export function useWorkspace() {
 					setLines(saved.lines);
 					setCrew(saved.crew_count);
 					setReportText(saved.text || '');
+					setDayNote(saved.day_note || '');
 					if (freeform) {
 						setTextOpen(false);
 						setFreeText('');
@@ -655,12 +672,17 @@ export function useWorkspace() {
 			},
 		});
 	};
-	const confirm = () =>
+	const confirm = () => {
+		if (!lines.length && !report?.lines.length && dayNote.trim()) {
+			void submit();
+			return;
+		}
 		openReportReview(
 			lines.map((line) => ({ item_id: line.item_id!, quantity: line.quantity! })),
 			crew,
 			reportText,
 		);
+	};
 	const patchParsedLine = (index: number, patch: Partial<Line>) => {
 		parsedEditVersion.current++;
 		setParsed((current) =>
@@ -671,13 +693,15 @@ export function useWorkspace() {
 		parsedEditVersion.current++;
 		setParsed((current) => current.filter((_, lineIndex) => lineIndex !== index));
 	};
-	const updateParsedCrew = (count: number | null) => {
+	const updateReportCrew = (count: number | null) => {
+		if (count == null) return;
 		parsedEditVersion.current++;
-		setParsedCrew(count);
+		setCrew(count);
 		setParsedCrewAmbiguous(false);
 	};
 	const confirmParsedReport = () => {
-		if (!report || !parsed.length || parsedCrewAmbiguous) {
+		if (!report || !parsed.length || parsedCrewAmbiguous || parsing || busy) {
+			if (parsing || busy) return;
 			message.warning(
 				parsedCrewAmbiguous ? 'Уточните количество работников' : 'Добавьте выполненные работы',
 			);
@@ -695,12 +719,7 @@ export function useWorkspace() {
 		const next = mergeWorkQuantities(
 			combined.map((line) => ({ item_id: line.item_id!, quantity: line.quantity! })),
 		);
-		openReportReview(
-			next,
-			parsedCrew || crew,
-			[reportText, freeText].filter(Boolean).join('\n'),
-			true,
-		);
+		openReportReview(next, crew, [reportText, freeText].filter(Boolean).join('\n'), true);
 	};
 	const retry = async (date: string) => {
 		setBusy(true);
@@ -731,6 +750,7 @@ export function useWorkspace() {
 				preview.target.lines.map((line) => [line.item_id, line.quantity]),
 			);
 			modal.confirm({
+				closable: true,
 				title: 'Вернуть отчёт к началу дня?',
 				icon: null,
 				width: 590,
@@ -774,6 +794,7 @@ export function useWorkspace() {
 						setLines(restored.lines);
 						setCrew(restored.crew_count);
 						setReportText(restored.text || '');
+						setDayNote(restored.day_note || '');
 						await refresh(true);
 						if (restored.sync_status === 'synced')
 							message.success('Отчёт восстановлен, расчёты обновлены в Битрикс24');
@@ -879,7 +900,7 @@ export function useWorkspace() {
 			setCheckingConnection(false);
 		}
 	};
-	const loadRemoteImport = async (reviewOnly: boolean, original = false) => {
+	const loadRemoteImport = async (reviewOnly: boolean, original = false, diskBook = false) => {
 		if (data?.project?.id !== project) {
 			message.info('Дождитесь загрузки выбранного объекта');
 			return;
@@ -887,11 +908,15 @@ export function useWorkspace() {
 		setBusy(true);
 		const selection = selectionVersion.current;
 		try {
-			if (!reviewOnly) {
+			if (!reviewOnly && !diskBook) {
 				await request('/bitrix/connection', { public_url: url, webhook_id: webhookId }, project);
 				setWebhookId(undefined);
 			}
-			const endpoint = original ? '/imports/bitrix?original=true' : '/imports/bitrix';
+			const endpoint = diskBook
+				? '/imports/disk-book'
+				: original
+					? '/imports/bitrix?original=true'
+					: '/imports/bitrix';
 			const r = await request<ImportPreview | null>(endpoint, {}, project);
 			if (selection !== selectionVersion.current) return;
 			if (!r) {
@@ -900,6 +925,7 @@ export function useWorkspace() {
 			}
 			if (
 				!reviewOnly &&
+				!diskBook &&
 				!r.warnings.some((warning) => warning.severity !== 'info') &&
 				!r.reconciliation?.needs_confirmation
 			) {
@@ -1118,6 +1144,8 @@ export function useWorkspace() {
 		crew,
 		setCrew,
 		reportText,
+		dayNote,
+		setDayNote,
 		setReportText,
 		workPicker,
 		setWorkPicker,
@@ -1128,11 +1156,12 @@ export function useWorkspace() {
 		freeText,
 		setFreeText,
 		parsed,
-		parsedCrew,
 		parsedCrewAmbiguous,
 		patchParsedLine,
 		removeParsedLine,
-		updateParsedCrew,
+		updateReportCrew,
+		previewCount,
+		parsedIncomplete,
 		confirmParsedReport,
 		matchReportText,
 		parsing,
@@ -1210,6 +1239,7 @@ export function useWorkspace() {
 		createObject,
 		grant,
 		importRemote,
+		importDiskBook: () => loadRemoteImport(false, false, true),
 		reviewOriginalTable: () => loadRemoteImport(true, true),
 		reviewBitrixChanges: () =>
 			data?.config.pending_import ? resumeImport() : loadRemoteImport(true),

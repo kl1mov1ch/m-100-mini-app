@@ -10,7 +10,9 @@ from pydantic import BaseModel, Field
 
 from . import (
     bitrix,
+    bitrix_disk,
     import_suggestions,
+    profile_webhooks,
     reconciliation,
     store,
     tables,
@@ -123,6 +125,18 @@ async def verify_pending_remote(token, meta, content):
         file_id = int(store.setting(db, "file_id", "0"))
         webhook = store.setting(db, "webhook")
         url = store.setting(db, "public_url")
+        template = bitrix_disk.saved_template(db) if meta.get("disk_book") else None
+        linked = store.setting(db, "source") == "bitrix"
+    if meta.get("disk_book"):
+        if (
+            linked
+            or not template
+            or template["id"] != meta["remote"]["file_id"]
+            or template["webhook_id"] != meta["disk_book"]
+        ):
+            raise HTTPException(409, "Созданная книга изменилась. Откройте её проверку заново.")
+        file_id = template["id"]
+        webhook = profile_webhooks.webhook_url(meta["owner_id"], template["webhook_id"])
     if meta.get("original") and (not webhook or not file_id):
         raise HTTPException(
             422, "Для обновления рабочих листов нужен вебхук Битрикс24 с правом «Диск»."
@@ -192,7 +206,15 @@ def register(app, settings, now):
         )
 
     async def prepare(
-        request, content, name, source, remote=None, *, original=False, source_change=None
+        request,
+        content,
+        name,
+        source,
+        remote=None,
+        *,
+        original=False,
+        source_change=None,
+        disk_book=None,
     ):
         with store.connect() as db:
             cfg = settings(db)
@@ -212,6 +234,8 @@ def register(app, settings, now):
             "sheets": analysis["sheets"],
             "created_at": now(),
         }
+        if disk_book:
+            meta["disk_book"] = disk_book
         token = save_pending(meta, content)
         return {
             "token": token,
@@ -316,6 +340,36 @@ def register(app, settings, now):
                 502,
                 "Битрикс не отдал Excel. Подключите входящий вебхук с правом «Диск» и проверьте ID файла.",
             )
+
+    @app.post("/api/imports/disk-book")
+    async def prepared_disk_book(request: Request):
+        if (
+            request.state.user["role"] != "master"
+            or request.state.user["telegram_id"] != request.state.project["owner_id"]
+        ):
+            raise HTTPException(403, "Таблицу подключает мастер объекта")
+        with store.connect() as db:
+            template = bitrix_disk.saved_template(db)
+            linked = store.setting(db, "source") == "bitrix"
+        if not template or linked:
+            raise HTTPException(
+                409, "Выберите созданную книгу для объекта без подключённой таблицы"
+            )
+        webhook = profile_webhooks.webhook_url(
+            request.state.user["telegram_id"], template["webhook_id"]
+        )
+        try:
+            content, metadata = await bitrix.download_rest(webhook, template["id"])
+            return await prepare(
+                request,
+                content,
+                metadata["NAME"],
+                "bitrix",
+                {"name": metadata["NAME"], "file_id": template["id"]},
+                disk_book=template["webhook_id"],
+            )
+        except (httpx.HTTPError, ValueError, KeyError, TypeError) as error:
+            raise HTTPException(502, "Не удалось открыть созданный Excel на Диске.") from error
 
     @app.post("/api/imports/review")
     async def review(request: Request, body: ConfirmImport):
@@ -558,6 +612,10 @@ def register(app, settings, now):
                     values["import_file_path"] = str(path)
                 if meta.get("remote", {}):
                     values["file_id"] = str(meta["remote"]["file_id"] or 0)
+                if disk_book := meta.get("disk_book"):
+                    values["webhook"] = profile_webhooks.webhook_url(meta["owner_id"], disk_book)
+                    values["webhook_profile_id"] = disk_book
+                    values["public_url"] = ""
                 for k, v in values.items():
                     store.set_setting(db, k, v)
                 store.set_setting(

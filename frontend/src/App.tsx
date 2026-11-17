@@ -9,6 +9,7 @@ import {
 	History,
 	Plus,
 	Settings2,
+	X,
 } from 'lucide-react';
 import { createRoot } from 'react-dom/client';
 import { TableImportModal } from './components/TableImportModal';
@@ -40,6 +41,7 @@ import './select-controls.css';
 import './telegram-ios.css';
 import './compact-workspace.css';
 import './compact-lists.css';
+import './desktop.css';
 import { telegramLightTheme } from './lib/telegram-theme';
 import { useInputVisibility } from './hooks/useInputVisibility';
 import { useStartupScreen } from './hooks/useStartupScreen';
@@ -153,7 +155,7 @@ export function WorkspaceApp() {
 					{page === 'reminders' && <RemindersPage workspace={workspace} />}
 				</main>
 			</div>
-			<nav className="bottom-nav">
+			<nav className="bottom-nav" aria-label="Разделы приложения">
 				{[
 					{ id: 'objects', label: 'Объекты', icon: Building2 },
 					...(!isAdmin ? [{ id: 'today', label: 'Отчёт', icon: Plus }] : []),
@@ -305,7 +307,15 @@ export function WorkspaceApp() {
 }
 export function renderApp() {
 	createRoot(document.getElementById('root')!).render(
-		<ConfigProvider locale={ruRU} theme={telegramLightTheme}>
+		<ConfigProvider
+			locale={ruRU}
+			theme={telegramLightTheme}
+			modal={{ closeIcon: <X size={20} aria-hidden />, closable: { 'aria-label': 'Закрыть' } }}
+			drawer={{
+				closeIcon: <X size={20} aria-hidden />,
+				closable: { placement: 'end', 'aria-label': 'Закрыть' },
+			}}
+		>
 			<AntApp message={{ maxCount: 2 }}>
 				<WorkspaceApp />
 			</AntApp>

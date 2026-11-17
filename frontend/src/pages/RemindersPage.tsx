@@ -57,6 +57,7 @@ export function RemindersPage({ workspace }: { workspace: WorkspaceView }) {
 	};
 	const send = () =>
 		modal.confirm({
+			closable: true,
 			title: 'Отправить напоминания?',
 			content: (
 				<>

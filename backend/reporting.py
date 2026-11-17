@@ -2,8 +2,9 @@ import json
 import os
 from decimal import ROUND_HALF_UP, Decimal
 
-from . import matcher, postgres, store, workspaces
+from . import bitrix_disk, matcher, postgres, store, workspaces
 from .clock import today
+from .report_notes import read_notes
 
 
 def ai_settings(db):
@@ -51,17 +52,23 @@ def get_report(db, day):
             "author_id": "",
         }
     )
+
     lines = [
         dict(r)
         for r in db.execute(
             "SELECT item_id,quantity FROM entries WHERE date=? ORDER BY item_id", (day,)
         )
     ]
-    notes = json.loads(store.setting(db, f"report_notes:{day}", "{}"))
+    day_note, notes = read_notes(db, day)
     for line in lines:
         if note := notes.get(line["item_id"]):
             line["note"] = note
-    return {**base, "lines": lines, "payroll": payroll(db, lines, base["crew_count"])}
+    return {
+        **base,
+        "day_note": day_note,
+        "lines": lines,
+        "payroll": payroll(db, lines, base["crew_count"]),
+    }
 
 
 def history(db):
@@ -90,12 +97,19 @@ def history(db):
 
 
 def safe_config(db, include_table_review=True):
+    file_target = store.setting(db, bitrix_disk.REPORT_TARGET_KEY) if include_table_review else ""
+    report_file = bitrix_disk.report_file(db, file_target)
     return {
         "today": today(),
         "object_note": store.setting(db, "object_note"),
         "mode": os.getenv("APP_ENV", "development"),
         "currency": "BYN",
         "llm": bool(matcher.provider(ai_settings(db))["key"]),
+        "bitrix_project_book": bitrix_disk.saved_template(db) if include_table_review else None,
+        "bitrix_report_webhook_id": file_target,
+        "bitrix_report_file": {key: report_file[key] for key in ("id", "name", "url")}
+        if report_file
+        else None,
         "source": store.setting(db, "source", "excel"),
         "source_name": store.setting(db, "source_name", "Смета работ"),
         "public_url": store.setting(db, "public_url"),

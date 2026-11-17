@@ -55,8 +55,16 @@ export function CompactWorkEditor({
 	children,
 	hint,
 	footer,
+	modalClassName,
+	modalTitle,
 	...props
-}: Omit<CompactRowProps, 'onClick'> & { children: ReactNode; hint?: string; footer?: ReactNode }) {
+}: Omit<CompactRowProps, 'onClick'> & {
+	children: ReactNode;
+	hint?: string;
+	footer?: ReactNode;
+	modalClassName?: string;
+	modalTitle?: string;
+}) {
 	const [open, setOpen] = useState(false);
 	const [present, setPresent] = useState(false);
 	return (
@@ -70,8 +78,8 @@ export function CompactWorkEditor({
 			/>
 			{present && (
 				<Modal
-					className="compact-work-sheet"
-					title={props.title}
+					className={modalClassName ? 'compact-work-sheet ' + modalClassName : 'compact-work-sheet'}
+					title={modalTitle || props.title}
 					open={open}
 					destroyOnHidden
 					afterClose={() => setPresent(false)}

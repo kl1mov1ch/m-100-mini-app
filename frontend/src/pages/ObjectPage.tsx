@@ -1,9 +1,10 @@
-import { Alert, App, Button, Empty, Input, Segmented, Spin } from 'antd';
+import { Alert, App, Button, Empty, Modal, Segmented, Spin } from 'antd';
 import { NotebookPen } from 'lucide-react';
 import { useState } from 'react';
 import type { WorkspaceView } from '../App';
 import { ObjectActionDialog, type ObjectAction } from '../components/ObjectActionDialog';
 import { ObjectCatalogue } from '../components/ObjectCatalogue';
+import { NoteInput } from '../components/NoteInput';
 import { ObjectExpenses } from '../components/ObjectExpenses';
 import { ObjectTablePanel } from '../components/ObjectTablePanel';
 import { PositionDetails } from '../components/PositionDetails';
@@ -22,7 +23,7 @@ const sections: { label: string; value: ObjectSection }[] = [
 ];
 
 export function ObjectPage({ workspace }: { workspace: WorkspaceView }) {
-	const { message, modal } = App.useApp();
+	const { message } = App.useApp();
 	const {
 		active,
 		project,
@@ -41,6 +42,8 @@ export function ObjectPage({ workspace }: { workspace: WorkspaceView }) {
 	const [action, setAction] = useState<ObjectAction | null>(null);
 	const [viewPosition, setViewPosition] = useState<string | null>(null);
 	const [loadingAction, setLoadingAction] = useState(false);
+	const [objectNote, setObjectNote] = useState<{ previous: string; draft: string }>();
+	const [savingNote, setSavingNote] = useState(false);
 
 	const openSection = (section: ObjectSection) => {
 		if (section !== 'reports' && workspace.textOpen) {
@@ -88,45 +91,27 @@ export function ObjectPage({ workspace }: { workspace: WorkspaceView }) {
 			setLoadingAction(false);
 		}
 	};
-	const editObjectNote = () => {
-		const previous = data.config.object_note || '';
-		let note = previous;
-		modal.confirm({
-			title: 'Примечание к объекту',
-			icon: null,
-			okText: 'Сохранить',
-			cancelText: 'Отмена',
-			content: (
-				<Input.TextArea
-					aria-label="Примечание к объекту"
-					placeholder="Например, время доступа на площадку"
-					defaultValue={previous}
-					maxLength={2000}
-					autoSize={{ minRows: 3, maxRows: 8 }}
-					onChange={(event) => {
-						note = event.target.value;
-					}}
-				/>
-			),
-			onOk: async () => {
-				try {
-					const result = await request<{ note: string }>(
-						'/object/note',
-						{ note, previous },
-						project,
-					);
-					setData((current) =>
-						current?.project?.id === project
-							? { ...current, config: { ...current.config, object_note: result.note } }
-							: current,
-					);
-					message.success('Примечание сохранено');
-				} catch (error) {
-					message.error((error as Error).message);
-					throw error;
-				}
-			},
-		});
+	const saveObjectNote = async () => {
+		if (!objectNote || savingNote) return;
+		setSavingNote(true);
+		try {
+			const result = await request<{ note: string }>(
+				'/object/note',
+				{ note: objectNote.draft, previous: objectNote.previous },
+				project,
+			);
+			setData((current) =>
+				current?.project?.id === project
+					? { ...current, config: { ...current.config, object_note: result.note } }
+					: current,
+			);
+			setObjectNote(undefined);
+			message.success('Примечание сохранено');
+		} catch (error) {
+			message.error((error as Error).message);
+		} finally {
+			setSavingNote(false);
+		}
 	};
 	const deleteObject = () =>
 		withManagement((details) => ({
@@ -229,7 +214,10 @@ export function ObjectPage({ workspace }: { workspace: WorkspaceView }) {
 					data-has-note={!!data.config.object_note}
 					aria-label="Примечание к объекту"
 					title="Примечание к объекту"
-					onClick={editObjectNote}
+					onClick={() => {
+						const previous = data.config.object_note || '';
+						setObjectNote({ previous, draft: previous });
+					}}
 				/>
 			</div>
 			<Segmented<ObjectSection>
@@ -281,6 +269,26 @@ export function ObjectPage({ workspace }: { workspace: WorkspaceView }) {
 					loadingAction={loadingAction}
 				/>
 			)}
+			<Modal
+				open={!!objectNote}
+				title="Примечание к объекту"
+				okText="Применить"
+				footer={(_, { OkBtn }) => <OkBtn />}
+				confirmLoading={savingNote}
+				onOk={() => void saveObjectNote()}
+				onCancel={() => !savingNote && setObjectNote(undefined)}
+			>
+				{objectNote && (
+					<NoteInput
+						project={project}
+						scope="object-note"
+						label="Примечание к объекту"
+						maxLength={2000}
+						value={objectNote.draft}
+						onChange={(draft) => setObjectNote((current) => current && { ...current, draft })}
+					/>
+				)}
+			</Modal>
 			{action && <ObjectActionDialog action={action} close={() => setAction(null)} />}
 			{viewPosition && workspace.byId[viewPosition] && (
 				<PositionDetails

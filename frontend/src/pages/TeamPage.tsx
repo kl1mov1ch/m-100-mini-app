@@ -12,6 +12,7 @@ export function TeamPage({ workspace }: { workspace: WorkspaceView }) {
 	const { users, setUserForm, setUserId, setUserName, setUserRole, loadUsers, session } = workspace;
 	const remove = (user: User) =>
 		modal.confirm({
+			closable: true,
 			title: 'Удалить пользователя?',
 			icon: <TriangleAlert color="#a66b00" size={21} />,
 			content: <p>{user.name} потеряет доступ к приложению. Объекты и отчёты сохранятся.</p>,

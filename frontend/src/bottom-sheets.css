@@ -47,31 +47,34 @@
 	flex-shrink: 0;
 }
 .ant-modal .ant-modal-title {
-	padding-right: 30px;
+	padding-inline-end: 42px;
 	font-size: 18px;
 }
-.ant-modal .ant-modal-footer {
+.ant-modal-confirm .ant-modal-confirm-title {
+	padding-inline-end: 36px;
+	overflow-wrap: anywhere;
+}
+.ant-modal .ant-modal-footer,
+.ant-modal-confirm .ant-modal-confirm-btns,
+.ant-drawer .ant-drawer-footer {
 	display: flex;
-	gap: 10px;
+	flex-wrap: wrap;
+	gap: 8px;
 	padding-top: 12px;
 }
-.ant-modal .ant-modal-footer .ant-btn {
-	flex: 1;
-	margin: 0;
+.ant-modal .ant-modal-footer > .ant-btn,
+.ant-modal-confirm .ant-modal-confirm-btns > .ant-btn,
+.ant-drawer .ant-drawer-footer > .ant-btn {
+	flex: 1 1 min(105px, 100%);
+	margin-inline: 0;
+	padding-inline: 10px;
 	min-height: 44px;
+	height: auto;
+	white-space: normal;
 }
-.ant-modal-confirm .ant-modal-confirm-btns {
-	position: sticky;
-	bottom: 0;
-	padding: 14px 0 0;
-	background: white;
-	display: flex;
-	gap: 10px;
-}
-.ant-modal-confirm .ant-modal-confirm-btns .ant-btn {
-	flex: 1;
-	margin: 0;
-	min-height: 44px;
+.ant-modal .ant-modal-close {
+	inset-block-start: 10px;
+	inset-inline-end: 10px;
 }
 .ant-modal.ant-zoom-enter,
 .ant-modal.ant-zoom-appear,

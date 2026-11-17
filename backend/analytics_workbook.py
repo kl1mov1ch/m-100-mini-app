@@ -10,12 +10,14 @@ from openpyxl.chart import BarChart, LineChart, Reference
 from openpyxl.chart.axis import ChartLines, DateAxis
 from openpyxl.chart.data_source import NumData, NumVal
 from openpyxl.chart.shapes import GraphicalProperties
+from openpyxl.comments import Comment
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.utils.datetime import to_excel
 
 from . import orm_repository, postgres, store, workspaces
 from .clock import today
+from .report_notes import notes_in_period
 
 NAVY = "21344A"
 BLUE = "266BD3"
@@ -111,7 +113,7 @@ def write_totals(sheet, reports, days, *, combined=False):
     return amounts, crews
 
 
-def write_position(sheet, position, entries, days, credit_changes):
+def write_position(sheet, position, entries, days, credit_changes, notes=None):
     plan = max(Decimal(0), measure(position["planned"]))
     rate = max(Decimal(0), Decimal(str(position["rate"] or 0)))
     actual = measure(position.get("baseline"))
@@ -155,6 +157,8 @@ def write_position(sheet, position, entries, days, credit_changes):
     for column, day in enumerate(days, FIRST_DAY):
         if day in red_days:
             mark_overrun(row[column - 1])
+        if notes and (note := notes.get(day)):
+            row[column - 1].comment = Comment(note, "M-100")
     return plan * rate, initial_credit
 
 
@@ -283,7 +287,26 @@ def chart_sheet(book, days, amounts, crews, plan, initial_credit, credit_changes
     sheet.sheet_properties.pageSetUpPr.fitToPage = True
 
 
-def export_workbook(user, data):
+def write_notes_section(sheet, notes):
+    if not notes:
+        return
+    sheet.append([])
+    sheet.append(["Дата", "Объект и работа", "Примечание"])
+    band(sheet, sheet[sheet.max_row][:6], NAVY, color="FFFFFF", bold=True)
+    sheet.merge_cells(start_row=sheet.max_row, start_column=3, end_row=sheet.max_row, end_column=6)
+    for day, label, text in sorted(notes):
+        sheet.append([date.fromisoformat(day), label, text])
+        row = sheet.max_row
+        band(sheet, sheet[row][:6], "F4F8FC" if row % 2 == 0 else "FFFFFF")
+        sheet.cell(row, 1).number_format = "dd.mm.yyyy"
+        sheet.merge_cells(start_row=row, start_column=3, end_row=row, end_column=6)
+        sheet.cell(row, 3).alignment = Alignment(vertical="center", wrap_text=True)
+        sheet.row_dimensions[row].height = min(
+            250, max(28, 16 * sum(max(1, ceil(len(line) / 55)) for line in text.splitlines()))
+        )
+
+
+def export_workbook(user, data, *, with_charts=True):
     book = Workbook()
     sheet = book.active
     sheet.title = "Работы по дням"
@@ -301,7 +324,9 @@ def export_workbook(user, data):
     sheet["A2"].font = Font(name="Calibri", size=11, color="526781")
     sheet["A2"].alignment = Alignment(wrap_text=True, vertical="center")
     sheet.row_dimensions[2].height = 32
-    days = sorted({report["date"] for report in data["rows"] if report["positions"]})
+    days = sorted(
+        {report["date"] for report in data["rows"] if report["positions"] or report.get("revision")}
+    )
     for col, width in enumerate([24, 52, 9, 12, 16, 16] + [13] * len(days), 1):
         sheet.column_dimensions[get_column_letter(col)].width = width
     for col, label in enumerate(
@@ -318,17 +343,31 @@ def export_workbook(user, data):
 
     reports = defaultdict(list)
     for row in data["rows"]:
-        if row["positions"]:
+        if row["positions"] or row.get("revision"):
             reports[row["project_id"]].append(row)
     plan = initial_credit = Decimal(0)
     credit_changes = defaultdict(Decimal)
     amounts, crews = {}, {}
+    work_notes = []
     if days:
         if len(reports) > 1:
             amounts, crews = write_totals(sheet, data["rows"], days, combined=True)
         final_day = data.get("period_end") or days[-1]
         for project, positions, entries in baselines(user, set(data["project_ids"]), final_day):
             project_reports = reports.get(project["id"], [])
+            notes_by_position = defaultdict(dict)
+            names = {position["id"]: position["name"] for position in positions}
+            allowed_days = {item["date"] for item in project_reports}
+            with store.connect(project["db_path"]) as db:
+                for day, note, line_notes in notes_in_period(db, days[0], days[-1]):
+                    if day not in allowed_days:
+                        continue
+                    if note:
+                        work_notes.append((day, project["name"], note))
+                    for item_id, text in line_notes.items():
+                        if item_id in names:
+                            notes_by_position[item_id][day] = text
+                            work_notes.append((day, f"{project['name']} · {names[item_id]}", text))
             if project_reports:
                 sheet.append([project["name"]])
                 row = sheet.max_row
@@ -340,13 +379,20 @@ def export_workbook(user, data):
                     amounts, crews = totals
             for position in positions:
                 p_plan, p_credit = write_position(
-                    sheet, position, entries[position["id"]], days, credit_changes
+                    sheet,
+                    position,
+                    entries[position["id"]],
+                    days,
+                    credit_changes,
+                    notes_by_position.get(position["id"]),
                 )
                 plan += p_plan
                 initial_credit += p_credit
     else:
         sheet["A5"] = "Нет работ за выбранный период"
-    chart_sheet(book, days, amounts, crews, plan, initial_credit, credit_changes)
+    write_notes_section(sheet, work_notes)
+    if with_charts:
+        chart_sheet(book, days, amounts, crews, plan, initial_credit, credit_changes)
     output = io.BytesIO()
     book.save(output)
     return output.getvalue()

@@ -41,6 +41,12 @@ export function AdminDailyReport({ workspace }: { workspace: WorkspaceView }) {
 				/>
 			</div>
 			{data.config.object_note && <p className="object-note-read">{data.config.object_note}</p>}
+			{report?.day_note && (
+				<section className="object-note-read">
+					<strong>Примечание за день</strong>
+					<div>{report.day_note}</div>
+				</section>
+			)}
 			<section className="report-metrics">
 				<div className="metric-primary">
 					<span>Выработка за день</span>

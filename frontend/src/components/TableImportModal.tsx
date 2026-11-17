@@ -133,6 +133,7 @@ export function TableImportModal({ workspace }: { workspace: WorkspaceView }) {
 			restore: ['Восстановить объёмы?', 'Заполним ячейки по сохранённым данным за эту дату.'],
 		}[strategy];
 		modal.confirm({
+			closable: true,
 			title: action[0],
 			content: `${sheet} · ${column} · ${dayjs(date).format('DD.MM.YYYY')}. ${action[1]}`,
 			okText: 'Применить',

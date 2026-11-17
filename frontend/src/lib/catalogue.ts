@@ -22,7 +22,7 @@ export function catalogueCategory(
 		.replace('³', '3');
 	if (/чел|челов|час|машч|^ч$|день|дни|дн|сут|смен/.test(measure)) return 'labour';
 	if (
-		/^(м|мп|погм|м2|м3|мм|см|шт|штук[аи]?|кг|т|комп|компл|комплект|сист|система|систем|системы|ед)$/.test(
+		/^(м|мп|погм|м2|м3|мм|см|км|шт|штук[аи]?|кг|т|комп|компл|комплект|сист|система|систем|системы|ед)$/.test(
 			measure,
 		)
 	)
@@ -59,7 +59,7 @@ export function selectCatalogue(
 		.filter(
 			(position) =>
 				(filters.category === 'all' || catalogueCategory(position) === filters.category) &&
-				(filters.section === 'all' || position.section === filters.section) &&
+				(filters.section === 'all' || position.section?.trim() === filters.section) &&
 				catalogueStatusMatches(position, filters.status) &&
 				[position.name, position.section, position.source_sheet]
 					.filter(Boolean)

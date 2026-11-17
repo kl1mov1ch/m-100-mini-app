@@ -6,14 +6,60 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 import httpx
+from fastapi import HTTPException
 
-from . import bitrix, store, workspaces
+from . import bitrix, bitrix_disk, profile_webhooks, store, workspaces
+from .analytics_workbook import export_workbook
 from .clock import now
-from .reporting import ai_settings, get_report
+from .reporting import ai_settings, get_report, history
 from .table_advice import explain_issues
 
 SYNC_LOCKS = {}
 JOURNAL_PENDING_NOTE = "Таблица подтверждена. Лист «Журнал работ» ещё не записан в Битрикс24."
+
+
+def render_cumulative_report(project):
+    with store.connect(project["db_path"]) as db:
+        rows = [
+            {**row, "project_id": project["id"], "project_name": project["name"]}
+            for row in history(db)
+        ]
+    user = {"role": "master", "telegram_id": project["owner_id"]}
+    return export_workbook(user, {"rows": rows, "project_ids": [project["id"]]}, with_charts=False)
+
+
+async def send_cumulative_report(project, report, target):
+    status, detail, retry_at = "synced", "", ""
+    try:
+        webhook = profile_webhooks.webhook_url(project["owner_id"], target)
+        content = await asyncio.to_thread(render_cumulative_report, project)
+        await bitrix_disk.sync_report_file(webhook, project, target, content)
+    except httpx.TransportError:
+        status, detail = "pending", "Диск не ответил. Отчёт сохранён в приложении."
+    except httpx.HTTPStatusError as error:
+        status = (
+            "pending"
+            if error.response.status_code == 429 or error.response.status_code >= 500
+            else "error"
+        )
+        detail = "Битрикс24 не принял отчёт. Проверьте доступ или повторите отправку."
+    except HTTPException:
+        status, detail = "error", "Вебхук отчётов удалён. Выберите действующий вебхук."
+    except ValueError as error:
+        status, detail = "error", str(error)
+    except (KeyError, TypeError):
+        status, detail = "error", "Не удалось подтвердить сохранение отчёта на Диске."
+    attempts = report.get("sync_attempts", 0) + 1 if status != "synced" else 0
+    if status == "pending":
+        retry_at = (
+            datetime.fromisoformat(now()) + timedelta(seconds=min(300, 5 * 2 ** min(attempts, 6)))
+        ).isoformat()
+    with store.connect(project["db_path"]) as db:
+        db.execute(
+            "UPDATE reports SET sync_status=?,sync_error=?,sync_attempts=?,retry_at=? WHERE date=? AND revision=?",
+            (status, detail, attempts, retry_at, report["date"], report["revision"]),
+        )
+    return {"ok": status == "synced", "status": status, "message": detail}
 
 
 def table_lock(project):
@@ -109,8 +155,13 @@ async def send_day(project, day):
             webhook = store.setting(db, "webhook")
             source = store.setting(db, "source")
             file_id = int(store.setting(db, "file_id", "0"))
+            standalone = (
+                store.setting(db, bitrix_disk.REPORT_TARGET_KEY)
+                if bitrix_disk.report_file_enabled(db)
+                else ""
+            )
             ps = store.positions(db)
-            if not webhook or source != "bitrix":
+            if not standalone and (not webhook or source != "bitrix" or not file_id):
                 msg = "Подключите таблицу Битрикс24 для автоматической отправки"
                 db.execute(
                     "UPDATE reports SET sync_status='pending',sync_error=? WHERE date=?",
@@ -134,6 +185,8 @@ async def send_day(project, day):
                 )
             }
             settings = ai_settings(db)
+        if standalone:
+            return await send_cumulative_report(project, r, standalone)
         try:
             result = await bitrix.upload_day(
                 webhook, file_id, day, r["lines"], ps, r["payroll"], baseline, mappings, crew
@@ -202,20 +255,26 @@ async def retry_pending_reports():
             ]
         for project in projects:
             with store.connect(project["db_path"]) as database:
-                if (
-                    not store.setting(database, "webhook")
-                    or store.setting(database, "source") != "bitrix"
-                ):
+                sheet_mode = (
+                    bool(store.setting(database, "webhook"))
+                    and store.setting(database, "source") == "bitrix"
+                    and store.setting(database, "file_id", "0") != "0"
+                )
+                standalone = bitrix_disk.report_file_enabled(database)
+                if not sheet_mode and not standalone:
                     continue
+                since = store.setting(database, "bitrix_report_files_since") if standalone else ""
                 dates = [
                     row["date"]
                     for row in database.execute(
-                        "SELECT date FROM reports WHERE sync_status='pending' AND (retry_at='' OR retry_at<=?) ORDER BY date",
-                        (now(),),
+                        "SELECT date FROM reports WHERE sync_status='pending' AND (retry_at='' OR retry_at<=?) "
+                        "AND updated_at>=? ORDER BY date",
+                        (now(), since or "0001-01-01"),
                     )
                 ]
                 pending_journal = (
-                    store.setting(database, "journal_status") == "pending"
+                    sheet_mode
+                    and store.setting(database, "journal_status") == "pending"
                     and store.setting(database, "journal_retry_at") <= now()
                 )
             if pending_journal:

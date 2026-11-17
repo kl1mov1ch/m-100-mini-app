@@ -3,17 +3,109 @@ from urllib.parse import urlparse
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request
+from pydantic import BaseModel, Field
 
-from .. import bitrix, bitrix_review, profile_webhooks, store, tables, workbook_revision
+from .. import (
+    bitrix,
+    bitrix_disk,
+    bitrix_review,
+    profile_webhooks,
+    store,
+    tables,
+    workbook_revision,
+)
 from ..bitrix_refresh import freshness, refresh_project, review_issues
 from ..clock import now
 from ..report_conflicts import ConflictResolution, conflict_state, resolve
-from ..reporting import ai_settings, safe_config
+from ..reporting import ai_settings, get_report, safe_config
 from ..schemas import Connection
-from ..synchronization import table_lock, write_journal
+from ..synchronization import send_cumulative_report, table_lock, write_journal
 from .objects import owned_object
 
 router = APIRouter()
+
+
+class DiskBookRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    webhook_id: str = Field(pattern=r"^[a-f0-9]{32}$")
+
+
+class DiskReportTarget(BaseModel):
+    webhook_id: str | None = Field(default=None, pattern=r"^[a-f0-9]{32}$")
+
+
+@router.post("/api/bitrix/disk-book")
+async def create_disk_book(request: Request, body: DiskBookRequest):
+    project = owned_object(request)
+    webhook = profile_webhooks.webhook_url(project["owner_id"], body.webhook_id)
+    try:
+        name = bitrix_disk.book_name(body.name)
+        async with table_lock(project):
+            with store.connect() as db:
+                if store.setting(db, "source") == "bitrix":
+                    raise HTTPException(409, "К объекту уже подключена рабочая таблица")
+            folder = await bitrix_disk.object_folder(webhook, project)
+            item = await bitrix_disk.find_child(webhook, folder, name, "folder")
+            if item:
+                content, _ = await bitrix.download_rest(webhook, int(item["ID"]))
+                if not bitrix_disk.workbook_belongs_to(content, project["id"]):
+                    raise HTTPException(409, "Файл с таким названием уже есть. Укажите другое имя.")
+            else:
+                item = await bitrix_disk.upload_new(
+                    webhook, folder, name, bitrix_disk.starter_workbook(project["id"])
+                )
+            meta = await bitrix.rest(webhook, "disk.file.get", {"id": int(item["ID"])})
+            saved = {**bitrix_disk.public_file(meta, webhook), "webhook_id": body.webhook_id}
+            if saved["name"] != name:
+                raise ValueError("Битрикс24 сохранил книгу с другим названием")
+            with store.connect() as db:
+                store.set_setting(
+                    db, bitrix_disk.TEMPLATE_KEY, json.dumps(saved, ensure_ascii=False)
+                )
+            return saved
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+    except (httpx.HTTPError, KeyError, TypeError) as error:
+        raise HTTPException(
+            502, "Диск не подтвердил сохранение книги. Повторите с тем же названием."
+        ) from error
+
+
+@router.post("/api/bitrix/report-files")
+async def configure_report_files(request: Request, body: DiskReportTarget):
+    project = owned_object(request)
+    if body.webhook_id:
+        webhook = profile_webhooks.webhook_url(project["owner_id"], body.webhook_id)
+        try:
+            await bitrix_disk.personal_storage(webhook)
+        except (httpx.HTTPError, ValueError, KeyError, TypeError) as error:
+            raise HTTPException(422, "Проверьте доступ вебхука к Битрикс24.Диску") from error
+    async with table_lock(project):
+        with store.connect() as db:
+            old = store.setting(db, bitrix_disk.REPORT_TARGET_KEY)
+            if old != (body.webhook_id or ""):
+                store.set_setting(db, bitrix_disk.REPORT_TARGET_KEY, body.webhook_id or "")
+                store.set_setting(db, "bitrix_report_files_since", now() if body.webhook_id else "")
+    return {"webhook_id": body.webhook_id}
+
+
+@router.post("/api/bitrix/report-files/publish")
+async def publish_report_files(request: Request):
+    project = owned_object(request)
+    async with table_lock(project):
+        with store.connect() as db:
+            if not bitrix_disk.report_file_enabled(db):
+                raise HTTPException(409, "Подключите вебхук для отдельной книги отчётов")
+            target = store.setting(db, bitrix_disk.REPORT_TARGET_KEY)
+            latest = db.execute("SELECT date FROM reports ORDER BY date DESC LIMIT 1").fetchone()
+            if not latest:
+                raise HTTPException(409, "Сначала подтвердите дневной отчёт")
+            report = get_report(db, str(latest["date"]))
+        result = await send_cumulative_report(project, report, target)
+        if not result["ok"]:
+            raise HTTPException(409, result["message"])
+        with store.connect() as db:
+            return safe_config(db)["bitrix_report_file"]
 
 
 @router.post("/api/bitrix/journal")

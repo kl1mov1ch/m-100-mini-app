@@ -6,11 +6,12 @@ from datetime import date
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from .. import matcher, store, workspaces
+from .. import bitrix_disk, matcher, store, workspaces
 from ..bitrix_refresh import remote_positions
 from ..clock import now, today
 from ..expense_rules import extra_position
 from ..report_downloads import report_export
+from ..report_notes import clean_note, polish, write_notes
 from ..report_snapshots import remember_start, restore_target
 from ..reporting import ai_settings, get_report, history, report_changes, safe_config
 from ..schemas import ParseBody, SaveBody
@@ -94,6 +95,23 @@ class RestoreBody(BaseModel):
     revision: int = Field(ge=1)
 
 
+class PolishNoteBody(BaseModel):
+    text: str = Field(min_length=1, max_length=2000)
+    max_length: int = Field(default=2000, ge=1, le=2000)
+
+
+@router.post("/api/object/polish-note")
+async def polish_note(request: Request, body: PolishNoteBody):
+    if (
+        request.state.user["role"] != "master"
+        or request.state.user["telegram_id"] != request.state.project["owner_id"]
+    ):
+        raise HTTPException(403, "Примечания редактирует мастер объекта")
+    with store.connect() as db:
+        settings = ai_settings(db)
+    return await polish(body.text, settings, body.max_length)
+
+
 @router.post("/api/reports")
 async def save(request: Request, body: SaveBody):
     return await persist_report(request, body)
@@ -118,6 +136,7 @@ async def restore(request: Request, day: date, body: RestoreBody):
             lines=[{**line, "note": line.get("note", "")} for line in target["lines"]],
             crew_count=target["crew_count"],
             text=target.get("text") or "",
+            day_note=target.get("day_note", ""),
             allow_exceed=True,
         ),
         action="restore_day",
@@ -135,7 +154,12 @@ async def persist_report(request: Request, body: SaveBody, action="edit_report")
         before = get_report(db, day)
         if before["revision"] != body.revision:
             raise HTTPException(409, "Отчёт изменился в другом окне. Откройте его заново.")
-        if not body.lines and not before["revision"] and not before["lines"]:
+        if (
+            not body.lines
+            and not before["revision"]
+            and not before["lines"]
+            and not clean_note(body.day_note or "")
+        ):
             raise HTTPException(422, "Добавьте выполненную работу перед подтверждением")
         ps = {p["id"]: p for p in store.positions(db)}
         old = {l["item_id"]: l["quantity"] for l in before["lines"]}
@@ -168,7 +192,7 @@ async def persist_report(request: Request, body: SaveBody, action="edit_report")
             if (
                 note := previous_notes.get(line.item_id, "")
                 if line.note is None
-                else line.note.strip()
+                else clean_note(line.note)
             )
         }
         note_changes = [
@@ -180,6 +204,16 @@ async def persist_report(request: Request, body: SaveBody, action="edit_report")
             for ident in sorted(previous_notes.keys() | notes.keys())
             if previous_notes.get(ident) != notes.get(ident)
         ]
+        day_note = before["day_note"] if body.day_note is None else clean_note(body.day_note)
+        if day_note != before["day_note"]:
+            note_changes.insert(
+                0,
+                {
+                    "name": "Примечание к объекту за день",
+                    "before": before["day_note"],
+                    "after": day_note,
+                },
+            )
         if note_changes:
             delta["notes"] = note_changes
         sync_changed = (
@@ -203,7 +237,8 @@ async def persist_report(request: Request, body: SaveBody, action="edit_report")
             (day, json.dumps(event, ensure_ascii=False), now()),
         )
         if note_changes:
-            store.set_setting(db, f"report_notes:{day}", json.dumps(notes, ensure_ascii=False))
+            write_notes(db, day, day_note, notes)
+        refresh_report_file = bool(note_changes) and bitrix_disk.report_file_enabled(db)
         if sync_changed:
             db.execute("DELETE FROM entries WHERE date=?", (day,))
             db.executemany(
@@ -224,18 +259,23 @@ async def persist_report(request: Request, body: SaveBody, action="edit_report")
                     "",
                 ),
             )
+        elif refresh_report_file:
+            db.execute(
+                "UPDATE reports SET revision=?,updated_at=?,sync_status='pending',sync_error='',retry_at='' WHERE date=?",
+                (body.revision + 1, now(), day),
+            )
         else:
             db.execute(
                 "UPDATE reports SET revision=?,updated_at=? WHERE date=?",
                 (body.revision + 1, now(), day),
             )
-    if sync_changed:
+    if sync_changed or refresh_report_file:
         await send_day(request.state.project, day)
     with store.connect() as db:
         return {
             **get_report(db, day),
             "changed": True,
-            "notes_only": not sync_changed,
+            "notes_only": not sync_changed and not refresh_report_file,
             "changes": delta,
         }
 

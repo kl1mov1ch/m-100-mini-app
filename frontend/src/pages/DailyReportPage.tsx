@@ -1,6 +1,6 @@
-import { Alert, Button, Empty, Input, InputNumber, Spin, Tag } from 'antd';
+import { Alert, Button, Empty, InputNumber, Spin, Tag } from 'antd';
 import 'dayjs/locale/ru';
-import { Check, Mic, Plus, RotateCcw, TextCursorInput, Trash2, Users } from 'lucide-react';
+import { Check, Mic, Plus, RotateCcw, TextCursorInput, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { DatePicker } from '../components/ResponsiveDatePicker';
 import dayjs from '../lib/date';
@@ -10,11 +10,13 @@ import { useConfirmWorkRemoval } from '../hooks/useConfirmWorkRemoval';
 import { useReportDateSwipe } from '../hooks/useReportDateSwipe';
 import { reportStatus, Status } from '../components/SyncStatus';
 import { Money, countLabel, nf, shortName, unit } from '../lib/format';
+import { DailyEarnings } from '../components/DailyEarnings';
 import { AdminDailyReport } from '../components/AdminDailyReport';
 import { QuickReportComposer } from '../components/QuickReportComposer';
 import { ReportDraftFields } from '../components/ReportDraftFields';
 import { WorkEstimate, WorkOverruns } from '../components/WorkEstimate';
 import { CompactWorkEditor } from '../components/CompactRow';
+import { ReportNoteButton } from '../components/ReportNoteButton';
 import { estimateBalance } from '../lib/position-volume';
 export function DailyReportPage({ workspace }: { workspace: WorkspaceView }) {
 	if (workspace.isAdmin) return <AdminDailyReport workspace={workspace} />;
@@ -30,11 +32,12 @@ function MasterDailyReport({ workspace }: { workspace: WorkspaceView }) {
 		data,
 		busy,
 		day,
+		project,
+		dayNote,
+		setDayNote,
 		report,
 		lines,
 		setLines,
-		crew,
-		setCrew,
 		setWorkPicker,
 		setReplaceIndex,
 		setTextOpen,
@@ -44,8 +47,11 @@ function MasterDailyReport({ workspace }: { workspace: WorkspaceView }) {
 		changeDay,
 		patchLine,
 		amount,
-		each,
-		extra,
+		parsed,
+		parsedIncomplete,
+		parsedCrewAmbiguous,
+		parsing,
+		confirmParsedReport,
 		oldLines,
 		estimateLines,
 		nextLines,
@@ -83,53 +89,28 @@ function MasterDailyReport({ workspace }: { workspace: WorkspaceView }) {
 						)}
 					/>
 				</div>
-				<DatePicker
-					aria-label="Дата отчёта"
-					value={dayjs(day)}
-					allowClear={false}
-					workDates={data.history.map((report) => report.date)}
-					format="DD.MM"
-					disabledDate={(d) => d.format('YYYY-MM-DD') > session.today}
-					onChange={(d) => d && void changeDay(d.format('YYYY-MM-DD'))}
-				/>
+				<div className="report-date-actions">
+					<ReportNoteButton
+						key={day}
+						project={project}
+						scope={`day-note:${day}`}
+						value={dayNote}
+						onChange={setDayNote}
+						label="Примечание к объекту за день"
+						maxLength={2000}
+					/>
+					<DatePicker
+						aria-label="Дата отчёта"
+						value={dayjs(day)}
+						allowClear={false}
+						workDates={data.history.map((report) => report.date)}
+						format="DD.MM"
+						disabledDate={(d) => d.format('YYYY-MM-DD') > session.today}
+						onChange={(d) => d && void changeDay(d.format('YYYY-MM-DD'))}
+					/>
+				</div>
 			</div>
-			<section className="daily-earnings">
-				<div className="earnings-total">
-					<span>Выработка за день</span>
-					<strong>
-						<Money value={amount} />
-					</strong>
-					<small>
-						{countLabel(Object.keys(nextLines).length, 'работа', 'работы', 'работ')} за день
-					</small>
-				</div>
-				<div className="daily-team-summary">
-					<div className="earnings-person">
-						<span>На человека</span>
-						<strong>
-							<Money value={each} />
-						</strong>
-					</div>
-					<div className="crew-control">
-						<span>
-							<Users size={16} /> Бригада
-						</span>
-						<InputNumber
-							aria-label="Количество работников"
-							min={1}
-							max={1000}
-							precision={0}
-							value={crew}
-							onChange={(v) => setCrew(v || 1)}
-						/>
-					</div>
-				</div>
-				{extra > 0 && (
-					<div className="rounding-note">
-						{extra} чел. получат по <Money value={each + 0.01} /> для распределения до копейки.
-					</div>
-				)}
-			</section>
+			<DailyEarnings workspace={workspace} />
 			<div className="report-toolbar">
 				<Button
 					type="primary"
@@ -162,7 +143,7 @@ function MasterDailyReport({ workspace }: { workspace: WorkspaceView }) {
 				</Button>
 			</div>
 			{textVisible && <QuickReportComposer workspace={workspace} inline />}
-			<ReportDraftFields workspace={workspace} />
+			<ReportDraftFields workspace={workspace} showSubmit={false} />
 			<WorkOverruns items={workBalances} confirmed={!!report?.revision && !dirty} />
 			<div className="work-list compact-list">
 				{lines.map((l, i) => {
@@ -250,21 +231,18 @@ function MasterDailyReport({ workspace }: { workspace: WorkspaceView }) {
 								</div>
 								{p && balance && <WorkEstimate balance={balance} unit={p.unit} />}
 								{p && (
-									<label className="work-note">
-										Примечание к работе
-										<Input.TextArea
-											value={l.note || ''}
-											placeholder="Например, этаж или причина перерасхода"
-											maxLength={1000}
-											autoSize={{ minRows: 1, maxRows: 4 }}
-											onChange={(event) => {
-												const note = event.target.value;
-												setLines((items) =>
-													items.map((item, index) => (index === i ? { ...item, note } : item)),
-												);
-											}}
-										/>
-									</label>
+									<ReportNoteButton
+										key={`${day}:${p.id}`}
+										project={project}
+										scope={`work-note:${day}:${p.id}`}
+										value={l.note || ''}
+										label="Примечание к работе"
+										onChange={(note) => {
+											setLines((items) =>
+												items.map((item, index) => (index === i ? { ...item, note } : item)),
+											);
+										}}
+									/>
 								)}
 								<div className="work-card-foot">
 									<span>
@@ -283,7 +261,7 @@ function MasterDailyReport({ workspace }: { workspace: WorkspaceView }) {
 					);
 				})}
 			</div>
-			{!lines.length && positions.length > 0 && (
+			{!lines.length && !parsed.length && !parsing && positions.length > 0 && (
 				<div className="no-work">
 					<p>Добавьте работы, выполненные за день</p>
 				</div>
@@ -343,7 +321,13 @@ function MasterDailyReport({ workspace }: { workspace: WorkspaceView }) {
 			)}
 			<div className="confirm-bar">
 				<div>
-					<span>{dirty ? 'Есть неподтверждённые изменения' : 'Отчёт без изменений'}</span>
+					<span>
+						{parsed.length
+							? 'Черновик отчёта'
+							: dirty
+								? 'Есть неподтверждённые изменения'
+								: 'Отчёт без изменений'}
+					</span>
 					<strong>
 						<Money value={amount} />
 					</strong>
@@ -352,9 +336,13 @@ function MasterDailyReport({ workspace }: { workspace: WorkspaceView }) {
 					type="primary"
 					size="large"
 					icon={<Check size={18} />}
-					disabled={!valid || (!dirty && !!report?.revision)}
+					disabled={
+						parsing ||
+						parsedCrewAmbiguous ||
+						(parsed.length ? parsedIncomplete > 0 : !valid || (!dirty && !!report?.revision))
+					}
 					loading={busy}
-					onClick={confirm}
+					onClick={parsed.length ? confirmParsedReport : confirm}
 				>
 					{busy ? 'Сохраняем…' : 'Подтвердить'}
 				</Button>

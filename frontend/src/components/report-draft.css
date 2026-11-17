@@ -33,7 +33,6 @@
 }
 .quick-report-actions,
 .draft-status,
-.draft-crew,
 .draft-work-heading {
 	display: flex;
 	align-items: center;
@@ -64,21 +63,17 @@
 	color: var(--ios-secondary);
 	font-size: 13px;
 }
-.draft-crew {
-	padding: 12px;
-	border: 1px solid var(--ios-success-line);
-	background: var(--ios-success-fill);
-	border-radius: 12px;
-	color: var(--ios-success);
+.earnings-review {
+	grid-column: 1 / -1;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px 12px;
+	font-size: 12px;
+	color: var(--ios-warning-text);
 }
-.draft-crew > span {
-	display: inline-flex;
-	align-items: center;
-	gap: 8px;
-	font-size: 14px;
-}
-.draft-crew .ant-input-number {
-	width: 80px;
+.quick-report-composer .daily-earnings {
+	background: var(--ios-fill);
+	box-shadow: none;
 }
 .draft-work {
 	display: grid;
@@ -93,7 +88,7 @@
 	background: var(--ios-warning-fill);
 	border-color: var(--ios-warning-line);
 }
-.draft-work-heading > b {
+.draft-work-heading > span {
 	font-size: 13px;
 	line-height: 1.5;
 	font-weight: 500;
@@ -148,6 +143,50 @@
 .draft-review-hint {
 	font-size: 12px;
 	color: var(--ios-warning-text);
+}
+.draft-suggestions {
+	display: grid;
+	gap: 4px;
+	min-width: 0;
+}
+.draft-suggestions > strong {
+	font-size: 12px;
+	color: var(--ios-secondary);
+}
+.draft-suggestions > button {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 10px;
+	min-width: 0;
+	min-height: 44px;
+	padding: 8px 10px;
+	border: 1px solid var(--ios-separator);
+	border-radius: 8px;
+	background: var(--ios-surface);
+	color: var(--ios-label);
+	font: inherit;
+	text-align: start;
+	overflow-wrap: anywhere;
+	cursor: pointer;
+}
+.draft-suggestions > button:is(:hover, :focus-visible) {
+	border-color: var(--ios-accent);
+	background: var(--ios-accent-fill);
+}
+.draft-suggestions > button > span {
+	display: grid;
+	gap: 2px;
+}
+.draft-suggestions > button b {
+	font-weight: 600;
+}
+.draft-suggestions > button svg {
+	flex: none;
+	color: var(--ios-secondary);
+}
+.draft-suggestions > button small {
+	color: var(--ios-secondary);
 }
 .draft-mode {
 	display: grid;

@@ -138,3 +138,42 @@
 		transition: transform 160ms ease;
 	}
 }
+.disk-files {
+	display: grid;
+	gap: 10px;
+	min-width: 0;
+	padding-top: 12px;
+	border-top: 1px solid var(--ios-separator);
+}
+.disk-files h3 {
+	margin: 0;
+	font-size: 14px;
+}
+.disk-files > .ant-btn {
+	justify-self: start;
+	max-width: 100%;
+}
+.disk-file {
+	display: grid;
+	gap: 5px;
+	min-width: 0;
+	padding: 10px;
+	border-radius: 10px;
+	background: var(--ios-fill);
+}
+.disk-file strong {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.disk-file small,
+.disk-files-dialog p {
+	margin: 0;
+	color: var(--ios-secondary);
+	font-size: 13px;
+}
+.disk-file > div {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}

@@ -155,6 +155,7 @@ def test_auto_sync_after_confirmation_only_when_changed(client, monkeypatch):
     with store.connect(p["db_path"]) as db:
         store.set_setting(db, "source", "bitrix")
         store.set_setting(db, "webhook", "configured-in-test")
+        store.set_setting(db, "file_id", "1")
 
     async def upload(*args):
         calls.append(args)

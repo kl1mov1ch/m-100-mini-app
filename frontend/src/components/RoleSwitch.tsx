@@ -20,6 +20,7 @@ export function RoleSwitch({
 		if ((report && dirty) || freeText.trim() || unsaved) {
 			confirming.current = true;
 			modal.confirm({
+				closable: true,
 				title: 'Переключить режим?',
 				content: 'Несохранённые изменения в текущем режиме будут сброшены.',
 				okText: 'Переключить',

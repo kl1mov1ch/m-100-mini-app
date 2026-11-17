@@ -154,6 +154,7 @@ export type Report = {
 	payroll: Payroll;
 	changed?: boolean;
 	notes_only?: boolean;
+	day_note?: string;
 };
 export type HistoryRow = Payroll & {
 	date: string;
@@ -165,9 +166,13 @@ export type HistoryRow = Payroll & {
 };
 export type DiskWebhook = { id: string; name: string; portal: string };
 
+export type DiskFile = { id: number; name: string; url: string };
 export type Config = {
 	today: string;
 	object_note?: string;
+	bitrix_project_book?: (DiskFile & { webhook_id: string }) | null;
+	bitrix_report_webhook_id?: string;
+	bitrix_report_file?: DiskFile | null;
 	mode: string;
 	llm: boolean;
 	source: string;

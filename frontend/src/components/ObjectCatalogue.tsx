@@ -8,7 +8,6 @@ import { BitrixReadStatus } from './BitrixReadStatus';
 import { estimateStatus, formatVolume, positionOverrun } from '../lib/position-volume';
 import {
 	catalogueCategories,
-	catalogueCategory,
 	catalogueStatusMatches,
 	catalogueValues,
 	selectCatalogue,
@@ -126,11 +125,11 @@ export function ObjectCatalogue({
 	const [sort, setSort] = useState<CatalogueSort>('source');
 	const [filtersOpen, setFiltersOpen] = useState(false);
 	const { allPositions: positions, openObjectSection } = workspace;
-	const allPositions = positions.filter((position) => !position.extra);
+	const allPositions = useMemo(() => positions.filter((position) => !position.extra), [positions]);
 	const sections = useMemo(
 		() =>
-			[...new Set(allPositions.map((position) => position.section).filter(Boolean))].sort((a, b) =>
-				a.localeCompare(b, 'ru'),
+			[...new Set(allPositions.map((position) => position.section?.trim()).filter(Boolean))].sort(
+				(a, b) => a.localeCompare(b, 'ru'),
 			),
 		[allPositions],
 	);
@@ -141,10 +140,8 @@ export function ObjectCatalogue({
 	const grouped = useMemo(() => {
 		const groups = new Map<string, { title: string; positions: Position[] }>();
 		for (const position of matching) {
-			const kind = catalogueCategory(position);
-			const key = JSON.stringify([kind, position.section]);
-			const categoryTitle = catalogueCategories.find((item) => item.value === kind)!.title;
-			const title = position.section ? `${position.section} · ${categoryTitle}` : categoryTitle;
+			const key = position.section?.trim() || '';
+			const title = key || 'Без раздела';
 			if (!groups.has(key)) groups.set(key, { title, positions: [] });
 			groups.get(key)!.positions.push(position);
 		}
@@ -206,13 +203,31 @@ export function ObjectCatalogue({
 					{filterCount || null}
 				</Button>
 			</div>
+			{filterCount > 0 && (
+				<div className="catalogue-result-heading">
+					<small>
+						{[
+							section !== 'all' && section,
+							category !== 'all' &&
+								catalogueCategories.find((item) => item.value === category)?.title,
+							status !== 'all' && statusOptions.find((item) => item.value === status)?.label,
+							sort !== 'source' && sortOptions.find((item) => item.value === sort)?.label,
+						]
+							.filter(Boolean)
+							.join(' · ')}
+					</small>
+					<Button type="link" onClick={reset}>
+						Сбросить
+					</Button>
+				</div>
+			)}
 			<div className="catalogue-groups">
 				{grouped.map(([key, group]) => (
 					<CatalogueGroup
 						key={context + key}
 						title={group.title}
 						positions={group.positions}
-						initiallyOpen
+						initiallyOpen={grouped.length === 1 || !!query.trim() || section !== 'all'}
 						duplicateNames={duplicateNames}
 						onView={onView}
 					/>

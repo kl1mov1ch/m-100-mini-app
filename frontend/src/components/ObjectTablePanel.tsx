@@ -4,6 +4,7 @@ import { useId, useState } from 'react';
 import type { WorkspaceView } from '../App';
 import { FieldHelp } from './FieldHelp';
 import { ObjectTableCard } from './ObjectTableCard';
+import { ObjectDiskFiles } from './ObjectDiskFiles';
 import { downloadReport } from '../lib/report-download';
 import './object-table-panel.css';
 
@@ -122,6 +123,7 @@ export function ObjectTablePanel({
 					</Button>
 				)}
 			</div>
+			<ObjectDiskFiles workspace={workspace} />
 			{configuring && (
 				<div className="object-connection-form table-settings-form">
 					<label>
