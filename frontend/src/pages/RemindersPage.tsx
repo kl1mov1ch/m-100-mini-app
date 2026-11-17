@@ -1,10 +1,9 @@
-import { App, Button, Input, Segmented, Select, Switch, TimePicker } from 'antd';
-import { Send } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { App, Button, Input, Segmented, Select } from 'antd';
+import { ChevronDown, Send } from 'lucide-react';
+import { type ClipboardEvent, useEffect, useState } from 'react';
 import dayjs from '../lib/date';
 import { request } from '../lib/api';
 import type { WorkspaceView } from '../App';
-import { CompactWorkEditor } from '../components/CompactRow';
 import './reminders.css';
 
 type Audience = 'missing' | 'selected' | 'all';
@@ -16,11 +15,20 @@ type ReminderConfig = {
 	audience: Audience;
 	recipient_ids: string[];
 };
+type Delivery = {
+	telegram_id: string;
+	run_key: string;
+	day: string;
+	name: string;
+	status: string;
+	error: string;
+	created_at: string;
+};
 type ReminderData = {
 	settings: ReminderConfig;
 	users: { telegram_id: string; name: string; role: string }[];
 	recipients: { telegram_id: string }[];
-	deliveries: { name: string; status: string; error: string; created_at: string }[];
+	deliveries: Delivery[];
 };
 type DeliveryResult = { sent: number; failed: number; skipped: number };
 
@@ -35,6 +43,74 @@ function deliveryStatus(status: string) {
 	if (status === 'sent') return 'Отправлено';
 	if (status === 'sending') return 'Отправляется';
 	return 'Не доставлено';
+}
+
+function scheduleTime(hours: string, minutes: string) {
+	if (![hours, minutes].every((value) => /^\d{1,2}$/.test(value))) return null;
+	if (Number(hours) > 23 || Number(minutes) > 59) return null;
+	return hours.padStart(2, '0') + ':' + minutes.padStart(2, '0');
+}
+
+function DeliveryHistory({ deliveries }: { deliveries: Delivery[] }) {
+	const groups = new Map<string, Delivery[]>();
+	for (const item of deliveries) {
+		const day = dayjs(item.created_at).format('YYYY-MM-DD');
+		const group = groups.get(day);
+		if (group) group.push(item);
+		else groups.set(day, [item]);
+	}
+	const dates = [...groups.keys()].sort().reverse();
+	return (
+		<section className="settings-card notifications-card">
+			<h2>Последние отправки</h2>
+			{dates.length === 0 && <small>Отправок пока нет.</small>}
+			{dates.map((day, index) => {
+				const rows = groups.get(day)!;
+				const sent = rows.filter((item) => item.status === 'sent').length;
+				const failed = rows.filter((item) => item.status === 'failed').length;
+				const pending = rows.length - sent - failed;
+				return (
+					<details className="notification-history-day" key={day} open={index === 0}>
+						<summary>
+							<span>
+								<strong>
+									<time dateTime={day}>{dayjs(day).format('D MMMM YYYY')}</time>
+								</strong>
+								<small>
+									{[
+										sent > 0 && `Доставлено · ${sent}`,
+										failed > 0 && `Не доставлено · ${failed}`,
+										pending > 0 && `В процессе · ${pending}`,
+									]
+										.filter(Boolean)
+										.join('  ·  ')}
+								</small>
+							</span>
+							<ChevronDown size={17} aria-hidden />
+						</summary>
+						<ul>
+							{rows.map((item) => (
+								<li key={item.day + ':' + item.run_key + ':' + item.telegram_id}>
+									<time dateTime={item.created_at}>{dayjs(item.created_at).format('HH:mm')}</time>
+									<span>{item.name || 'Пользователь Telegram'}</span>
+									<small
+										className={
+											item.status === 'failed' ? 'notification-delivery-failed' : undefined
+										}
+									>
+										{deliveryStatus(item.status)}
+									</small>
+									{item.error && (
+										<small className="notification-delivery-error">{item.error}</small>
+									)}
+								</li>
+							))}
+						</ul>
+					</details>
+				);
+			})}
+		</section>
+	);
 }
 
 export function RemindersPage({ workspace }: { workspace: WorkspaceView }) {
@@ -54,6 +130,20 @@ export function RemindersPage({ workspace }: { workspace: WorkspaceView }) {
 	if (!config || !data) return <div role="status">Загружаем уведомления…</div>;
 
 	const update = (patch: Partial<ReminderConfig>) => setConfig({ ...config, ...patch });
+	const [hours = '', minutes = ''] = config.time.split(':');
+	const time = scheduleTime(hours, minutes);
+	const updateTime = (part: 'hours' | 'minutes', value: string) => {
+		const digits = value.replace(/\D/g, '').slice(0, 2);
+		update({ time: part === 'hours' ? digits + ':' + minutes : hours + ':' + digits });
+	};
+	const pasteTime = (event: ClipboardEvent<HTMLInputElement>) => {
+		const match = /^(\d{1,2}):(\d{1,2})$/.exec(event.clipboardData.getData('text').trim());
+		if (!match) return;
+		event.preventDefault();
+		const pasted = scheduleTime(match[1], match[2]);
+		if (pasted) update({ time: pasted });
+		else message.warning('Укажите время от 00:00 до 23:59');
+	};
 	const selected = new Set(config.recipient_ids);
 	const recipientCount =
 		config.audience === 'missing'
@@ -63,9 +153,10 @@ export function RemindersPage({ workspace }: { workspace: WorkspaceView }) {
 				: data.users.filter((user) => selected.has(user.telegram_id)).length;
 	const valid = !!config.text.trim() && (config.audience !== 'selected' || recipientCount > 0);
 	const save = async () => {
+		if (!time) return;
 		setBusy(true);
 		try {
-			await request('/admin/reminders/settings', config);
+			await request('/admin/reminders/settings', { ...config, time });
 			message.success('Расписание сохранено');
 			await load();
 		} catch (error) {
@@ -172,79 +263,85 @@ export function RemindersPage({ workspace }: { workspace: WorkspaceView }) {
 				</div>
 			</section>
 			<section className="settings-card notifications-card">
-				<div className="notification-section-title">
-					<div>
-						<h2>Расписание</h2>
-						<small>Время Минска</small>
-					</div>
-					<Switch
-						aria-label="Отправлять по расписанию"
+				<h2>Расписание</h2>
+				<label className="notification-schedule-switch">
+					<span>
+						<strong>Автоматическая отправка</strong>
+						<small>{config.enabled ? 'Включена' : 'Выключена'}</small>
+					</span>
+					<input
+						type="checkbox"
+						role="switch"
+						aria-label="Автоматическая отправка"
 						checked={config.enabled}
-						onChange={(enabled) => update({ enabled })}
+						onChange={(event) => update({ enabled: event.target.checked })}
 					/>
-				</div>
-				<div className="notification-field">
-					<span>Дни отправки</span>
-					<div className="notification-days" role="group" aria-label="Дни отправки">
-						{weekdays.map((label, day) => (
-							<button
-								key={label}
-								type="button"
-								aria-pressed={config.weekdays.includes(day)}
-								onClick={() =>
-									update({
-										weekdays: config.weekdays.includes(day)
-											? config.weekdays.filter((value) => value !== day)
-											: [...config.weekdays, day].sort(),
-									})
-								}
-							>
-								{label}
-							</button>
-						))}
-					</div>
-				</div>
-				<label className="notification-field">
-					<span>Время отправки</span>
-					<TimePicker
-						aria-label="Время отправки"
-						format="HH:mm"
-						allowClear={false}
-						value={dayjs('2026-01-01T' + config.time)}
-						onChange={(value) => value && update({ time: value.format('HH:mm') })}
-						inputReadOnly
-					/>
+					<span className="notification-switch-track" aria-hidden />
 				</label>
+				<div className="notification-schedule-fields">
+					<div className="notification-field">
+						<span>Дни отправки</span>
+						<div className="notification-days" role="group" aria-label="Дни отправки">
+							{weekdays.map((label, day) => (
+								<button
+									key={label}
+									type="button"
+									aria-pressed={config.weekdays.includes(day)}
+									onClick={() =>
+										update({
+											weekdays: config.weekdays.includes(day)
+												? config.weekdays.filter((value) => value !== day)
+												: [...config.weekdays, day].sort(),
+										})
+									}
+								>
+									{label}
+								</button>
+							))}
+						</div>
+					</div>
+					<fieldset className="notification-field notification-time">
+						<legend>Время по Минску</legend>
+						<div>
+							<Input
+								aria-label="Часы"
+								inputMode="numeric"
+								value={hours}
+								placeholder="ЧЧ"
+								onFocus={(event) => event.target.select()}
+								onPaste={pasteTime}
+								status={time ? undefined : 'error'}
+								onChange={(event) => updateTime('hours', event.target.value)}
+							/>
+							<span aria-hidden>:</span>
+							<Input
+								aria-label="Минуты"
+								inputMode="numeric"
+								value={minutes}
+								placeholder="ММ"
+								onFocus={(event) => event.target.select()}
+								onPaste={pasteTime}
+								status={time ? undefined : 'error'}
+								onChange={(event) => updateTime('minutes', event.target.value)}
+							/>
+						</div>
+						{!time && (
+							<small className="notification-delivery-failed">
+								Укажите время от 00:00 до 23:59
+							</small>
+						)}
+					</fieldset>
+				</div>
 				<Button
 					type="primary"
 					loading={busy}
-					disabled={!valid || !config.weekdays.length}
+					disabled={!valid || !config.weekdays.length || !time}
 					onClick={save}
 				>
 					Сохранить расписание
 				</Button>
 			</section>
-			<section className="settings-card notifications-card">
-				<h2>Последние отправки</h2>
-				{data.deliveries.length ? (
-					<div className="compact-list">
-						{data.deliveries.map((item, index) => (
-							<CompactWorkEditor
-								key={item.created_at + index}
-								title={item.name || 'Пользователь Telegram'}
-								description={dayjs(item.created_at).format('D MMMM, HH:mm')}
-								meta={deliveryStatus(item.status)}
-								attention={item.status === 'failed'}
-							>
-								<p>{deliveryStatus(item.status)}</p>
-								{item.error && <p className="form-error">{item.error}</p>}
-							</CompactWorkEditor>
-						))}
-					</div>
-				) : (
-					<small>Отправок пока нет.</small>
-				)}
-			</section>
+			<DeliveryHistory deliveries={data.deliveries} />
 		</div>
 	);
 }
