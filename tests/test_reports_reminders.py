@@ -62,6 +62,58 @@ def test_reminders_only_target_missing_reports_and_deduplicate(client, monkeypat
     assert notifications.missing_reports(today())[0]["telegram_id"] == "1002"
 
 
+def test_reminders_address_selected_users_or_everyone_with_the_entered_text(client, monkeypatch):
+    for ident in ("1001", "1002", "1003"):
+        grant(client, ident)
+    with workspaces.registry() as database:
+        database.execute(
+            "INSERT INTO users(telegram_id,name,role,enabled) VALUES(?,?,'admin',1)",
+            ("1004", "Администратор"),
+        )
+        database.execute("UPDATE users SET enabled=0 WHERE telegram_id=?", ("1003",))
+    monkeypatch.setenv("APP_PUBLIC_URL", "https://app.example.com")
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:test-token")
+    sent = []
+
+    def telegram(request):
+        sent.append(parse_qs(request.content.decode()))
+        return httpx.Response(200, json={"ok": True})
+
+    original = httpx.AsyncClient
+    monkeypatch.setattr(
+        notifications.httpx,
+        "AsyncClient",
+        lambda **kwargs: original(transport=httpx.MockTransport(telegram)),
+    )
+    body = {
+        "request_id": str(uuid.uuid4()),
+        "audience": "selected",
+        "recipient_ids": ["1002", "1002", "1003"],
+        "text": "Проверьте расписание\nСпасибо!",
+    }
+    response = client.post("/api/admin/reminders/send", json=body)
+    assert response.json()["sent"] == 1
+    assert sent[0]["chat_id"] == ["1002"]
+    assert sent[0]["text"] == [body["text"]]
+    assert client.post("/api/admin/reminders/send", json=body).json()["skipped"] == 1
+    assert (
+        client.post(
+            "/api/admin/reminders/send",
+            json={**body, "recipient_ids": []},
+        ).status_code
+        == 422
+    )
+    response = client.post(
+        "/api/admin/reminders/send",
+        json={**body, "request_id": str(uuid.uuid4()), "audience": "all"},
+    )
+    active_ids = {user["telegram_id"] for user in notifications.telegram_users()}
+    assert {"1001", "1002", "1004"} <= active_ids
+    assert "1003" not in active_ids
+    assert response.json()["sent"] == len(active_ids)
+    assert {entry["chat_id"][0] for entry in sent[1:]} == active_ids
+
+
 def test_admin_master_preview_is_scoped_and_cannot_manage_team(client):
     grant(client, "1001")
     foreign = create(client, "1001")

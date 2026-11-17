@@ -65,43 +65,6 @@
 	background: var(--ios-fill);
 	border-color: var(--ios-separator);
 }
-.reminder-settings .ant-select,
-.reminder-settings .ant-picker {
-	width: 100%;
-}
-.reminder-settings > .ant-btn {
-	margin-top: 16px;
-	margin-bottom: 14px;
-}
-.reminder-toggle {
-	display: flex;
-	justify-content: space-between;
-	gap: 12px;
-	align-items: center;
-}
-.reminder-toggle b,
-.reminder-toggle small {
-	display: block;
-}
-.reminder-toggle small {
-	color: var(--ios-secondary);
-	margin-top: 6px;
-}
-.reminder-recipients > div {
-	display: grid;
-	gap: 7px;
-	padding: 12px 0;
-	border-bottom: 1px solid var(--ios-fill);
-}
-.reminder-recipients {
-	margin-bottom: 16px;
-}
-.reminder-recipients span {
-	color: var(--ios-secondary);
-	line-height: 1.6;
-	font-size: 12px;
-	overflow-wrap: anywhere;
-}
 .overview-statistics {
 	display: grid;
 	grid-template-columns: repeat(3, minmax(0, 1fr));

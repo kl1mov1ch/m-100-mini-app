@@ -1,38 +1,47 @@
-import { CompactWorkEditor } from '../components/CompactRow';
-import { Alert, App, Button, Input, Select, Switch, TimePicker, Tag, Empty } from 'antd';
-import { Bell, Send } from 'lucide-react';
+import { App, Button, Input, Segmented, Select, Switch, TimePicker } from 'antd';
+import { Send } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import dayjs from '../lib/date';
 import { request } from '../lib/api';
 import type { WorkspaceView } from '../App';
+import { CompactWorkEditor } from '../components/CompactRow';
+import './reminders.css';
 
-type ReminderConfig = { enabled: boolean; weekdays: number[]; time: string; text: string };
+type Audience = 'missing' | 'selected' | 'all';
+type ReminderConfig = {
+	enabled: boolean;
+	weekdays: number[];
+	time: string;
+	text: string;
+	audience: Audience;
+	recipient_ids: string[];
+};
 type ReminderData = {
 	settings: ReminderConfig;
-	recipients: { telegram_id: string; name: string; projects: string[] }[];
-	deliveries: { name: string; day: string; status: string; error: string; created_at: string }[];
+	users: { telegram_id: string; name: string; role: string }[];
+	recipients: { telegram_id: string }[];
+	deliveries: { name: string; status: string; error: string; created_at: string }[];
 };
+type DeliveryResult = { sent: number; failed: number; skipped: number };
+
+const weekdays = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+const audiences = [
+	{ value: 'missing', label: 'Без отчёта' },
+	{ value: 'selected', label: 'Выбранные' },
+	{ value: 'all', label: 'Всем' },
+] satisfies { value: Audience; label: string }[];
+
+function deliveryStatus(status: string) {
+	if (status === 'sent') return 'Отправлено';
+	if (status === 'sending') return 'Отправляется';
+	return 'Не доставлено';
+}
 
 export function RemindersPage({ workspace }: { workspace: WorkspaceView }) {
 	const { message, modal } = App.useApp();
 	const [data, setData] = useState<ReminderData>();
 	const [config, setConfig] = useState<ReminderConfig>();
 	const [busy, setBusy] = useState(false);
-	const testReminder = async () => {
-		setBusy(true);
-		try {
-			const result = await request<{ sent: number; failed: number }>('/admin/reminders/test', {
-				request_id: crypto.randomUUID(),
-			});
-			if (result.sent) message.success('Проверочное сообщение отправлено вам в Telegram');
-			else message.warning('Сообщение не доставлено. Разрешите уведомления в настройках.');
-			setData(await request<ReminderData>('/admin/reminders'));
-		} catch (error) {
-			message.error((error as Error).message);
-		} finally {
-			setBusy(false);
-		}
-	};
 	const load = async () => {
 		const result = await request<ReminderData>('/admin/reminders');
 		setData(result);
@@ -40,10 +49,20 @@ export function RemindersPage({ workspace }: { workspace: WorkspaceView }) {
 	};
 	useEffect(() => {
 		if (workspace.isAdmin) void load().catch((error) => message.error(error.message));
-	}, []);
+	}, [workspace.isAdmin]);
 	if (!workspace.isAdmin) return null;
+	if (!config || !data) return <div role="status">Загружаем уведомления…</div>;
+
+	const update = (patch: Partial<ReminderConfig>) => setConfig({ ...config, ...patch });
+	const selected = new Set(config.recipient_ids);
+	const recipientCount =
+		config.audience === 'missing'
+			? data.recipients.length
+			: config.audience === 'all'
+				? data.users.length
+				: data.users.filter((user) => selected.has(user.telegram_id)).length;
+	const valid = !!config.text.trim() && (config.audience !== 'selected' || recipientCount > 0);
 	const save = async () => {
-		if (!config) return;
 		setBusy(true);
 		try {
 			await request('/admin/reminders/settings', config);
@@ -55,161 +74,177 @@ export function RemindersPage({ workspace }: { workspace: WorkspaceView }) {
 			setBusy(false);
 		}
 	};
-	const send = () =>
+	const sendTest = async () => {
+		setBusy(true);
+		try {
+			const result = await request<DeliveryResult>('/admin/reminders/test', {
+				request_id: crypto.randomUUID(),
+				text: config.text.trim(),
+			});
+			if (result.sent) message.success('Сообщение отправлено вам в Telegram');
+			else message.warning('Telegram не доставил сообщение. Проверьте разрешение для бота.');
+			setData(await request<ReminderData>('/admin/reminders'));
+		} catch (error) {
+			message.error((error as Error).message);
+		} finally {
+			setBusy(false);
+		}
+	};
+	const send = () => {
+		const requestId = crypto.randomUUID();
 		modal.confirm({
 			closable: true,
-			title: 'Отправить напоминания?',
+			title: 'Отправить в Telegram?',
 			content: (
-				<>
-					<p>Сообщение получат только мастера без подтверждённого отчёта за сегодня.</p>
-					<p>{config?.text}</p>
-					<b>Получателей: {data?.recipients.length || 0}</b>
-				</>
+				<div className="notification-preview">
+					<small>Получателей · {recipientCount}</small>
+					<p>{config.text.trim()}</p>
+					{config.audience === 'missing' && <small>Бот добавит список объектов без отчёта.</small>}
+				</div>
 			),
 			okText: 'Отправить',
 			cancelText: 'Отмена',
 			onOk: async () => {
-				if (!config) return;
-				await request('/admin/reminders/settings', config);
-				const result = await request<{ sent: number; failed: number; skipped: number }>(
-					'/admin/reminders/send',
-					{ request_id: crypto.randomUUID() },
-				);
-				message.info(`Отправлено: ${result.sent}. Не доставлено: ${result.failed}.`);
-				await load();
+				const result = await request<DeliveryResult>('/admin/reminders/send', {
+					request_id: requestId,
+					audience: config.audience,
+					recipient_ids: config.recipient_ids,
+					text: config.text.trim(),
+				});
+				message.info(`Отправлено · ${result.sent}. Не доставлено · ${result.failed}.`);
+				setData(await request<ReminderData>('/admin/reminders'));
 			},
 		});
+	};
 	return (
-		<>
+		<div className="notifications-page">
 			<div className="page-title">
-				<div>
-					<span className="overline">АДМИНИСТРАТОР</span>
-					<h1>Напоминания</h1>
-				</div>
-				<Bell size={24} />
+				<h1>Уведомления</h1>
 			</div>
-			{config && (
-				<section className="settings-card reminder-settings">
-					<div className="reminder-toggle">
-						<div>
-							<b>По расписанию</b>
-							<small>Часовой пояс: Минск</small>
-						</div>
-						<Switch
-							checked={config.enabled}
-							onChange={(enabled) => setConfig({ ...config, enabled })}
+			<section className="settings-card notifications-card">
+				<h2>Рассылка в Telegram</h2>
+				<div className="notification-field">
+					<span>Получатели</span>
+					<Segmented
+						aria-label="Получатели уведомления"
+						block
+						options={audiences}
+						value={config.audience}
+						onChange={(audience) => update({ audience })}
+					/>
+					{config.audience === 'selected' && (
+						<Select
+							aria-label="Выбрать пользователей Telegram"
+							placeholder="Найти пользователя"
+							mode="multiple"
+							maxTagCount="responsive"
+							optionFilterProp="label"
+							value={config.recipient_ids}
+							onChange={(recipient_ids) => update({ recipient_ids })}
+							options={data.users.map(({ telegram_id, name, role }) => ({
+								value: telegram_id,
+								label: `${name} · ${role === 'admin' ? 'Администратор' : 'Мастер'}`,
+							}))}
 						/>
-					</div>
-					<label>Дни недели</label>
-					<Select
-						mode="multiple"
-						aria-label="Дни напоминаний"
-						value={config.weekdays}
-						onChange={(weekdays) => setConfig({ ...config, weekdays })}
-						options={['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map((label, value) => ({
-							label,
-							value,
-						}))}
-					/>
-					<label>Время</label>
-					<TimePicker
-						aria-label="Время напоминания"
-						format="HH:mm"
-						minuteStep={5}
-						allowClear={false}
-						value={dayjs('2026-01-01T' + config.time)}
-						onChange={(value) => value && setConfig({ ...config, time: value.format('HH:mm') })}
-						inputReadOnly
-					/>
-					<label>Текст сообщения</label>
+					)}
+					<small>Получателей сейчас · {recipientCount}</small>
+				</div>
+				<label className="notification-field">
+					<span>Текст сообщения</span>
 					<Input.TextArea
 						value={config.text}
-						onChange={(event) => setConfig({ ...config, text: event.target.value })}
 						maxLength={1500}
 						autoSize={{ minRows: 3, maxRows: 8 }}
+						onChange={(event) => update({ text: event.target.value })}
 					/>
+				</label>
+				<div className="notification-actions">
 					<Button
-						type="primary"
-						block
-						onClick={save}
-						loading={busy}
-						disabled={!config.weekdays.length || !config.text.trim()}
+						icon={<Send size={16} />}
+						onClick={send}
+						disabled={!valid || !recipientCount || busy}
 					>
-						Сохранить расписание
+						Отправить сейчас
 					</Button>
-					<Button block onClick={testReminder} loading={busy}>
-						Проверить уведомление себе
+					<Button type="text" disabled={!config.text.trim() || busy} onClick={sendTest}>
+						Проверить на себе
 					</Button>
-					<Alert
-						type="info"
-						showIcon
-						message="Разрешение на сообщения от бота можно дать при входе или в настройках приложения."
-					/>
-				</section>
-			)}
-			<section className="settings-card">
-				<h2>
-					Без отчёта сегодня{' '}
-					<Tag className="status-tag-attention">{data?.recipients.length || 0}</Tag>
-				</h2>
-				<div className="reminder-recipients compact-list">
-					{data?.recipients.map((recipient) => (
-						<CompactWorkEditor
-							key={recipient.telegram_id}
-							title={recipient.name}
-							description={recipient.projects.join(' · ')}
-							meta="Нет отчёта"
-						>
-							<p>Сегодня отчёт ещё не сдан.</p>
-							{recipient.projects.map((name) => (
-								<p key={name}>{name}</p>
-							))}
-						</CompactWorkEditor>
-					))}
 				</div>
-				{!data?.recipients.length && (
-					<Empty description="Нет мастеров без отчёта" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-				)}
+			</section>
+			<section className="settings-card notifications-card">
+				<div className="notification-section-title">
+					<div>
+						<h2>Расписание</h2>
+						<small>Время Минска</small>
+					</div>
+					<Switch
+						aria-label="Отправлять по расписанию"
+						checked={config.enabled}
+						onChange={(enabled) => update({ enabled })}
+					/>
+				</div>
+				<div className="notification-field">
+					<span>Дни отправки</span>
+					<div className="notification-days" role="group" aria-label="Дни отправки">
+						{weekdays.map((label, day) => (
+							<button
+								key={label}
+								type="button"
+								aria-pressed={config.weekdays.includes(day)}
+								onClick={() =>
+									update({
+										weekdays: config.weekdays.includes(day)
+											? config.weekdays.filter((value) => value !== day)
+											: [...config.weekdays, day].sort(),
+									})
+								}
+							>
+								{label}
+							</button>
+						))}
+					</div>
+				</div>
+				<label className="notification-field">
+					<span>Время отправки</span>
+					<TimePicker
+						aria-label="Время отправки"
+						format="HH:mm"
+						allowClear={false}
+						value={dayjs('2026-01-01T' + config.time)}
+						onChange={(value) => value && update({ time: value.format('HH:mm') })}
+						inputReadOnly
+					/>
+				</label>
 				<Button
-					block
-					icon={<Send size={16} />}
-					onClick={send}
-					disabled={!data?.recipients.length || !config?.text.trim()}
+					type="primary"
+					loading={busy}
+					disabled={!valid || !config.weekdays.length}
+					onClick={save}
 				>
-					Напомнить всем сейчас
+					Сохранить расписание
 				</Button>
 			</section>
-			<section className="settings-card">
+			<section className="settings-card notifications-card">
 				<h2>Последние отправки</h2>
-				<div className="reminder-recipients compact-list">
-					{data?.deliveries.map((item, index) => (
-						<CompactWorkEditor
-							key={item.created_at + index}
-							title={item.name}
-							description={dayjs(item.created_at).format('D MMMM, HH:mm')}
-							meta={
-								item.status === 'sent'
-									? 'Отправлено'
-									: item.status === 'sending'
-										? 'Отправляется'
-										: 'Не доставлено'
-							}
-							attention={item.status !== 'sent' && item.status !== 'sending'}
-						>
-							<p>{dayjs(item.created_at).format('D MMMM YYYY, HH:mm')}</p>
-							<p>
-								{item.status === 'sent'
-									? 'Напоминание отправлено'
-									: item.status === 'sending'
-										? 'Напоминание отправляется'
-										: 'Напоминание не доставлено'}
-							</p>
-							{item.error && <p className="form-error">{item.error}</p>}
-						</CompactWorkEditor>
-					))}
-				</div>
-				{!data?.deliveries.length && <p>Напоминаний пока не было</p>}
+				{data.deliveries.length ? (
+					<div className="compact-list">
+						{data.deliveries.map((item, index) => (
+							<CompactWorkEditor
+								key={item.created_at + index}
+								title={item.name || 'Пользователь Telegram'}
+								description={dayjs(item.created_at).format('D MMMM, HH:mm')}
+								meta={deliveryStatus(item.status)}
+								attention={item.status === 'failed'}
+							>
+								<p>{deliveryStatus(item.status)}</p>
+								{item.error && <p className="form-error">{item.error}</p>}
+							</CompactWorkEditor>
+						))}
+					</div>
+				) : (
+					<small>Отправок пока нет.</small>
+				)}
 			</section>
-		</>
+		</div>
 	);
 }

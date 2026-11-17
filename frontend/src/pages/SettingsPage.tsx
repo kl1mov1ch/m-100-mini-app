@@ -40,7 +40,7 @@ export function SettingsPage({
 					disabled={notifications.requesting}
 					onClick={notifications.requestPermission}
 				>
-					<span className="settings-icon reminder-icon">
+					<span className="settings-icon">
 						<Bell size={21} />
 					</span>
 					<span>
@@ -70,11 +70,11 @@ export function SettingsPage({
 			)}
 			{isAdmin && (
 				<button className="settings-menu" onClick={() => setPage('reminders')}>
-					<span className="settings-icon reminder-icon">
+					<span className="settings-icon">
 						<Bell size={21} />
 					</span>
 					<span>
-						<b>Напоминания мастерам</b>
+						<b>Уведомления</b>
 						<small>Сообщения в Telegram и расписание</small>
 					</span>
 					<ChevronRight size={18} />

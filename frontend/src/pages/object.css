@@ -565,10 +565,6 @@
 .admin-settings-details[open] > summary::after {
 	transform: rotate(90deg);
 }
-.settings-icon.reminder-icon {
-	background: var(--ios-warning-fill);
-	color: var(--ios-warning-text);
-}
 @media (min-width: 760px) {
 	.admin-overview-filters {
 		grid-template-columns: repeat(3, minmax(0, 1fr));

@@ -1,0 +1,91 @@
+.notifications-page {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	gap: 12px;
+	max-width: 820px;
+}
+
+.notification-field .ant-segmented {
+	overflow: hidden;
+}
+
+.notification-field .ant-segmented-item {
+	min-width: 0;
+}
+
+.notification-field .ant-segmented-item-label {
+	padding-inline: 6px;
+}
+
+.notifications-page .page-title,
+.notifications-page .notifications-card {
+	width: 100%;
+	margin: 0;
+}
+
+.notifications-page .notifications-card,
+.notification-field {
+	display: grid;
+	gap: 10px;
+	min-width: 0;
+}
+
+.notifications-card h2,
+.notification-preview p {
+	margin: 0;
+}
+
+.notification-field > span {
+	font-weight: 600;
+}
+
+.notification-section-title {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+}
+
+.notifications-card small,
+.notification-preview small {
+	color: var(--ios-secondary);
+}
+
+.notification-days {
+	display: grid;
+	grid-template-columns: repeat(7, minmax(0, 1fr));
+	gap: 4px;
+}
+
+.notification-days > button {
+	min-height: 44px;
+	padding: 0;
+	border: 1px solid var(--ios-separator);
+	border-radius: 8px;
+	color: var(--ios-secondary);
+	background: var(--ios-surface);
+	font: inherit;
+	cursor: pointer;
+}
+
+.notification-days > button[aria-pressed='true'] {
+	color: var(--ios-accent);
+	background: var(--ios-accent-fill);
+	border-color: var(--ios-accent);
+}
+
+.notification-preview {
+	display: grid;
+	gap: 8px;
+}
+
+.notification-preview p {
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+
+.notification-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}
