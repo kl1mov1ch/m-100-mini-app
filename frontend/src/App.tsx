@@ -6,7 +6,8 @@ import { AppRoot } from '@telegram-apps/telegram-ui';
 import { SheetModal as Modal } from './components/SheetModal';
 import ruRU from 'antd/locale/ru_RU';
 import 'dayjs/locale/ru';
-import { Building2, History, Plus, Settings2 } from 'lucide-react';
+import { Building2, History, Plus, Settings } from 'lucide-react';
+import { useLayoutEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { TableImportModal } from './components/TableImportModal';
 import { VoiceReportDrawer } from './components/VoiceReportDrawer';
@@ -99,6 +100,16 @@ export function WorkspaceApp() {
 		createObject,
 		grant,
 	} = controller;
+	const content = useRef<HTMLElement>(null);
+	const section = page === 'object' || page === 'today' ? controller.objectSection : null;
+	useLayoutEffect(() => {
+		if (!content.current || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+		const transition = content.current.animate([{ opacity: 0.75 }, { opacity: 1 }], {
+			duration: 180,
+			easing: 'ease-out',
+		});
+		return () => transition.cancel();
+	}, [page, section]);
 	useStartupScreen(Boolean(failure || (session && (!session.projects.length || data))));
 	const notifications = useTelegramNotifications(session?.user.telegram_id);
 	const tableInbox = useTableNotifications(session?.user.telegram_id, session?.user.role);
@@ -143,7 +154,7 @@ export function WorkspaceApp() {
 						<span className="role-label">{isAdmin ? 'Администратор' : 'Мастер'}</span>
 					</div>
 				)}
-				<main className="content">
+				<main className="content" ref={content}>
 					{page === 'objects' && <ObjectsPage workspace={workspace} />}
 					{(page === 'today' || page === 'object') &&
 						(isAdmin ? (
@@ -171,7 +182,7 @@ export function WorkspaceApp() {
 						? [{ id: 'today', label: 'Отчёт', icon: <TelegramIcon name="report" size={22} /> }]
 						: []),
 					{ id: 'history', label: 'История', icon: <History size={22} /> },
-					{ id: 'more', label: 'Настройки', icon: <Settings2 size={22} /> },
+					{ id: 'more', label: 'Настройки', icon: <Settings size={22} /> },
 				].map((n) => {
 					const selected =
 						page === n.id ||

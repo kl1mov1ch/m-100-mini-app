@@ -366,8 +366,15 @@ export function RemindersPage({ workspace }: { workspace: WorkspaceView }) {
 							onChange={(recipient_ids) => update({ recipient_ids })}
 							options={data.users.map(({ telegram_id, name, role }) => ({
 								value: telegram_id,
-								label: `${name} · ${role === 'admin' ? 'Администратор' : 'Мастер'}`,
+								label: name || telegram_id,
+								roleLabel: role === 'admin' ? 'Администратор' : 'Мастер',
 							}))}
+							optionRender={({ data: person }) => (
+								<span className="recipient-option">
+									<span>{person.label}</span>
+									{person.label !== person.roleLabel && <small>{person.roleLabel}</small>}
+								</span>
+							)}
 						/>
 					)}
 					<small>Получателей сейчас · {recipientCount}</small>

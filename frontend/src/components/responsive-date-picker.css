@@ -7,25 +7,30 @@
 .date-control .ant-btn.date-control-trigger {
 	display: flex;
 	flex: 1 1 auto;
-	justify-content: space-between;
-	gap: 6px;
+	justify-content: center;
 	min-width: 0;
 	min-height: 44px;
 	padding-inline: 10px;
-	background: var(--ios-surface);
-	border-color: var(--ios-separator);
-	color: var(--ios-label);
 	font-size: 13px;
 	font-weight: 500;
 }
 
-.date-control-trigger > span {
+.date-control-value {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	font-variant-numeric: tabular-nums;
+}
+
+.date-control-value > span {
 	overflow: hidden;
 	text-overflow: ellipsis;
 }
 
-.date-control-trigger > svg {
-	color: var(--ios-accent);
+.date-control-value > svg {
+	display: block;
+	flex: none;
 }
 
 .date-control .date-control-clear {

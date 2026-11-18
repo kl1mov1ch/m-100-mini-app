@@ -10,7 +10,7 @@ type InputProps = Omit<ComponentPropsWithoutRef<'input'>, 'prefix' | 'size'> & {
 	prefix?: ReactNode;
 };
 
-function TextArea({ autoSize, rows, value, ...props }: TextAreaProps) {
+function TextArea({ autoSize, rows, value, className = '', ...props }: TextAreaProps) {
 	const field = useRef<HTMLTextAreaElement>(null);
 	useLayoutEffect(() => {
 		const element = field.current;
@@ -24,6 +24,7 @@ function TextArea({ autoSize, rows, value, ...props }: TextAreaProps) {
 	return (
 		<Textarea
 			{...props}
+			className={`journal-field ${className}`}
 			ref={field}
 			value={value}
 			rows={rows ?? (typeof autoSize === 'object' ? autoSize.minRows : undefined)}
@@ -31,9 +32,9 @@ function TextArea({ autoSize, rows, value, ...props }: TextAreaProps) {
 	);
 }
 
-export function Input({ allowClear, prefix, ...props }: InputProps) {
-	if (allowClear) return <AntInput {...props} prefix={prefix} allowClear />;
-	return <TelegramInput {...props} before={prefix} />;
+export function Input({ allowClear, prefix, className = '', ...props }: InputProps) {
+	if (allowClear) return <AntInput {...props} className={className} prefix={prefix} allowClear />;
+	return <TelegramInput {...props} className={`journal-field ${className}`} before={prefix} />;
 }
 
 Input.TextArea = TextArea;

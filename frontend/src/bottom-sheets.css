@@ -28,6 +28,9 @@
 .ant-modal .ant-modal-footer {
 	flex-shrink: 0;
 }
+.ant-modal .ant-modal-footer {
+	margin-block-start: 0;
+}
 .ant-modal .ant-modal-body {
 	flex: 1 1 auto;
 	min-height: 0;

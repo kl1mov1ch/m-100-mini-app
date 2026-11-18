@@ -24,17 +24,6 @@
 	font-size: 13px;
 }
 
-.quick-report-project > :not(label) {
-	border: 1px solid #b8c6d4;
-	border-radius: 10px;
-	background: var(--ios-surface);
-	min-width: 0;
-}
-
-.quick-report-project > :not(label):focus-within {
-	border-color: var(--ios-accent);
-}
-
 .quick-report-project .ant-select {
 	width: 100%;
 	font-weight: 500;
@@ -42,10 +31,6 @@
 
 .quick-report-project .ant-select-selector {
 	padding-inline: 12px !important;
-}
-
-.quick-report-project .ant-select-selection-item {
-	color: var(--ios-accent) !important;
 }
 
 .quick-report-composer textarea.ant-input {

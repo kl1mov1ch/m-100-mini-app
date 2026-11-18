@@ -1305,9 +1305,6 @@ small {
 	border-radius: 18px;
 	padding: 25px;
 }
-.ant-modal .ant-modal-footer {
-	margin-top: 25px;
-}
 .ant-modal .ant-btn {
 	font-size: 12px;
 }

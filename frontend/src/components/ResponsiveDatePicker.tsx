@@ -66,8 +66,10 @@ export function DatePicker({
 					changeOpen(true);
 				}}
 			>
-				<span>{value?.format(format) || placeholder}</span>
-				<TelegramIcon name="calendar" size={17} />
+				<span className="date-control-value">
+					<TelegramIcon name="calendar" size={17} />
+					<span>{value?.format(format) || placeholder}</span>
+				</span>
 			</Button>
 			{allowClear && value && (
 				<Button

@@ -1,4 +1,3 @@
-import { Tag } from 'antd';
 import { Input } from '../components/Input';
 import { Button } from '../components/Button';
 import { ProfileCard } from '../components/ProfileCard';
@@ -22,6 +21,7 @@ export function SettingsPage({
 	tableInbox: ReturnType<typeof useTableNotifications>;
 }) {
 	const aiKeyFieldId = useId();
+	const aiModelFieldId = useId();
 	const {
 		session,
 		setPage,
@@ -89,18 +89,18 @@ export function SettingsPage({
 			)}
 			{isAdmin && (
 				<details className="settings-card admin-settings-details">
-					<summary>
-						<Sparkles size={20} />
-						<b>Умный подбор</b>
-						<Tag
-							color={session.ai_connected ? 'green' : undefined}
-							className={session.ai_connected ? undefined : 'status-tag-attention'}
-						>
-							{session.ai_connected ? 'Подключён' : 'Нужен ключ'}
-						</Tag>
+					<summary className="settings-menu">
+						<span className="settings-icon">
+							<Sparkles size={21} />
+						</span>
+						<span>
+							<b>Умный подбор</b>
+							<small>{session.ai_connected ? 'Подключён' : 'Нужен ключ'}</small>
+						</span>
+						<ChevronRight size={18} />
 					</summary>
-					<label>Модель</label>
-					<Input value={aiModel} onChange={(e) => setAiModel(e.target.value)} />
+					<label htmlFor={aiModelFieldId}>Модель</label>
+					<Input id={aiModelFieldId} value={aiModel} onChange={(e) => setAiModel(e.target.value)} />
 					<div className="help-field-heading">
 						<label htmlFor={aiKeyFieldId}>Ключ API</label>
 						<FieldHelp topic="ai" />

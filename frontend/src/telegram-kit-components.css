@@ -2,9 +2,47 @@
 	width: 100%;
 }
 
+/* The kit includes page gutters around standalone fields. The journal's
+   panels already provide those gutters, including inside sheets. */
+div:has(> label.journal-field) {
+	min-width: 0;
+	padding: 0;
+	background: transparent;
+}
+
+#miniapp-surface label.journal-field {
+	box-sizing: border-box;
+	width: 100%;
+	min-width: 0;
+	margin: 0;
+	border: 1px solid var(--ios-separator);
+	border-radius: 10px;
+	background: var(--ios-surface);
+	box-shadow: none;
+}
+
+#miniapp-surface label.journal-field:focus-within {
+	border-color: var(--ios-accent);
+	box-shadow: 0 0 0 1px var(--ios-accent);
+}
+
+#miniapp-surface .journal-field :is(input, textarea) {
+	box-sizing: border-box;
+	min-width: 0;
+	min-height: 42px;
+	padding: 9px 12px;
+	font-size: 16px;
+	line-height: 22px;
+}
+
+#miniapp-surface .journal-field textarea {
+	display: block;
+	min-height: 64px;
+}
+
 /* Typography.png; Cell.png */
 .content h1 {
-	font-size: var(--kit-title);
+	font-size: clamp(24px, 4vw, var(--kit-title));
 	letter-spacing: normal;
 }
 
@@ -19,7 +57,10 @@
 }
 
 .compact-row.compact-row {
-	padding-inline: 16px;
+	--tgui--cell--middle--padding: 0;
+	min-height: 48px;
+	padding: 8px 12px;
+	gap: 8px;
 }
 
 .compact-row-main > strong {
@@ -28,7 +69,32 @@
 }
 
 .compact-row-description {
-	font-size: var(--kit-subhead);
+	font-size: 13px;
+}
+
+.compact-row-end {
+	min-width: 0;
+	gap: 4px;
+}
+
+.history-report-works {
+	display: grid;
+	gap: 6px;
+	min-width: 0;
+}
+
+.history-report-works h3,
+.compact-work-content > .page-context {
+	margin: 0;
+}
+
+.history-report-works h3 {
+	font-size: 14px;
+	line-height: 20px;
+}
+
+.compact-work-content:has(.history-report-works) {
+	gap: 10px;
 }
 
 /* Card.png, Badge.png, Banner.png */
@@ -63,6 +129,72 @@
 
 .plain-icon:enabled:is(:hover, :focus-visible) {
 	background: var(--kit-secondary-fill);
+}
+
+.m100-button.ant-btn {
+	justify-content: center;
+	text-align: center;
+	border-radius: var(--kit-control-radius);
+	box-shadow: none;
+}
+
+.m100-button.ant-btn > :last-child {
+	font-weight: 500;
+}
+
+.journal-select.ant-select .ant-select-selector {
+	border-radius: 10px;
+	border: 1px solid var(--ios-separator);
+	background: var(--kit-card);
+	box-shadow: none;
+}
+
+.journal-select.ant-select-focused .ant-select-selector {
+	border-color: var(--kit-accent);
+}
+
+.journal-select.ant-select-multiple .ant-select-selection-item {
+	border: 0;
+	border-radius: 6px;
+	background: var(--kit-tertiary);
+	max-width: 100%;
+	font-size: 14px;
+}
+
+.ant-select-dropdown {
+	padding: 4px;
+	border: 1px solid var(--kit-divider);
+	border-radius: 12px;
+	background: var(--kit-card);
+	box-shadow: 0 4px 16px rgb(0 0 0 / 10%);
+}
+
+.ant-select-dropdown .ant-select-item-option {
+	align-items: center;
+	min-height: 44px;
+	padding: 8px 10px;
+	border-radius: var(--kit-control-radius);
+}
+
+.ant-select-dropdown .ant-select-item-option-content {
+	font-size: 15px;
+	line-height: 1.4;
+}
+
+.recipient-option {
+	display: grid;
+	gap: 2px;
+}
+
+.recipient-option > span {
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.recipient-option small {
+	color: var(--kit-hint);
+	font-size: 12px;
+	font-weight: 400;
 }
 
 /* Modal.png · grabber and centered Apple sheet heading */

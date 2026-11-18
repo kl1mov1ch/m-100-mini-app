@@ -43,6 +43,31 @@
 	display: block;
 }
 
+.bottom-nav-icon .ant-badge {
+	color: inherit;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+	.bottom-nav > button,
+	.bottom-nav-icon,
+	.object-section-switch button {
+		transition:
+			color 160ms ease,
+			background-color 160ms ease,
+			box-shadow 160ms ease;
+	}
+
+	.bottom-nav-icon {
+		transition:
+			background-color 160ms ease,
+			transform 160ms ease;
+	}
+
+	.bottom-nav > button:active .bottom-nav-icon {
+		transform: scale(0.94);
+	}
+}
+
 .bottom-nav-label {
 	font-size: clamp(10px, 3vw, 12px);
 	font-weight: 500;

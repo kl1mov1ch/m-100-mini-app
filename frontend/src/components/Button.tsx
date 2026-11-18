@@ -17,7 +17,7 @@ export function Button({
 	children,
 	...props
 }: ButtonProps) {
-	const mode = type === 'primary' ? 'filled' : type === 'default' ? 'bezeled' : 'plain';
+	const mode = type === 'primary' ? 'filled' : type === 'default' ? 'gray' : 'plain';
 	return (
 		<TelegramButton
 			{...props}
