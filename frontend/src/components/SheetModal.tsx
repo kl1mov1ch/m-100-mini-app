@@ -52,6 +52,7 @@ export function SheetModal({ modalRender, onCancel, closable, ...props }: ModalP
 		<Modal
 			getContainer={() => document.getElementById('miniapp-surface') ?? document.body}
 			{...props}
+			className={['journal-sheet', props.className].filter(Boolean).join(' ')}
 			onCancel={onCancel}
 			closable={closable}
 			modalRender={(node) => {
@@ -73,7 +74,9 @@ type Confirm = ReturnType<typeof App.useApp>['modal']['confirm'];
 export function confirmSheet(modal: { confirm: Confirm }, options: Parameters<Confirm>[0]) {
 	return modal.confirm({
 		getContainer: () => document.getElementById('miniapp-surface') ?? document.body,
+		closable: true,
 		...options,
+		className: ['journal-sheet', options.className].filter(Boolean).join(' '),
 		modalRender: (node) => (
 			<SheetHandle
 				close={(event) =>

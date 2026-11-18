@@ -1,4 +1,4 @@
-import { App as AntApp, Badge, ConfigProvider, Drawer } from 'antd';
+import { App as AntApp, Badge, ConfigProvider } from 'antd';
 import { Select } from './components/Select';
 import { Input } from './components/Input';
 import { Button } from './components/Button';
@@ -216,18 +216,16 @@ export function WorkspaceApp() {
 					);
 				})}
 			</nav>
-			<Drawer
-				getContainer={() => document.getElementById('miniapp-surface') ?? document.body}
-				placement="bottom"
-				height="88dvh"
+			<Modal
+				footer={null}
 				title={replaceIndex !== null ? 'Выберите работу' : 'Добавить работу'}
 				open={workPicker}
-				onClose={() => {
+				onCancel={() => {
 					setWorkPicker(false);
 					setReplaceIndex(null);
 				}}
-				className="mobile-drawer"
-				destroyOnClose
+				className="work-picker-sheet"
+				destroyOnHidden
 			>
 				<LiveSearch
 					project={project}
@@ -242,16 +240,26 @@ export function WorkspaceApp() {
 						selectObject(id);
 					}}
 				/>
-			</Drawer>
+			</Modal>
 			<VoiceReportDrawer workspace={workspace} />
-			<Drawer
-				getContainer={() => document.getElementById('miniapp-surface') ?? document.body}
-				placement="bottom"
-				height="70dvh"
+			<Modal
 				title="Объекты"
 				open={projectOpen}
-				onClose={() => setProjectOpen(false)}
-				className="mobile-drawer"
+				onCancel={() => setProjectOpen(false)}
+				footer={
+					<Button
+						type="text"
+						block
+						icon={<Plus size={17} />}
+						onClick={() => {
+							setProjectOpen(false);
+							setObjectForm(true);
+							if (isAdmin) void loadUsers();
+						}}
+					>
+						Добавить объект
+					</Button>
+				}
 			>
 				<div className="switch-list">
 					{session.projects.map((p) => (
@@ -269,18 +277,7 @@ export function WorkspaceApp() {
 						</button>
 					))}
 				</div>
-				<Button
-					block
-					icon={<Plus size={17} />}
-					onClick={() => {
-						setProjectOpen(false);
-						setObjectForm(true);
-						if (isAdmin) void loadUsers();
-					}}
-				>
-					Добавить объект
-				</Button>
-			</Drawer>
+			</Modal>
 			<Modal
 				title="Новый объект"
 				open={objectForm}

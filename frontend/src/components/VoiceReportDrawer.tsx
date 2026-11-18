@@ -1,4 +1,5 @@
-import { Drawer, Upload } from 'antd';
+import { Upload } from 'antd';
+import { SheetModal } from './SheetModal';
 import { Input } from './Input';
 import { Button } from './Button';
 import { Mic, Sparkles, Square, Upload as UploadIcon } from 'lucide-react';
@@ -33,13 +34,10 @@ export function VoiceReportDrawer({ workspace }: { workspace: WorkspaceView }) {
 			: 'Запишите голосом или загрузите аудио';
 
 	return (
-		<Drawer
-			getContainer={() => document.getElementById('miniapp-surface') ?? document.body}
-			placement="bottom"
-			height="auto"
+		<SheetModal
 			open={textOpen}
-			onClose={close}
-			className="voice-report-drawer"
+			onCancel={close}
+			className="voice-report-sheet"
 			title={
 				<div className="voice-sheet-heading">
 					<span>Голосовой ввод</span>
@@ -67,7 +65,7 @@ export function VoiceReportDrawer({ workspace }: { workspace: WorkspaceView }) {
 				aria-label="Текст отчёта"
 				value={freeText}
 				onChange={(event) => setFreeText(event.target.value)}
-				rows={4}
+				rows={3}
 				maxLength={8000}
 				readOnly={audioBusy}
 				placeholder="Что сделали на объекте? Напишите или надиктуйте."
@@ -83,6 +81,7 @@ export function VoiceReportDrawer({ workspace }: { workspace: WorkspaceView }) {
 			</Button>
 			<div className="voice-sheet-actions">
 				<Button
+					type="text"
 					danger={audioInput.recording}
 					aria-pressed={audioInput.recording}
 					disabled={audioInput.pending}
@@ -97,7 +96,7 @@ export function VoiceReportDrawer({ workspace }: { workspace: WorkspaceView }) {
 					beforeUpload={audioInput.uploadAudio}
 					disabled={audioBusy}
 				>
-					<Button icon={<UploadIcon size={17} />} disabled={audioBusy}>
+					<Button type="text" icon={<UploadIcon size={17} />} disabled={audioBusy}>
 						Загрузить аудио
 					</Button>
 				</Upload>
@@ -105,6 +104,6 @@ export function VoiceReportDrawer({ workspace }: { workspace: WorkspaceView }) {
 			<p className="voice-sheet-status" role="status">
 				{status}
 			</p>
-		</Drawer>
+		</SheetModal>
 	);
 }

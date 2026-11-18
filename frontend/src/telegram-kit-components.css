@@ -165,10 +165,6 @@ div:has(> label.journal-field) {
 	display: block;
 }
 
-.report-toolbar .journal-icon-action {
-	flex: 0 0 var(--kit-touch);
-}
-
 .m100-button:focus-visible {
 	outline: 2px solid var(--kit-accent);
 	outline-offset: 1px;
@@ -229,7 +225,36 @@ div:has(> label.journal-field) {
 	font-weight: 400;
 }
 
-/* Modal.png · grabber and centered Apple sheet heading */
+/* Shared sheet geometry for report actions, forms and confirmation dialogs. */
+.ant-modal.journal-sheet .ant-modal-content {
+	padding: 24px 16px calc(16px + var(--app-safe-bottom, 0px));
+}
+
+.ant-modal.journal-sheet .ant-modal-header {
+	margin: 0 0 12px;
+}
+
+.ant-modal.journal-sheet :is(.ant-modal-title, .ant-modal-confirm-title) {
+	padding-inline: 0 40px;
+	text-align: start;
+	line-height: 24px;
+	overflow-wrap: anywhere;
+}
+
+.ant-modal.journal-sheet .ant-modal-close {
+	inset: 14px 6px auto auto;
+}
+
+.ant-modal.work-picker-sheet .ant-modal-content {
+	max-height: min(44dvh, calc(var(--visible-height, 100dvh) - 8px));
+}
+
+.work-picker-sheet .live-search-controls {
+	top: 0;
+	margin: 0;
+	padding: 0 0 1px;
+}
+
 .sheet-modal-frame {
 	position: relative;
 }
@@ -259,11 +284,6 @@ div:has(> label.journal-field) {
 	border-radius: 4px;
 	background: var(--kit-drag-indicator);
 	pointer-events: none;
-}
-
-:root[data-platform='apple'] .ant-modal:not(.ant-modal-confirm) .ant-modal-title {
-	padding-inline: 44px;
-	text-align: center;
 }
 
 :root[data-platform='apple'] .ant-modal .ant-modal-close {

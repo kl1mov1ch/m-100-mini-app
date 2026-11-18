@@ -36,7 +36,7 @@ export function LiveSearch({
 	const searchRequest = useRef<AbortController | null>(null);
 	const [projectMatch, setProjectMatch] = useState<ProjectMatch>();
 	useEffect(() => {
-		const scrollContainer = searchContainer.current?.closest('.ant-drawer-body');
+		const scrollContainer = searchContainer.current?.closest('.ant-modal-body');
 		if (!scrollContainer) return;
 		let previousScroll = scrollContainer.scrollTop;
 		let animationFrame = 0;

@@ -114,36 +114,41 @@ function MasterDailyReport({ workspace }: { workspace: WorkspaceView }) {
 				</div>
 			</div>
 			<DailyEarnings workspace={workspace} />
-			<div className="report-toolbar">
-				<Button
-					type="primary"
-					size="small"
-					icon={<Plus size={18} />}
-					onClick={() => {
-						setReplaceIndex(null);
-						setWorkPicker(true);
-					}}
-					disabled={!positions.length}
-				>
-					Добавить работу
-				</Button>
-				<Button
-					size="small"
-					icon={<TextCursorInput size={17} />}
-					aria-expanded={textVisible}
-					onClick={() => setTextVisible((visible) => !visible)}
-					disabled={!positions.length}
-				>
-					Текст
-				</Button>
-				<Button
-					size="small"
-					icon={<Mic size={17} />}
-					onClick={() => setTextOpen(true)}
-					disabled={!positions.length}
-				>
-					Голос
-				</Button>
+			<div className="report-entry-methods" role="group" aria-label="Добавить работу">
+				<h3>Добавить работу</h3>
+				<div className="report-toolbar">
+					<Button
+						type="text"
+						size="small"
+						icon={<Plus size={18} />}
+						onClick={() => {
+							setReplaceIndex(null);
+							setWorkPicker(true);
+						}}
+						disabled={!positions.length}
+					>
+						Из сметы
+					</Button>
+					<Button
+						size="small"
+						type="primary"
+						icon={<TextCursorInput size={17} />}
+						aria-expanded={textVisible}
+						onClick={() => setTextVisible((visible) => !visible)}
+						disabled={!positions.length}
+					>
+						Текстом
+					</Button>
+					<Button
+						size="small"
+						type="text"
+						icon={<Mic size={17} />}
+						onClick={() => setTextOpen(true)}
+						disabled={!positions.length}
+					>
+						Голосом
+					</Button>
+				</div>
 			</div>
 			{textVisible && <QuickReportComposer workspace={workspace} inline />}
 			<ReportDraftFields workspace={workspace} showSubmit={false} />

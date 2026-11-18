@@ -186,18 +186,40 @@
 	grid-column: 1 / -1;
 }
 
+.report-entry-methods {
+	width: min(100%, 520px);
+	min-width: 0;
+	margin-inline: auto;
+}
+.report-entry-methods h3 {
+	margin: 0 0 6px;
+	text-align: center;
+	font-size: 14px;
+	font-weight: 500;
+	line-height: 20px;
+}
 .report-toolbar {
-	gap: 8px;
-	margin-bottom: 0;
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 4px;
+	margin: 0;
 }
 .report-toolbar .ant-btn {
-	flex: 1 1 0;
+	width: 100%;
 	min-width: 0;
+	align-items: center;
+	justify-content: center;
+	padding-inline: 4px;
+	gap: 4px;
 }
-.report-toolbar .ant-btn.ant-btn-primary {
-	flex: 1.65 1 0;
+.report-toolbar .ant-btn > :last-child {
+	font-size: 14px;
+	line-height: 20px;
 }
-.report-toolbar .ant-btn > span,
+.report-toolbar .ant-btn > div:has(svg) {
+	display: flex;
+	margin: 0;
+}
 .object-heading > h1,
 .page-title h1,
 .settings-menu b,
@@ -220,12 +242,14 @@
 		font-size: clamp(20px, 6vw, 26px);
 	}
 	.report-toolbar {
-		gap: 6px;
+		gap: 4px;
 	}
 	.report-toolbar .ant-btn {
 		gap: 4px;
-		padding-inline: 5px;
-		font-size: clamp(11px, 3.1vw, 13px);
+		padding-inline: 3px;
+	}
+	.report-toolbar .ant-btn > :last-child {
+		font-size: 13px;
 	}
 	.report-toolbar .ant-btn svg {
 		width: 15px;

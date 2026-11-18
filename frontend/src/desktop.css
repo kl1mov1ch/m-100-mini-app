@@ -59,15 +59,11 @@
 		justify-content: start;
 	}
 
-	.ant-modal-wrap:has(.draft-work-editor) {
+	.ant-modal-wrap:has(.journal-sheet) {
 		align-items: center;
 	}
 
-	.ant-modal-wrap .draft-work-editor {
-		width: min(540px, calc(100% - 32px)) !important;
-	}
-
-	.draft-work-editor .ant-modal-content {
+	.ant-modal.journal-sheet .ant-modal-content {
 		border-radius: 16px;
 	}
 }
