@@ -38,9 +38,7 @@ export function ReportNoteButton({
 					setDraft(saved?.base === value ? saved.text : value);
 					setOpen(true);
 				}}
-			>
-				Примечание
-			</Button>
+			/>
 			<Modal
 				className="report-note-editor"
 				title={label}

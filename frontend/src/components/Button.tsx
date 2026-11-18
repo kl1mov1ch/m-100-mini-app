@@ -17,12 +17,16 @@ export function Button({
 	children,
 	...props
 }: ButtonProps) {
-	const mode = type === 'primary' ? 'filled' : type === 'default' ? 'gray' : 'plain';
+	const mode = type === 'primary' ? 'filled' : 'plain';
+	const label = props['aria-label'] || (typeof children === 'string' ? children.trim() : '');
+	const iconOnly =
+		type === 'default' && !!icon && !!label && (children == null || typeof children === 'string');
 	return (
 		<TelegramButton
 			{...props}
 			className={[
 				'm100-button',
+				iconOnly ? 'journal-icon-action' : '',
 				'ant-btn',
 				'ant-btn-' + type,
 				size === 'small' ? 'ant-btn-sm' : size === 'large' ? 'ant-btn-lg' : '',
@@ -35,7 +39,9 @@ export function Button({
 			mode={mode}
 			size={size === 'small' ? 's' : size === 'large' ? 'l' : 'm'}
 			stretched={block}
-			before={icon}
+			before={iconOnly ? undefined : icon}
+			aria-label={iconOnly ? label : props['aria-label']}
+			title={props.title || (iconOnly ? label : undefined)}
 			loading={Boolean(loading)}
 			disabled={!href && (disabled || Boolean(loading))}
 			aria-disabled={href && (disabled || Boolean(loading)) ? true : props['aria-disabled']}
@@ -49,7 +55,7 @@ export function Button({
 				(onClick as MouseEventHandler<HTMLButtonElement> | undefined)?.(event);
 			}}
 		>
-			{children}
+			{iconOnly ? icon : children}
 		</TelegramButton>
 	);
 }

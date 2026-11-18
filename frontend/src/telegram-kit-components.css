@@ -142,6 +142,38 @@ div:has(> label.journal-field) {
 	font-weight: 500;
 }
 
+.m100-button.ant-btn-default {
+	border: 0;
+	background: transparent;
+	box-shadow: none;
+}
+
+.m100-button.ant-btn-default::after {
+	background: none;
+}
+
+.m100-button.journal-icon-action {
+	display: inline-grid;
+	place-content: center;
+	width: var(--kit-touch);
+	min-width: var(--kit-touch);
+	height: var(--kit-touch);
+	padding: 0;
+}
+
+.journal-icon-action svg {
+	display: block;
+}
+
+.report-toolbar .journal-icon-action {
+	flex: 0 0 var(--kit-touch);
+}
+
+.m100-button:focus-visible {
+	outline: 2px solid var(--kit-accent);
+	outline-offset: 1px;
+}
+
 .journal-select.ant-select .ant-select-selector {
 	border-radius: 10px;
 	border: 1px solid var(--ios-separator);

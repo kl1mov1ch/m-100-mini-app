@@ -51,24 +51,8 @@
 	gap: 6px;
 	flex-shrink: 0;
 }
-.report-note-button.ant-btn {
-	min-height: 42px;
-	padding-inline: 8px;
-	gap: 5px;
-	font-size: 12px;
-}
 .report-note-button[data-filled='true'] {
 	color: var(--ios-accent);
-	border-color: var(--ios-accent);
-}
-@media (max-width: 360px) {
-	.report-date-actions .report-note-button.ant-btn {
-		width: 42px;
-		padding: 0;
-	}
-	.report-date-actions .report-note-button > span:not(.ant-btn-icon) {
-		display: none;
-	}
 }
 .note-actions {
 	display: flex;

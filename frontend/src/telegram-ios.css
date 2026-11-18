@@ -254,21 +254,17 @@ h3 {
 }
 
 .ant-btn.ant-btn-default:not(:disabled, .ant-btn-dangerous, .m100-button) {
-	background: var(--ios-fill);
+	background: transparent;
 	border-color: transparent;
 	color: var(--ios-accent);
+	box-shadow: none;
 }
 
 .ant-btn.ant-btn-default:not(:disabled, .ant-btn-dangerous, .m100-button):is(:hover, :active) {
-	background: var(--ios-accent-fill);
+	background: transparent;
 }
 
-.ant-btn:is(.ant-btn-default, .ant-btn-dashed):not(
-		:disabled,
-		[aria-disabled='true'],
-		.ant-btn-disabled,
-		.m100-button
-	),
+.ant-btn.ant-btn-dashed:not(:disabled, [aria-disabled='true'], .ant-btn-disabled, .m100-button),
 .plain-icon:enabled,
 .field-help-button:is(:hover, [aria-expanded='true']) {
 	box-shadow: var(--ios-button-shadow);

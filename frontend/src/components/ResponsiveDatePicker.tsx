@@ -55,6 +55,7 @@ export function DatePicker({
 	return (
 		<div className="date-control">
 			<Button
+				type="primary"
 				className="date-control-trigger"
 				aria-label={label + (value ? ', ' + value.format(format) : '')}
 				aria-haspopup="dialog"
