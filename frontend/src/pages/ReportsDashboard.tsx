@@ -1,4 +1,6 @@
-import { App, Button, Empty, Select, Spin } from 'antd';
+import { App, Empty, Spin } from 'antd';
+import { Select } from '../components/Select';
+import { Button } from '../components/Button';
 import { SheetModal as Modal } from '../components/SheetModal';
 import { useEffect, useState } from 'react';
 import { ArrowDownToLine, History, SlidersHorizontal } from 'lucide-react';

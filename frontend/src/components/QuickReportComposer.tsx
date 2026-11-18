@@ -1,4 +1,6 @@
-import { Button, Input, Select } from 'antd';
+import { Select } from './Select';
+import { Input } from './Input';
+import { Button } from './Button';
 import { Mic, Square } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { WorkspaceView } from '../App';
@@ -48,7 +50,9 @@ export function QuickReportComposer({
 		if (!inline && explicitlySelected && day !== session.today) void changeDay(session.today);
 	}, [project, selectedProject, explicitlySelected, day, session.today, inline]);
 	const disabled =
-		!active || !positions.length || (!inline && (!explicitlySelected || day !== session.today));
+		!active ||
+		workspace.data?.project?.id !== project ||
+		(!inline && (!explicitlySelected || day !== session.today));
 	const todayReport = workspace.todayRow;
 	return (
 		<section className="quick-report-composer">
@@ -68,8 +72,10 @@ export function QuickReportComposer({
 			)}
 			{!inline && (
 				<div className="quick-report-project">
+					<label htmlFor="quick-report-project">Объект для отчёта</label>
 					<Select
-						variant="borderless"
+						id="quick-report-project"
+						variant="outlined"
 						aria-label="Объект для сегодняшнего отчёта"
 						aria-required="true"
 						placeholder="Выберите объект"
@@ -134,7 +140,15 @@ export function QuickReportComposer({
 					Переводим запись в текст…
 				</p>
 			)}
-			{!inline && !disabled && <ReportDraftFields workspace={workspace} />}
+			{!inline && !disabled && (
+				<ReportDraftFields
+					workspace={workspace}
+					onProjectMatch={(id) => {
+						setSelectedProject(id);
+						workspace.switchForWork(id, session.today);
+					}}
+				/>
+			)}
 		</section>
 	);
 }

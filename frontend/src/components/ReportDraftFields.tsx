@@ -1,6 +1,9 @@
 import { sortSearchOptions } from '../lib/search';
-import { Alert, Button, InputNumber, Select } from 'antd';
-import { ChevronRight, Trash2 } from 'lucide-react';
+import { Alert, InputNumber } from 'antd';
+import { Select } from './Select';
+import { Button } from './Button';
+import { Trash2 } from 'lucide-react';
+import { ChevronRight } from './kit-icons';
 import type { WorkspaceView } from '../App';
 import { useConfirmWorkRemoval } from '../hooks/useConfirmWorkRemoval';
 import { Money, unit, countLabel, nf } from '../lib/format';
@@ -8,6 +11,7 @@ import { estimateBalance } from '../lib/position-volume';
 import { WorkEstimate } from './WorkEstimate';
 import './report-draft.css';
 import { CompactWorkEditor } from './CompactRow';
+import { ProjectMatchHint } from './ProjectMatchHint';
 
 const lengthFactors: Record<string, number> = { м: 1, км: 1000, см: 0.01, мм: 0.001 };
 const volumeFormat = new Intl.NumberFormat('ru-BY', { maximumFractionDigits: 9 });
@@ -37,9 +41,11 @@ function selectedQuantity(
 export function ReportDraftFields({
 	workspace,
 	showSubmit = true,
+	onProjectMatch,
 }: {
 	workspace: WorkspaceView;
 	showSubmit?: boolean;
+	onProjectMatch?: (id: string) => void;
 }) {
 	const confirmRemoval = useConfirmWorkRemoval();
 	const {
@@ -57,6 +63,9 @@ export function ReportDraftFields({
 		lines,
 		confirmParsedReport,
 		busy,
+		projectMatch,
+		dismissProjectMatch,
+		switchForWork,
 	} = workspace;
 	if (!parsed.length) {
 		return !parsing && parseNote ? (
@@ -73,6 +82,13 @@ export function ReportDraftFields({
 	}
 	return (
 		<div className="report-draft-fields">
+			{projectMatch && !parsing && (
+				<ProjectMatchHint
+					match={projectMatch}
+					onSwitch={onProjectMatch ?? ((id) => switchForWork(id))}
+					onDismiss={dismissProjectMatch}
+				/>
+			)}
 			<div className="draft-status">
 				<b>{countLabel(parsed.length, 'позиция', 'позиции', 'позиций')} к проверке</b>
 				{parsing ? (

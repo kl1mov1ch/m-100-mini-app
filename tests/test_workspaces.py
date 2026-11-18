@@ -192,7 +192,7 @@ def test_auto_sync_after_confirmation_only_when_changed(client, monkeypatch):
         store.set_setting(db, "webhook", "configured-in-test")
         store.set_setting(db, "file_id", "1")
 
-    async def upload(*args):
+    async def upload(*args, **kwargs):
         calls.append(args)
         return {"ok": True}
 

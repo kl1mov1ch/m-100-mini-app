@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 
 from . import bitrix, import_suggestions, store, tables
 from .clock import now, today
-from .imports import check_latest, directory, read_pending
+from .imports import check_latest, directory, original_snapshot, read_pending
 from .synchronization import table_lock
 
 router = APIRouter()
@@ -55,9 +55,15 @@ def apply_changes(content, mappings, edits, duplicates, daily_columns=(), restor
         sheet = workbook[change.sheet]
         cell = sheet[change.cell]
         descriptor = next(
-            (mapping for mapping in mappings if mapping["name"] == change.sheet), None
+            (
+                mapping
+                for mapping in mappings
+                if mapping["name"] == change.sheet
+                and mapping["header_row"] < cell.row <= mapping.get("end_row", sheet.max_row)
+            ),
+            None,
         )
-        if descriptor is None or cell.row <= descriptor["header_row"]:
+        if descriptor is None or isinstance(cell, MergedCell):
             raise ValueError("Изменение заголовков выполняется через сопоставление столбцов")
         field = next(
             (field for field, column in descriptor["mapping"].items() if column == cell.column),
@@ -73,8 +79,9 @@ def apply_changes(content, mappings, edits, duplicates, daily_columns=(), restor
         value = change.value
         if field in ("rate", "planned", "daily"):
             value = tables.number(value)
-            if value is None or value < 0:
-                raise ValueError(f"{change.cell}: укажите число больше или равное нулю")
+            if value is None or not (-1e12 < value < 1e12) or (field != "daily" and value < 0):
+                rule = "число" if field == "daily" else "число больше или равное нулю"
+                raise ValueError(f"{change.cell}: укажите {rule}")
         else:
             value = str(value or "").strip()
             if not value or len(value) > 30 or value.startswith(("=", "+", "-", "@")):
@@ -231,9 +238,12 @@ def prepare_corrections(original, metadata, body, restoration):
         )
         from .workbook_calculation import recalculate
 
-        updated = recalculate(
-            updated, tables.extract(updated, metadata["sheets"])["positions"], metadata["sheets"]
-        )
+        if not (metadata.get("staged") or metadata.get("original")):
+            updated = recalculate(
+                updated,
+                tables.extract(updated, metadata["sheets"])["positions"],
+                metadata["sheets"],
+            )
     except ValueError as error:
         raise HTTPException(422, str(error))
     return updated, changes
@@ -242,6 +252,8 @@ def prepare_corrections(original, metadata, body, restoration):
 @router.post("/api/imports/edit")
 async def edit_table(request: Request, body: TableChanges):
     metadata, original = read_pending(body.token, request.state.project["id"])
+    if metadata["source"] == "bitrix" and not metadata.get("original") and "staged" not in metadata:
+        metadata["staged"] = bitrix.read_workbook(original, generated_only=True) is None
     if not body.edits and not body.duplicates and not body.daily_columns:
         raise HTTPException(422, "Выберите исправления")
     with store.connect() as database:
@@ -258,7 +270,9 @@ async def edit_table(request: Request, body: TableChanges):
                 for column in body.daily_columns
                 if column.strategy == "restore"
             }
-    remote = metadata["source"] == "bitrix" and not metadata.get("original")
+    remote = metadata["source"] == "bitrix" and not (
+        metadata.get("original") or metadata.get("staged")
+    )
     remote_id = (metadata.get("remote") or {}).get("file_id", file_id)
     if remote and (body.token != pending or file_id != int(remote_id or 0)):
         raise HTTPException(
@@ -267,6 +281,10 @@ async def edit_table(request: Request, body: TableChanges):
     if remote and not webhook:
         raise HTTPException(400, "Для записи добавьте вебхук с правом «Диск».")
     async with table_lock(request.state.project):
+        if metadata.get("staged") and body.token != pending:
+            raise HTTPException(
+                409, {"code": "workbook_changed", "message": "Открыта текущая проверка таблицы."}
+            )
         if remote:
             try:
                 latest, file_info = await bitrix.download_rest(webhook, file_id)
@@ -301,6 +319,11 @@ async def edit_table(request: Request, body: TableChanges):
                 )
         else:
             updated, changes = prepare_corrections(original, metadata, body, restoration)
+            if metadata.get("staged"):
+                snapshot = original_snapshot(body.token)
+                if not snapshot.exists():
+                    snapshot.write_bytes(original)
+                metadata["staged_edited"] = True
         analysis = tables.extract(updated, metadata["sheets"])
         structural_warnings = [
             warning
@@ -317,8 +340,9 @@ async def edit_table(request: Request, body: TableChanges):
             json.dumps(metadata, ensure_ascii=False), encoding="utf-8"
         )
         with store.connect() as database:
-            store.set_setting(database, "connection_check", "null")
-            store.set_setting(database, "bitrix_read_status", "null")
+            if remote:
+                store.set_setting(database, "connection_check", "null")
+                store.set_setting(database, "bitrix_read_status", "null")
             database.execute(
                 "INSERT INTO audit(date,payload,created_at) VALUES(?,?,?)",
                 (

@@ -53,6 +53,7 @@ class ExpenseText(BaseModel):
 
 def expense_data(db, request):
     rows = json.loads(store.setting(db, "extra_expenses", "[]"))
+    deleted = store.deleted_positions(db)
     total = sum((Decimal(row["amount"]) for row in rows), Decimal(0))
     user = request.state.user
     connected = (
@@ -66,7 +67,7 @@ def expense_data(db, request):
         "templates": [
             {key: row[key] for key in ("id", "name", "unit", "rate")}
             for row in store.positions(db)
-            if extra_position(row)
+            if row["id"] not in deleted and extra_position(row)
         ],
         "can_edit": user["role"] == "master"
         and user["telegram_id"] == request.state.project["owner_id"],

@@ -1,7 +1,8 @@
+import { useEffectEvent } from './useEffectEvent';
 import { confirmSheet } from '../components/SheetModal';
 import { App as AntApp } from 'antd';
 import 'dayjs/locale/ru';
-import { createRef, useEffect, useEffectEvent, useRef, useState } from 'react';
+import { createRef, useEffect, useRef, useState } from 'react';
 import dayjs from '../lib/date';
 
 import { previewUser, request, RequestError } from '../lib/api';
@@ -29,6 +30,7 @@ import type {
 	Line,
 	ObjectSection,
 	Project,
+	ProjectMatch,
 	ParsedReport,
 	Report,
 	ReconciliationConfirmation,
@@ -89,6 +91,7 @@ export function useWorkspace() {
 		[parsed, setParsed] = useState<Line[]>([]),
 		[parsing, setParsing] = useState(false),
 		[parseNote, setParseNote] = useState('');
+	const [projectMatch, setProjectMatch] = useState<ProjectMatch>();
 	const [parsedCrewAmbiguous, setParsedCrewAmbiguous] = useState(false);
 	const parsedEditVersion = useRef(0);
 	const matchRequest = useRef<AbortController | null>(null);
@@ -336,6 +339,7 @@ export function useWorkspace() {
 		setParsed([]);
 		setParsedCrewAmbiguous(false);
 		setParseNote('');
+		setProjectMatch(undefined);
 		setParsing(false);
 		return () => {
 			matchRequest.current?.abort();
@@ -345,7 +349,8 @@ export function useWorkspace() {
 
 	const matchReportText = async () => {
 		const text = freeText.trim();
-		if (!text || isAdmin || !active || !positions.length || matchRequest.current) return;
+		if (!text || isAdmin || !active || data?.project?.id !== project || matchRequest.current)
+			return;
 		if (audioInput.recording || audioInput.pending) return;
 		const controller = new AbortController();
 		matchRequest.current = controller;
@@ -353,9 +358,11 @@ export function useWorkspace() {
 		setParsedCrewAmbiguous(false);
 		setParsing(true);
 		setParseNote('');
+		setProjectMatch(undefined);
 		parsedEditVersion.current = 0;
 		const apply = (result: ParsedReport) => {
 			setParsed(result.lines);
+			setProjectMatch(result.project_match);
 			if (result.crew_count != null && !result.crew_ambiguous) setCrew(result.crew_count);
 			setParsedCrewAmbiguous(result.crew_ambiguous);
 			setParseNote(
@@ -373,7 +380,7 @@ export function useWorkspace() {
 			);
 			if (controller.signal.aborted) return;
 			apply(local);
-			if (local.needs_ai && session?.ai_connected) {
+			if (local.needs_ai && !local.project_match && session?.ai_connected) {
 				const improved = await request<ParsedReport>(
 					'/parse',
 					{ text },
@@ -426,6 +433,15 @@ export function useWorkspace() {
 			setDay(session.today);
 			setProject(id);
 		}
+	};
+	const switchForWork = (id: string, date = day) => {
+		if (!sessionUserId || !session?.projects.some((item) => item.id === id)) return;
+		const destination = `quick:${sessionUserId}:${id}:${date}`;
+		if (freeText.trim() && !readFormDraft<string>(destination))
+			writeFormDraft(destination, freeText);
+		setProjectMatch(undefined);
+		setDay(date);
+		setProject(id);
 	};
 	const openHistoryReport = (objectId: string, reportDay: string) => {
 		if (objectId === project) void changeDay(reportDay);
@@ -1175,7 +1191,7 @@ export function useWorkspace() {
 			message.success(
 				updated.saved_to_source
 					? 'Исправления сохранены и проверены в Битрикс24'
-					: 'Исправления внесены в загруженный файл',
+					: 'Ячейка исправлена в черновике импорта',
 			);
 		} catch (error) {
 			if (error instanceof RequestError && error.code === 'workbook_changed') await resumeImport();
@@ -1277,6 +1293,9 @@ export function useWorkspace() {
 		matchReportText,
 		parsing,
 		parseNote,
+		projectMatch,
+		dismissProjectMatch: () => setProjectMatch(undefined),
+		switchForWork,
 		projectOpen,
 		setProjectOpen,
 		objectForm,

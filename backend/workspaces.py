@@ -1,6 +1,7 @@
 """Access registry. Each object has a separate database, guarded before selection."""
 
 import asyncio
+import logging
 import os
 import sqlite3
 import uuid
@@ -52,6 +53,17 @@ def delete_project(project):
                 "INSERT INTO shared_settings(key,value) VALUES('default_object_removed','1') "
                 "ON CONFLICT(key) DO NOTHING"
             )
+    base_path = store.base_path().resolve()
+    expected = (
+        base_path if ident == "default" else base_path.parent / "objects" / f"{ident}.sqlite3"
+    )
+    path = Path(project["db_path"]).resolve()
+    if path == expected:
+        for suffix in ("", "-wal", "-shm", "-journal"):
+            try:
+                path.with_name(path.name + suffix).unlink(missing_ok=True)
+            except OSError:
+                logging.getLogger(__name__).warning("Could not remove an empty object database")
 
 
 @contextmanager

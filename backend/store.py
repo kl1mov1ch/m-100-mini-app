@@ -119,6 +119,10 @@ def hidden_positions(db):
     return json.loads(setting(db, "hidden_positions", "{}"))
 
 
+def deleted_positions(db):
+    return json.loads(setting(db, "deleted_positions", "{}"))
+
+
 def position_identity(position):
     return [str(position[key] or "").strip().casefold() for key in ("name", "unit", "section")]
 
@@ -142,7 +146,7 @@ def restore_hidden_positions(db, incoming):
 def selectable_positions(db):
     from .expense_rules import extra_position
 
-    hidden = hidden_positions(db)
+    hidden = hidden_positions(db).keys() | deleted_positions(db).keys()
     return [
         position
         for position in positions(db)

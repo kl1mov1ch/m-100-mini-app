@@ -1,4 +1,6 @@
-import { App, Button, Input } from 'antd';
+import { App } from 'antd';
+import { Input } from './Input';
+import { Button } from './Button';
 import { Mic, RotateCcw, Sparkles, Square } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useAudioInput } from '../hooks/useAudioInput';
@@ -22,7 +24,7 @@ export function NoteInput({
 	const { message } = App.useApp();
 	const [before, setBefore] = useState('');
 	const [working, setWorking] = useState(false);
-	const active = useRef<AbortController>(null);
+	const active = useRef<AbortController | null>(null);
 	useEffect(() => () => active.current?.abort(), [project, scope]);
 	const edit = (text: string) => {
 		setBefore('');

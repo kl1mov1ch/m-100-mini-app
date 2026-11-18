@@ -15,6 +15,24 @@
 
 .quick-report-project {
 	margin-bottom: 8px;
+	display: grid;
+	gap: 6px;
+}
+
+.quick-report-project > label {
+	color: var(--ios-secondary);
+	font-size: 13px;
+}
+
+.quick-report-project > :not(label) {
+	border: 1px solid #b8c6d4;
+	border-radius: 10px;
+	background: var(--ios-surface);
+	min-width: 0;
+}
+
+.quick-report-project > :not(label):focus-within {
+	border-color: var(--ios-accent);
 }
 
 .quick-report-project .ant-select {
@@ -23,7 +41,7 @@
 }
 
 .quick-report-project .ant-select-selector {
-	padding-inline: 0 !important;
+	padding-inline: 12px !important;
 }
 
 .quick-report-project .ant-select-selection-item {
@@ -195,20 +213,6 @@
 	flex: 1.65 1 0;
 }
 .report-toolbar .ant-btn > span,
-.bottom-nav > button > span {
-	white-space: nowrap;
-}
-.bottom-nav > button {
-	min-width: 0;
-}
-@media (max-width: 360px) {
-	.bottom-nav > button {
-		padding-inline: 3px;
-	}
-	.bottom-nav > button > span {
-		font-size: 9px;
-	}
-}
 .object-heading > h1,
 .page-title h1,
 .settings-menu b,
@@ -241,9 +245,6 @@
 	.report-toolbar .ant-btn svg {
 		width: 15px;
 		height: 15px;
-	}
-	.bottom-nav > button > span {
-		font-size: clamp(10px, 2.9vw, 12px);
 	}
 	.report-metrics > div > span,
 	.earnings-total > span,
@@ -313,10 +314,6 @@
 	button:enabled:active .ant-btn-icon > svg,
 	a.ant-btn:active .ant-btn-icon > svg {
 		transform: scale(0.88);
-	}
-
-	.bottom-nav > button:active > svg {
-		transform: translateY(2px) scale(0.9);
 	}
 }
 .settings-section-heading {

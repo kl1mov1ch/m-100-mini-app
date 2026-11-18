@@ -1,5 +1,7 @@
 import { sortSearchOptions } from '../lib/search';
-import { Alert, Button, Checkbox, Select, Tag } from 'antd';
+import { Alert, Checkbox, Tag } from 'antd';
+import { Select } from './Select';
+import { Button } from './Button';
 import { Sparkles, TriangleAlert } from 'lucide-react';
 import { Money, nf, unit } from '../lib/format';
 import type { CatalogueReconciliation as Reconciliation, Position } from '../types';

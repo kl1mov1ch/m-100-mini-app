@@ -60,15 +60,23 @@ def get_report(db, day):
         )
     ]
     day_note, notes = read_notes(db, day)
+    deleted = store.deleted_positions(db)
     for line in lines:
+        if archived_at := deleted.get(line["item_id"]):
+            line["deleted_at"] = archived_at
         if note := notes.get(line["item_id"]):
             line["note"] = note
     return {
         **base,
         "day_note": day_note,
         "lines": lines,
+        "has_extra_work": has_extra_work(db, day),
         "payroll": payroll(db, lines, base["crew_count"]),
     }
+
+
+def has_extra_work(db, day):
+    return any(row["date"] == day for row in json.loads(store.setting(db, "extra_expenses", "[]")))
 
 
 def history(db):
@@ -138,11 +146,13 @@ def project_summary(p, selected_date=None, include_table_review=True):
         current = next((r for r in rows if r["date"] == (selected_date or today())), None)
         return {
             **workspaces.public_project(p),
-            "positions": db.execute("SELECT count(*) FROM positions").fetchone()[0],
+            "positions": db.execute("SELECT count(*) FROM positions").fetchone()[0]
+            - len(store.deleted_positions(db)),
             "today_amount": current["amount"] if current else 0,
             "today_crew": current["crew_count"] if current else None,
             "today_per_person": current["per_person"] if current else 0,
             "today_positions": current["positions"] if current else 0,
+            "today_has_extra_work": has_extra_work(db, selected_date or today()),
             "today_sync_status": current["sync_status"] if current else None,
             "today_confirmed": bool(
                 current and current["revision"] > 0 and current["positions"] > 0

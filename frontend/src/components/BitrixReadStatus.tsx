@@ -1,4 +1,5 @@
-import { Button, Tag } from 'antd';
+import { Tag } from 'antd';
+import { Button } from './Button';
 import { RefreshCw, Sparkles } from 'lucide-react';
 import { useState } from 'react';
 import type { WorkspaceView } from '../App';

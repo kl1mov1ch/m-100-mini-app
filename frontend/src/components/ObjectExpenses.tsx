@@ -1,7 +1,10 @@
-import { Alert, App, Button, Form, Input, InputNumber, Skeleton } from 'antd';
+import { Alert, App, Form, InputNumber, Skeleton } from 'antd';
+import { Input } from './Input';
+import { Button } from './Button';
 import { SheetModal as Modal } from './SheetModal';
 import type { Dayjs } from 'dayjs';
-import { ChevronRight, Mic, Plus, ReceiptText, Sparkles, Square, X } from 'lucide-react';
+import { Mic, Plus, ReceiptText, Sparkles, Square } from 'lucide-react';
+import { ChevronRight, X } from './kit-icons';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useAudioInput } from '../hooks/useAudioInput';
 import { request } from '../lib/api';
@@ -90,7 +93,15 @@ function ExpenseRow({
 	);
 }
 
-export function ObjectExpenses({ project, day }: { project: string; day: string }) {
+export function ObjectExpenses({
+	project,
+	day,
+	onSaved,
+}: {
+	project: string;
+	day: string;
+	onSaved: () => void;
+}) {
 	const { message } = App.useApp();
 	const [form] = Form.useForm<ExpenseValues>();
 	const [list, setList] = useState<ExpenseState>();
@@ -103,7 +114,7 @@ export function ObjectExpenses({ project, day }: { project: string; day: string 
 	const [parsing, setParsing] = useState(false);
 	const [parseError, setParseError] = useState('');
 	const [loadVersion, reload] = useState(0);
-	const parseRequest = useRef<AbortController>(null);
+	const parseRequest = useRef<AbortController | null>(null);
 	const audio = useAudioInput(project, 'expenses', text, setText);
 	const quantity = Form.useWatch('quantity', form);
 	const rate = Form.useWatch('rate', form);
@@ -178,6 +189,7 @@ export function ObjectExpenses({ project, day }: { project: string; day: string 
 				),
 			);
 			setEditor(undefined);
+			onSaved();
 			message.success('Расход сохранён');
 		} catch (failure) {
 			message.error((failure as Error).message);
@@ -197,6 +209,7 @@ export function ObjectExpenses({ project, day }: { project: string; day: string 
 				),
 			);
 			setDrafts([]);
+			onSaved();
 			message.success('Расходы сохранены');
 		} catch (failure) {
 			message.error((failure as Error).message);

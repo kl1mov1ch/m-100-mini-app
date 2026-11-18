@@ -24,6 +24,7 @@ router = APIRouter()
 def bootstrap(request: Request):
     with store.connect() as db:
         hidden = store.hidden_positions(db)
+        deleted = store.deleted_positions(db)
         bitrix = remote_positions(db)
         master = request.state.user["role"] == "master"
         rows = history(db)
@@ -35,7 +36,8 @@ def bootstrap(request: Request):
             "positions": [
                 {
                     **position,
-                    "hidden": position["id"] in hidden,
+                    "hidden": position["id"] in hidden or position["id"] in deleted,
+                    "deleted_at": deleted.get(position["id"]),
                     "extra": extra_position(position),
                     "bitrix": bitrix.get(position["id"]),
                 }
@@ -75,20 +77,50 @@ def changes(request: Request):
         return events
 
 
+def other_project_match(request, text, current):
+    if not text or matcher.grounded_suggestions(text, current):
+        return None
+    result = None
+    for project in workspaces.visible(request.state.user):
+        if project["id"] == request.state.project["id"]:
+            continue
+        with store.connect(project["db_path"]) as db:
+            matches = matcher.grounded_suggestions(text, store.selectable_positions(db))
+        if not matches:
+            continue
+        if result:
+            return None
+        result = {
+            "project_id": project["id"],
+            "project_name": project["name"],
+            "work_name": matches[0]["name"],
+        }
+    return result
+
+
 @router.post("/api/parse")
-async def parse(body: ParseBody):
+async def parse(request: Request, body: ParseBody):
     with store.connect() as db:
         ps = store.selectable_positions(db)
         settings = ai_settings(db)
-    return await matcher.parse(body.text, ps, settings, body.local_only)
+    result = await matcher.parse(body.text, ps, settings, body.local_only)
+    lines = result["lines"]
+    if len(lines) == 1:
+        if match := other_project_match(request, lines[0]["raw"], ps):
+            lines[0]["item_id"] = None
+            result["project_match"] = match
+    return result
 
 
 @router.post("/api/search")
-async def search(body: ParseBody):
+async def search(request: Request, body: ParseBody):
     with store.connect() as db:
         ps = store.selectable_positions(db)
         settings = ai_settings(db)
-    return await matcher.search(body.text, ps, settings, body.local_only)
+    result = await matcher.search(body.text, ps, settings, body.local_only)
+    if match := other_project_match(request, body.text, ps):
+        result["project_match"] = match
+    return result
 
 
 class RestoreBody(BaseModel):
@@ -164,9 +196,15 @@ async def persist_report(request: Request, body: SaveBody, action="edit_report")
         ps = {p["id"]: p for p in store.positions(db)}
         old = {l["item_id"]: l["quantity"] for l in before["lines"]}
         hidden = store.hidden_positions(db)
+        deleted = store.deleted_positions(db)
+        new = {line.item_id: line.quantity for line in body.lines}
+        if action != "restore_day" and any(old.get(ident) != new.get(ident) for ident in deleted):
+            raise HTTPException(409, "Объём удалённой работы хранится в истории.")
         for line in body.lines:
             if line.item_id not in ps:
                 raise HTTPException(422, "Позиция отсутствует в справочнике")
+            if line.item_id in deleted:
+                continue
             if (
                 extra_position(ps[line.item_id])
                 and line.item_id not in old
@@ -238,7 +276,14 @@ async def persist_report(request: Request, body: SaveBody, action="edit_report")
         )
         if note_changes:
             write_notes(db, day, day_note, notes)
-        refresh_report_file = bool(note_changes) and bitrix_disk.report_file_enabled(db)
+        refresh_report_file = bool(note_changes) and (
+            bitrix_disk.report_file_enabled(db)
+            or (
+                store.setting(db, "source") == "bitrix"
+                and bool(store.setting(db, "webhook"))
+                and int(store.setting(db, "file_id", "0")) > 0
+            )
+        )
         if sync_changed:
             db.execute("DELETE FROM entries WHERE date=?", (day,))
             db.executemany(

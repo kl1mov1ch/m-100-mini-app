@@ -92,10 +92,19 @@ def journal_sheet(book, existing, group, multiple):
 
 
 def format_journal(
-    content, catalogue, entries, crew_by_day, issues, mappings=None, *, named_groups=False
+    content,
+    catalogue,
+    entries,
+    crew_by_day,
+    issues,
+    mappings=None,
+    *,
+    named_groups=False,
+    notes=None,
 ):
     from .workbook_calculation import cache_formulas
     from .workbook_expenses import write_summary
+    from .workbook_notes import write_notes_sheet
 
     book = openpyxl.load_workbook(io.BytesIO(content))
     journals = [sheet for sheet in book if is_journal(sheet)]
@@ -150,6 +159,8 @@ def format_journal(
         if index == 0:
             book.active = sheet
     write_summary(book)
+    if notes is not None:
+        write_notes_sheet(book, notes)
     output = io.BytesIO()
     book.save(output)
     return cache_formulas(output.getvalue(), issues, original=content)
@@ -289,8 +300,10 @@ def write_journal_sheet(
         )
         if day in crew_by_day:
             sheet.cell(totals + 1, column, crew_by_day[day])
-            sheet.cell(totals + 2, column, f"=INT(ROUND({earned}*100,0)/{crew})/100")
-            sheet.cell(totals + 3, column, f"=MOD(ROUND({earned}*100,0),{crew})")
+            sheet.cell(
+                totals + 2, column, f'=IF({crew}>0,INT(ROUND({earned}*100,0)/{crew})/100,"")'
+            )
+            sheet.cell(totals + 3, column, f"=IF({crew}>0,MOD(ROUND({earned}*100,0),{crew}),0)")
             sheet.cell(totals + 4, column, f'=IF({extra}=0,"",ROUND({share}+0.01,2))')
         for row in (totals, totals + 2, totals + 4):
             sheet.cell(row, column).number_format = AMOUNT_FORMAT

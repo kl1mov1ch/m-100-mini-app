@@ -104,7 +104,11 @@ def apply_read(db, extracted):
             ),
         }
     warnings = [warning for warning in extracted["warnings"] if warning.get("severity") != "info"]
-    layout_changed = len(matched) != len(local) or len(matched) != len(extracted["positions"])
+    deleted = store.deleted_positions(db)
+    missing = [position for position in local if position["id"] not in snapshot]
+    layout_changed = any(position["id"] not in deleted for position in missing) or len(
+        matched
+    ) != len(extracted["positions"])
     relevant_warnings = [
         warning
         for warning in warnings
@@ -150,15 +154,20 @@ def apply_read(db, extracted):
                     "version": workbook_revision.appearance_version(appearance),
                 }
             )
-    if layout_changed:
+    if layout_changed or missing:
         issues.extend(
             layout_issue(position, True)
             for position in extracted["positions"]
             if position["id"] not in matched
         )
-        issues.extend(
-            layout_issue(position, False) for position in local if position["id"] not in snapshot
-        )
+        for position in missing:
+            issue = layout_issue(position, False)
+            if position["id"] in deleted:
+                issue.update(
+                    title="Работа удалена из Битрикс24",
+                    advice="Ранее подтверждённые объёмы сохранены в истории.",
+                )
+            issues.append(issue)
     remote_by_id = dict(matched.values())
     previous = remote_positions(db)
     seen = json.loads(store.setting(db, "bitrix_read_days", "{}"))
@@ -220,10 +229,21 @@ def apply_read(db, extracted):
             and not warnings
             and not bitrix.equal_quantities(fresh, current.get(day, {}))
         ):
+            archived_quantities = {
+                ident: quantity
+                for ident, quantity in current.get(day, {}).items()
+                if ident in deleted and ident not in snapshot
+            }
+            if bitrix.equal_quantities({**fresh, **archived_quantities}, current.get(day, {})):
+                continue
             db.execute("DELETE FROM entries WHERE date=?", (day,))
             db.executemany(
                 "INSERT INTO entries(item_id,date,quantity) VALUES(?,?,?)",
-                [(ident, day, quantity) for ident, quantity in fresh.items() if quantity],
+                [
+                    (ident, day, quantity)
+                    for ident, quantity in {**fresh, **archived_quantities}.items()
+                    if quantity
+                ],
             )
             applied_days.append(day)
     position_updates = {}
@@ -265,11 +285,83 @@ def apply_read(db, extracted):
     return bool(issues)
 
 
+def adopt_working_catalogue(db, parsed):
+    if not parsed.get("generated") or not parsed["positions"]:
+        raise ValueError("Рабочий лист «Журнал работ» не найден или пуст. Отчёт сохранён.")
+    blocking = next(
+        (
+            warning
+            for warning in parsed.get("warnings", [])
+            if warning.get("severity") != "info" and warning.get("field") != "Дневной объём"
+        ),
+        None,
+    )
+    if blocking:
+        raise ValueError(blocking["message"])
+    local = {row["id"]: row for row in store.positions(db)}
+    remote = {row["id"]: row for row in parsed["positions"]}
+    deleted = store.deleted_positions(db)
+    missing = (local.keys() - remote.keys()) - deleted.keys()
+    if missing and (
+        not (local.keys() & remote.keys())
+        or any(not position["journal_position"] for position in remote.values())
+    ):
+        raise ValueError(
+            "В рабочем листе изменились строки. Не удалось подтвердить соответствие работ."
+        )
+    updates = {}
+    for ident in local.keys() & remote.keys():
+        old, new = local[ident], remote[ident]
+        if old["unit"] != new["unit"]:
+            raise ValueError(f"В Битрикс24 изменилась единица измерения работы «{old['name']}».")
+        if not new["journal_position"] and position_identity_changed(old, new):
+            raise ValueError(f"В рабочем листе не удалось подтвердить работу «{old['name']}».")
+        before = {key: old[key] for key in ("name", "section", "planned", "rate")}
+        after = {key: new[key] for key in before}
+        if before != after:
+            updates[ident] = {"before": before, "after": after}
+    added = remote.keys() - local.keys()
+    if not (updates or missing or added):
+        raise ValueError("Рабочий лист поменялся. Не удалось однозначно сопоставить позиции.")
+    timestamp = now()
+    for ident in sorted(updates):
+        new = updates[ident]["after"]
+        db.execute(
+            "UPDATE positions SET name=?,section=?,planned=?,rate=? WHERE id=?",
+            (new["name"], new["section"], new["planned"], new["rate"], ident),
+        )
+    for ident in sorted(added):
+        store.insert_position(db, remote[ident])
+    deleted.update({ident: timestamp for ident in missing})
+    store.set_setting(db, "deleted_positions", json.dumps(deleted))
+    db.execute(
+        "INSERT INTO audit(date,payload,created_at) VALUES(?,?,?)",
+        (
+            timestamp[:10],
+            json.dumps(
+                {
+                    "action": "bitrix_catalogue_refresh",
+                    "position_updates": updates,
+                    "added": sorted(added),
+                    "deleted": sorted(missing),
+                },
+                ensure_ascii=False,
+            ),
+            timestamp,
+        ),
+    )
+
+
+def position_identity_changed(old, new):
+    return tables.text(old["name"]) != tables.text(new["name"])
+
+
 def extract_workbook(content, mappings):
-    if not mappings:
-        mappings, _ = tables.discover(content)
+    parsed = bitrix.read_workbook(content, mappings, generated_only=True)
+    if parsed is None:
+        return None
     return {
-        **bitrix.read_workbook(content, mappings),
+        **parsed,
         "appearance": workbook_revision.colors(content),
     }
 
@@ -284,12 +376,16 @@ async def refresh_project(project, max_age=90):
             expected = connection(db)
             source, webhook, file_id, url, _, raw_mappings, _ = expected
             previous = freshness(db)
+            working_seen = store.setting(db, "bitrix_working_seen") == "1"
         if source != "bitrix":
             return None
-        if previous and datetime.fromisoformat(now()) - datetime.fromisoformat(
-            previous["checked_at"]
-        ) < timedelta(
-            seconds=min(max_age, 120) if previous["status"] == "unavailable" else max_age
+        if (
+            previous
+            and (working_seen or previous["status"] != "review")
+            and datetime.fromisoformat(now()) - datetime.fromisoformat(previous["checked_at"])
+            < timedelta(
+                seconds=min(max_age, 120) if previous["status"] == "unavailable" else max_age
+            )
         ):
             return previous
         content = extracted = None
@@ -322,14 +418,32 @@ async def refresh_project(project, max_age=90):
                 if connection(db) != expected or store.setting(db, "journal_rebuild"):
                     return freshness(db)
                 checked_at = now()
-                if workbook_issue:
+                if (
+                    working_seen
+                    and content is not None
+                    and extracted is None
+                    and not workbook_issue
+                ):
+                    workbook_issue = {
+                        "kind": "layout",
+                        "title": "Рабочий лист «Журнал работ» удалён или изменён",
+                        "advice": "Проверьте рабочие листы в Битрикс24.",
+                    }
+                if workbook_issue and working_seen:
                     store.set_setting(
                         db, "bitrix_read_issues", json.dumps([workbook_issue], ensure_ascii=False)
                     )
                     status = "review"
-                elif extracted is None:
+                elif content is None:
+                    store.set_setting(db, "bitrix_read_issues", "[]")
                     status = "unavailable"
+                elif extracted is None:
+                    store.set_setting(db, "bitrix_read_issues", "[]")
+                    store.set_setting(db, "bitrix_read_positions", "{}")
+                    store.set_setting(db, "bitrix_read_days", "{}")
+                    status = "current"
                 else:
+                    store.set_setting(db, "bitrix_working_seen", "1")
                     status = "review" if apply_read(db, extracted) else "current"
                 result = {
                     "status": status,

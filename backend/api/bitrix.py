@@ -1,3 +1,4 @@
+import hashlib
 import json
 from urllib.parse import urlparse
 
@@ -119,10 +120,24 @@ async def refresh(request: Request, force: bool = False):
     return await refresh_project(request.state.project, max_age=15 if force else 90)
 
 
-def table_notice(db, project, user):
-    if store.setting(db, "source") != "bitrix":
-        return None
-    status = freshness(db)
+def notice_setting(user):
+    return f"table_notice_dismissed:{user['role']}:{user['telegram_id']}"
+
+
+def notice_id(issue):
+    identity = {key: value for key, value in issue.items() if key not in {"author", "retrying"}}
+    return hashlib.sha256(
+        json.dumps(identity, ensure_ascii=False, sort_keys=True).encode()
+    ).hexdigest()
+
+
+def table_notice(db, project, user, names=None, *, include_dismissed=False):
+    source = store.setting(db, "source")
+    linked = source == "bitrix" and bool(
+        store.setting(db, "public_url")
+        or (store.setting(db, "webhook") and int(store.setting(db, "file_id", "0")))
+    )
+    status = freshness(db) if linked and store.setting(db, "bitrix_working_seen") == "1" else None
     issues = (
         [issue for issue in review_issues(db) or [] if issue["kind"] != "appearance"]
         if status and status["status"] == "review"
@@ -135,18 +150,34 @@ def table_notice(db, project, user):
     )
     if status and status["status"] == "unavailable":
         issues.append({"kind": "connection", "title": "Битрикс24 не ответил"})
-    for row in db.execute("SELECT date FROM reports WHERE sync_status='error' ORDER BY date DESC"):
-        issues.append(
-            {
-                "kind": "sync",
-                "title": "Отчёт не отправился в Битрикс24",
-                "date": row["date"],
-            }
-        )
+    if linked or source == "detached" or bitrix_disk.report_file_enabled(db):
+        names = names or {}
+        for row in db.execute(
+            "SELECT date,author_id,sync_error,retry_at FROM reports "
+            "WHERE sync_status='error' OR (sync_status='pending' AND sync_error<>'') "
+            "ORDER BY date DESC"
+        ):
+            issues.append(
+                {
+                    "kind": "sync",
+                    "title": "Отчёт не отправился в Битрикс24",
+                    "date": row["date"],
+                    "author": names.get(row["author_id"])
+                    or row["author_id"]
+                    or project["owner_name"],
+                    "reason": row["sync_error"] or "Битрикс24 не подтвердил отправку.",
+                    "retrying": bool(row["retry_at"]),
+                }
+            )
+    issues = [{**issue, "id": notice_id(issue)} for issue in issues]
+    if not include_dismissed:
+        dismissed = set(json.loads(store.setting(db, notice_setting(user), "[]")))
+        issues = [issue for issue in issues if issue["id"] not in dismissed]
     if issues:
         return {
             "project_id": project["id"],
             "project_name": project["name"],
+            "can_check_table": linked,
             "issues": issues,
             "version": conflict["version"] if conflict else None,
         }
@@ -156,13 +187,40 @@ def table_notice(db, project, user):
 @router.get("/api/profile/table-notifications")
 def table_notifications(request: Request):
     user = request.state.user
+    with workspaces.registry() as db:
+        names = {
+            row["telegram_id"]: row["name"]
+            for row in db.execute("SELECT telegram_id,name FROM users")
+        }
     notices = []
     for project in workspaces.visible(user):
         with store.connect(project["db_path"]) as db:
-            notice = table_notice(db, project, user)
+            notice = table_notice(db, project, user, names)
         if notice:
             notices.append(notice)
     return notices
+
+
+class DismissTableNotice(BaseModel):
+    issue_id: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+
+
+@router.post("/api/profile/table-notifications/{project_id}/dismiss")
+async def dismiss_table_notice(request: Request, project_id: str, body: DismissTableNotice):
+    user = request.state.user
+    project = workspaces.project(user, project_id)
+    async with workspaces.mutation_lock(project_id):
+        if not workspaces.exists(project_id):
+            raise HTTPException(404, "Объект удалён")
+        with store.connect(project["db_path"]) as db:
+            db.execute("BEGIN IMMEDIATE")
+            notice = table_notice(db, project, user, include_dismissed=True)
+            active = {issue["id"] for issue in notice["issues"]} if notice else set()
+            setting = notice_setting(user)
+            dismissed = set(json.loads(store.setting(db, setting, "[]"))) & active
+            dismissed.update(active if body.issue_id is None else active & {body.issue_id})
+            store.set_setting(db, setting, json.dumps(sorted(dismissed)))
+    return {"ok": True}
 
 
 class TableNoticeRefresh(BaseModel):
@@ -196,7 +254,8 @@ async def consult(request: Request, explain: bool = False):
     with store.connect() as database:
         status = freshness(database)
         issues = review_issues(database)
-    if not status or (status["status"] == "review" and issues is None):
+        working_seen = store.setting(database, "bitrix_working_seen") == "1"
+    if not status or (status["status"] == "review" and (issues is None or not working_seen)):
         await refresh_project(project, max_age=0)
     with store.connect() as database:
         status = freshness(database)
@@ -245,6 +304,7 @@ async def check_connection():
         public_url = store.setting(database, "public_url")
         file_id = int(store.setting(database, "file_id", "0"))
         mappings = json.loads(store.setting(database, "sheet_mappings", "null"))
+        working_seen = store.setting(database, "bitrix_working_seen") == "1"
     try:
         if not webhook and not public_url:
             raise ValueError("Сначала подключите таблицу Битрикс24")
@@ -256,9 +316,14 @@ async def check_connection():
             content, metadata = await bitrix.fetch_public(public_url)
             name = metadata["name"]
             detail_url = public_url
-        if not mappings:
-            mappings, _ = tables.discover(content)
-        parsed = bitrix.read_workbook(content, mappings)
+        parsed = bitrix.read_workbook(content, mappings, generated_only=True)
+        has_journal = parsed is not None
+        if not has_journal and not working_seen:
+            discovered, warnings = tables.discover(content, original=True)
+            if discovered:
+                parsed = tables.extract(content, discovered)
+                parsed["warnings"] = warnings + parsed["warnings"]
+        parsed = parsed or {"warnings": [], "positions": [], "sheets": []}
         problems = [warning for warning in parsed["warnings"] if warning.get("severity") != "info"]
         result = {
             "reachable": True,
@@ -269,9 +334,15 @@ async def check_connection():
             "sheets": len(parsed.get("sheets", mappings)),
             "issues": problems,
             "write_configured": bool(webhook),
-            "message": "Таблица отвечает"
-            if not problems
-            else "Таблица отвечает, есть замечания к данным",
+            "message": (
+                "В исходной таблице есть замечания к импорту."
+                if not has_journal and problems
+                else "Таблица доступна. Рабочий журнал ещё не создан."
+                if not has_journal
+                else "Рабочий журнал доступен"
+                if not problems
+                else "В рабочем журнале есть замечания"
+            ),
         }
         with store.connect() as database:
             store.set_setting(database, "connection_check", json.dumps(result, ensure_ascii=False))

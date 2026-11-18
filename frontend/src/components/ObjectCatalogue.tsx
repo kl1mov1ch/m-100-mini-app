@@ -1,6 +1,10 @@
-import { Button, Empty, Input, Select } from 'antd';
+import { Empty } from 'antd';
+import { Select } from './Select';
+import { Input } from './Input';
+import { Button } from './Button';
 import { SheetModal as Modal } from './SheetModal';
-import { ChevronDown, Search, SlidersHorizontal } from 'lucide-react';
+import { Search, SlidersHorizontal } from 'lucide-react';
+import { ChevronDown } from './kit-icons';
 import { useMemo, useState } from 'react';
 import type { WorkspaceView } from '../App';
 import { countLabel, Money, unit } from '../lib/format';
@@ -126,7 +130,10 @@ export function ObjectCatalogue({
 	const [sort, setSort] = useState<CatalogueSort>('source');
 	const [filtersOpen, setFiltersOpen] = useState(false);
 	const { allPositions: positions, openObjectSection } = workspace;
-	const allPositions = useMemo(() => positions.filter((position) => !position.extra), [positions]);
+	const allPositions = useMemo(
+		() => positions.filter((position) => !position.extra && !position.deleted_at),
+		[positions],
+	);
 	const sections = useMemo(
 		() =>
 			[...new Set(allPositions.map((position) => position.section?.trim()).filter(Boolean))].sort(

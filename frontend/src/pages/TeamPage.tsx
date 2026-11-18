@@ -1,8 +1,11 @@
+import { useEffectEvent } from '../hooks/useEffectEvent';
 import { confirmSheet } from '../components/SheetModal';
-import { App, Button, Tag } from 'antd';
+import { App, Tag } from 'antd';
+import { Button } from '../components/Button';
 import 'dayjs/locale/ru';
-import { ChevronRight, Plus, Settings2, Trash2, TriangleAlert } from 'lucide-react';
-import { useEffect, useEffectEvent } from 'react';
+import { Plus, Settings2, Trash2, TriangleAlert } from 'lucide-react';
+import { ChevronRight } from '../components/kit-icons';
+import { useEffect } from 'react';
 
 import type { WorkspaceView } from '../App';
 import { CompactWorkEditor } from '../components/CompactRow';
@@ -117,7 +120,7 @@ export function TeamPage({ workspace }: { workspace: WorkspaceView }) {
 											</div>
 											{!u.online && !!u.last_seen && (
 												<small>
-											Последняя активность {dayjs(u.last_seen * 1000).format('DD.MM · HH:mm')}
+													Последняя активность {dayjs(u.last_seen * 1000).format('DD.MM · HH:mm')}
 												</small>
 											)}
 										</div>

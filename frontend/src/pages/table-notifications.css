@@ -6,9 +6,10 @@
 }
 
 .table-notice-card {
-	padding: 12px;
+	padding: 14px;
 	border: 1px solid var(--kit-divider);
-	border-radius: var(--kit-control-radius);
+	border-radius: 12px;
+	background: var(--ios-surface);
 }
 
 .table-notice-card summary {
@@ -25,14 +26,29 @@
 }
 
 .table-notice-group {
-	padding: 8px;
-	background: var(--kit-tertiary);
-	border-radius: var(--kit-control-radius);
+	padding: 8px 0;
+	border-top: 1px solid var(--kit-divider);
+}
+
+.table-notice-group summary {
+	font-weight: 600;
+}
+
+.table-notice-group summary span {
+	color: var(--kit-hint);
+	font-weight: 400;
 }
 
 .table-notice-actions {
 	display: flex;
 	flex-wrap: wrap;
+	gap: 8px;
+}
+
+.table-notice-line {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
 	gap: 8px;
 }
 

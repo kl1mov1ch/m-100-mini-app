@@ -1,4 +1,5 @@
-import { useEffect, useEffectEvent, useRef } from 'react';
+import { useEffectEvent } from './useEffectEvent';
+import { useEffect, useRef } from 'react';
 import type { ObjectSection } from '../types';
 
 declare const __APP_RELEASE__: string;

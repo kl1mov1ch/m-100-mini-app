@@ -1,4 +1,5 @@
-import { Button, Empty } from 'antd';
+import { Empty } from 'antd';
+import { Button } from '../components/Button';
 import 'dayjs/locale/ru';
 import { Building2, Plus } from 'lucide-react';
 import { AdminOverview } from '../components/AdminOverview';
@@ -45,6 +46,7 @@ export function ObjectsPage({ workspace }: { workspace: WorkspaceView }) {
 						p.today_sync_status,
 						p.today_positions > 0,
 						p.table?.read_connected,
+						p.today_has_extra_work,
 					);
 					return (
 						<CompactRow

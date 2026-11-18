@@ -1,4 +1,5 @@
-import { Button, Empty, Spin } from 'antd';
+import { Empty, Spin } from 'antd';
+import { Button } from './Button';
 import { ExternalLink } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useReportDateSwipe } from '../hooks/useReportDateSwipe';
@@ -81,7 +82,12 @@ export function AdminDailyReport({ workspace }: { workspace: WorkspaceView }) {
 			{project && source?.project === project && !original && (
 				<p className="table-connection-notice">Ссылка на исходный Excel недоступна.</p>
 			)}
-			{data.config.object_note && <p className="object-note-read">{data.config.object_note}</p>}
+			{data.config.object_note && (
+				<section className="object-note-read">
+					<strong>Примечание к объекту</strong>
+					<div>{data.config.object_note}</div>
+				</section>
+			)}
 			{report?.day_note && (
 				<section className="object-note-read">
 					<strong>Примечание за день</strong>
@@ -114,6 +120,7 @@ export function AdminDailyReport({ workspace }: { workspace: WorkspaceView }) {
 							current?.sync_status,
 							!!current?.positions,
 							active.table?.read_connected,
+							report?.has_extra_work,
 						)}
 					/>
 				</div>
@@ -127,7 +134,14 @@ export function AdminDailyReport({ workspace }: { workspace: WorkspaceView }) {
 							key={line.item_id}
 							title={position?.name || line.raw || 'Работа'}
 							description={
-								nf.format(line.quantity || 0) + ' ' + unit(position?.unit || 'ед.') + ' за день'
+								nf.format(line.quantity || 0) +
+								' ' +
+								unit(position?.unit || 'ед.') +
+								' за день' +
+								(line.note ? ' · Есть примечание' : '') +
+								(line.deleted_at
+									? ' · Удалена из сметы ' + dayjs(line.deleted_at).format('DD.MM.YYYY')
+									: '')
 							}
 							value={<Money value={(line.quantity || 0) * (position?.rate || 0)} />}
 							meta={
@@ -149,7 +163,12 @@ export function AdminDailyReport({ workspace }: { workspace: WorkspaceView }) {
 									</strong>
 								</div>
 								{position && <WorkEstimate balance={balances[position.id]} unit={position.unit} />}
-								{line.note && <p className="object-note-read">{line.note}</p>}
+								{line.note && (
+									<section className="object-note-read">
+										<strong>Примечание к работе</strong>
+										<div>{line.note}</div>
+									</section>
+								)}
 								{position && (
 									<p className="position-rate">
 										<Money value={position.rate} /> / {unit(position.unit)}

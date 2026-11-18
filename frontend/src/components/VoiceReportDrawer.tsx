@@ -1,4 +1,6 @@
-import { Button, Drawer, Input, Upload } from 'antd';
+import { Drawer, Upload } from 'antd';
+import { Input } from './Input';
+import { Button } from './Button';
 import { Mic, Sparkles, Square, Upload as UploadIcon } from 'lucide-react';
 import type { WorkspaceView } from '../App';
 import './voice-report.css';
@@ -32,6 +34,7 @@ export function VoiceReportDrawer({ workspace }: { workspace: WorkspaceView }) {
 
 	return (
 		<Drawer
+			getContainer={() => document.getElementById('miniapp-surface') ?? document.body}
 			placement="bottom"
 			height="auto"
 			open={textOpen}

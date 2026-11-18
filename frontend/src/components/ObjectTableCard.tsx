@@ -1,4 +1,5 @@
-import { Button, Tag } from 'antd';
+import { Tag } from 'antd';
+import { Button } from './Button';
 import { ExternalLink, RefreshCw } from 'lucide-react';
 import type { WorkspaceView } from '../App';
 import dayjs from '../lib/date';

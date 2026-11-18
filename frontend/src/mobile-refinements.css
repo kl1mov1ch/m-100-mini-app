@@ -156,13 +156,6 @@
 	color: var(--ios-danger);
 	background: var(--ios-danger-fill);
 }
-.bottom-nav > button {
-	color: var(--ios-secondary);
-}
-.bottom-nav > button.active {
-	color: var(--ios-accent);
-	font-weight: 700;
-}
 .admin-work-row > div span {
 	font-size: 14px;
 	color: var(--ios-secondary);
@@ -176,9 +169,6 @@
 	overflow-wrap: anywhere;
 }
 @media (max-width: 600px) {
-	.bottom-nav > button {
-		font-size: 11px;
-	}
 	.history-bottom {
 		font-size: 12px;
 	}

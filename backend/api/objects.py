@@ -117,13 +117,16 @@ async def detach(request: Request):
                 "bitrix_read_status": "null",
                 "bitrix_read_positions": "{}",
                 "bitrix_read_days": "{}",
+                "bitrix_read_issues": "[]",
+                "bitrix_working_seen": "",
             }.items():
                 store.set_setting(db, key, value)
-            db.execute(
-                "UPDATE reports SET sync_status='pending',sync_error=?,retry_at='',sync_attempts=0 "
-                "WHERE sync_status IN ('pending','error')",
-                ("Таблица отвязана. Отчёт сохранён в приложении.",),
-            )
+            if not bitrix_disk.report_file_enabled(db):
+                db.execute(
+                    "UPDATE reports SET sync_status='pending',sync_error=?,retry_at='',sync_attempts=0 "
+                    "WHERE sync_status IN ('pending','error')",
+                    ("Таблица отвязана. Отчёт сохранён в приложении.",),
+                )
     return {"ok": True}
 
 
@@ -141,12 +144,20 @@ async def update_position(request: Request, position_id: str, body: PositionActi
             db.execute("BEGIN IMMEDIATE")
             position = catalogue.position_detail(db, position_id)
             hidden = store.hidden_positions(db)
+            deleted = store.deleted_positions(db)
+            if position_id in deleted:
+                if body.action == "delete":
+                    return {"ok": True}
+                raise HTTPException(409, "Работа удалена из сметы.")
             if body.action == "delete":
-                if position_id in position_usage(db):
-                    raise HTTPException(
-                        409, "Работа используется в истории и должна остаться в смете."
-                    )
-                db.execute("DELETE FROM positions WHERE id=?", (position_id,))
+                if store.setting(db, "source") in (
+                    "bitrix",
+                    "detached",
+                ) or position_id in position_usage(db):
+                    deleted[position_id] = now()
+                    store.set_setting(db, "deleted_positions", json.dumps(deleted))
+                else:
+                    db.execute("DELETE FROM positions WHERE id=?", (position_id,))
                 hidden.pop(position_id, None)
             elif body.action == "hide":
                 if not catalogue.has_overrun(position):
@@ -187,7 +198,7 @@ def history(request: Request, position_id: str, limit: Annotated[int, Query(ge=1
         catalogue.position_detail(db, position_id)
         return {
             **catalogue.position_history(db, position_id, limit),
-            "can_delete": can_manage and position_id not in position_usage(db),
+            "can_delete": can_manage and position_id not in store.deleted_positions(db),
         }
 
 

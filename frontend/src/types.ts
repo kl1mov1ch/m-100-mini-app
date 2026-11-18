@@ -21,6 +21,7 @@ export type Project = {
 	today_crew: number | null;
 	today_per_person: number;
 	today_positions: number;
+	today_has_extra_work?: boolean;
 	today_confirmed: boolean;
 	today_sync_status?: string | null;
 	total_amount: number;
@@ -49,6 +50,7 @@ export type Position = {
 	source_row: number;
 	source_sheet?: string;
 	hidden?: boolean;
+	deleted_at?: string | null;
 	extra?: boolean;
 	bitrix?: { planned: number; rate: number; completed: number; remaining: number } | null;
 };
@@ -131,6 +133,12 @@ export type Line = {
 	reason?: string;
 	candidates?: string[];
 	note?: string;
+	deleted_at?: string;
+};
+export type ProjectMatch = {
+	project_id: string;
+	project_name: string;
+	work_name: string;
 };
 export type ParsedReport = {
 	lines: Line[];
@@ -139,6 +147,7 @@ export type ParsedReport = {
 	crew_ambiguous: boolean;
 	needs_ai: boolean;
 	engine: string;
+	project_match?: ProjectMatch;
 };
 export type Payroll = {
 	amount: number;
@@ -159,6 +168,7 @@ export type Report = {
 	changed?: boolean;
 	notes_only?: boolean;
 	day_note?: string;
+	has_extra_work?: boolean;
 };
 export type HistoryRow = Payroll & {
 	date: string;
@@ -221,6 +231,7 @@ export type Session = {
 };
 export type Suggestion = { item_id: string; reason: string };
 export type SearchResult = {
+	project_match?: ProjectMatch;
 	suggestions: Suggestion[];
 	engine: string;
 	needs_ai: boolean;

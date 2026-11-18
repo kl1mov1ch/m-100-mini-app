@@ -1,12 +1,16 @@
-import { Alert, App as AntApp, Badge, Button } from 'antd';
+import { Alert, App as AntApp, Badge } from 'antd';
+import { Button } from '../components/Button';
 import { SheetModal as Modal } from '../components/SheetModal';
-import { Bell, ChevronRight, RefreshCw } from 'lucide-react';
+import { RefreshCw, X } from 'lucide-react';
+import { Bell, ChevronRight } from '../components/kit-icons';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { WorkspaceView } from '../App';
 import { request } from '../lib/api';
+import { Select } from '../components/Select';
 import './table-notifications.css';
 
 type TableIssue = {
+	id: string;
 	kind: string;
 	title: string;
 	position?: string;
@@ -19,11 +23,15 @@ type TableIssue = {
 	suggested?: number;
 	unit?: string;
 	advice?: string;
+	author?: string;
+	reason?: string;
+	retrying?: boolean;
 };
 
 type TableNotice = {
 	project_id: string;
 	project_name: string;
+	can_check_table: boolean;
 	issues: TableIssue[];
 	version: string | null;
 };
@@ -88,8 +96,11 @@ export function TableNotifications({
 }) {
 	const { message } = AntApp.useApp();
 	const [open, setOpen] = useState(false);
+	const [selectedProject, setSelectedProject] = useState('');
 	const [loading, setLoading] = useState<string | null>(null);
 	const [feedback, setFeedback] = useState<Record<string, { error: boolean; text: string }>>({});
+	const selectedNotice =
+		inbox.notices.find((item) => item.project_id === selectedProject) ?? inbox.notices[0];
 
 	async function refresh(notice: TableNotice) {
 		const id = notice.project_id;
@@ -117,6 +128,20 @@ export function TableNotifications({
 			}));
 		} finally {
 			await inbox.reload();
+			setLoading(null);
+		}
+	}
+
+	async function dismiss(notice: TableNotice, issueId?: string) {
+		setLoading(notice.project_id);
+		try {
+			await request(path + '/' + encodeURIComponent(notice.project_id) + '/dismiss', {
+				issue_id: issueId ?? null,
+			});
+			await inbox.reload();
+		} catch (problem) {
+			message.error((problem as Error).message);
+		} finally {
 			setLoading(null);
 		}
 	}
@@ -149,8 +174,19 @@ export function TableNotifications({
 				<div className="table-notifications">
 					{inbox.error && <Alert type="error" message={inbox.error} />}
 					{!inbox.notices.length && !inbox.error && <p>Нет открытых замечаний по таблицам.</p>}
-					{inbox.notices.map((notice) => (
-						<details key={notice.project_id} className="table-notice-card">
+					{inbox.notices.length > 1 && (
+						<Select
+							aria-label="Объект"
+							value={selectedNotice?.project_id}
+							onChange={setSelectedProject}
+							options={inbox.notices.map((item) => ({
+								value: item.project_id,
+								label: `${item.project_name} · ${item.issues.length}`,
+							}))}
+						/>
+					)}
+					{(selectedNotice ? [selectedNotice] : []).map((notice) => (
+						<details key={notice.project_id} className="table-notice-card" open>
 							<summary>
 								<strong>{notice.project_name}</strong>
 								<Badge count={notice.issues.length} />
@@ -165,16 +201,29 @@ export function TableNotifications({
 								const issues = notice.issues.filter((issue) => kinds.includes(issue.kind));
 								if (!issues.length) return null;
 								return (
-									<details className="table-notice-group" key={title}>
+									<details className="table-notice-group" key={title} open={kinds.includes('sync')}>
 										<summary>
 											{title}
 											<span>{issues.length}</span>
 										</summary>
 										<ul>
-											{issues.map((issue, index) => (
-												<li key={index}>
-													<strong>{issue.title}</strong>
+											{issues.map((issue) => (
+												<li key={issue.id}>
+													<div className="table-notice-line">
+														<strong>{issue.title}</strong>
+														<Button
+															type="text"
+															size="small"
+															icon={<X size={16} />}
+															aria-label={'Убрать уведомление: ' + issue.title}
+															disabled={loading !== null}
+															onClick={() => void dismiss(notice, issue.id)}
+														/>
+													</div>
 													{issue.position && <span>{issue.position}</span>}
+													{issue.author && <span>Автор отчёта · {issue.author}</span>}
+													{issue.reason && <span>{issue.reason}</span>}
+													{issue.retrying && <small>Запланирована повторная отправка</small>}
 													<small>
 														{[
 															issue.sheet,
@@ -202,7 +251,7 @@ export function TableNotifications({
 													{issue.advice && !['planned', 'rate', 'report'].includes(issue.kind) && (
 														<small>{issue.advice}</small>
 													)}
-													{issue.kind === 'sync' && issue.date && !workspace.isAdmin && (
+													{issue.kind === 'sync' && issue.date && (
 														<Button
 															type="link"
 															onClick={() => {
@@ -220,18 +269,22 @@ export function TableNotifications({
 								);
 							})}
 							<div className="table-notice-actions">
-								<Button
-									type="primary"
-									icon={<RefreshCw size={16} />}
-									loading={loading === notice.project_id}
-									disabled={
-										loading !== null ||
-										(!!notice.version && workspace.project === notice.project_id && workspace.dirty)
-									}
-									onClick={() => void refresh(notice)}
-								>
-									{notice.version ? 'Применить данные Битрикс24' : 'Проверить таблицу'}
-								</Button>
+								{notice.can_check_table && (
+									<Button
+										type="primary"
+										icon={<RefreshCw size={16} />}
+										loading={loading === notice.project_id}
+										disabled={
+											loading !== null ||
+											(!!notice.version &&
+												workspace.project === notice.project_id &&
+												workspace.dirty)
+										}
+										onClick={() => void refresh(notice)}
+									>
+										{notice.version ? 'Применить данные Битрикс24' : 'Проверить таблицу'}
+									</Button>
+								)}
 								{!workspace.isAdmin &&
 									notice.issues.some(({ kind }) =>
 										['layout', 'cell', 'remaining'].includes(kind),
@@ -246,6 +299,13 @@ export function TableNotifications({
 											Открыть таблицу проекта
 										</Button>
 									)}
+								<Button
+									type="text"
+									disabled={loading !== null}
+									onClick={() => void dismiss(notice)}
+								>
+									Убрать все по объекту
+								</Button>
 							</div>
 							{notice.version && workspace.project === notice.project_id && workspace.dirty && (
 								<small>Сначала сохраните текущий отчёт.</small>

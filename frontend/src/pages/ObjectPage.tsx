@@ -1,4 +1,6 @@
-import { Alert, App, Button, Empty, Segmented, Spin } from 'antd';
+import { Segmented } from '../components/Segmented';
+import { Alert, App, Empty, Spin } from 'antd';
+import { Button } from '../components/Button';
 import { SheetModal as Modal } from '../components/SheetModal';
 import { NotebookPen } from 'lucide-react';
 import { useState } from 'react';
@@ -182,7 +184,7 @@ export function ObjectPage({ workspace }: { workspace: WorkspaceView }) {
 							? 'Работа снова появится в поиске и новых отчётах.'
 							: operation === 'hide'
 								? 'У позиции есть перерасход. После подтверждения она исчезнет из поиска и подсказок при заполнении отчёта. Смета и история сохранятся.'
-								: 'Позиция будет удалена из сметы приложения. Отменить это действие нельзя. Строка в исходном файле сохранится.'}
+								: 'Работа исчезнет из сметы приложения и новых отчётов. Выполненные объёмы и дата удаления сохранятся в истории, строка в Битрикс24 останется.'}
 					</p>
 				</>
 			),
@@ -259,7 +261,14 @@ export function ObjectPage({ workspace }: { workspace: WorkspaceView }) {
 				/>
 			)}
 			{objectSection === 'expenses' && (
-				<ObjectExpenses key={project} project={project} day={workspace.day} />
+				<ObjectExpenses
+					key={project}
+					project={project}
+					day={workspace.day}
+					onSaved={() =>
+						void refresh(true).catch(() => message.warning('Обновите карточку объекта'))
+					}
+				/>
 			)}
 			{objectSection === 'table' && (
 				<ObjectTablePanel

@@ -1,4 +1,5 @@
-import { Alert, App, Button, Collapse, Spin } from 'antd';
+import { Alert, App, Collapse, Spin } from 'antd';
+import { Button } from './Button';
 import { confirmSheet, SheetModal as Modal } from './SheetModal';
 import { Sparkles, TriangleAlert } from 'lucide-react';
 import { useEffect, useState } from 'react';

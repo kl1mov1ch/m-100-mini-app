@@ -1,4 +1,4 @@
-import { Select } from 'antd';
+import { Select } from './Select';
 import type { WorkspaceView } from '../App';
 import dayjs from '../lib/date';
 import { Money } from '../lib/format';

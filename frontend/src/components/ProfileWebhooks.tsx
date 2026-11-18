@@ -1,4 +1,6 @@
-import { App, Button, Empty, Input } from 'antd';
+import { App, Empty } from 'antd';
+import { Input } from './Input';
+import { Button } from './Button';
 import { confirmSheet, SheetModal as Modal } from './SheetModal';
 import { KeyRound, Plus, Trash2 } from 'lucide-react';
 import { useState, type FormEvent } from 'react';

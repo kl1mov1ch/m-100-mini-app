@@ -1,4 +1,8 @@
-import { App as AntApp, Badge, Button, ConfigProvider, Drawer, Input, Select } from 'antd';
+import { App as AntApp, Badge, ConfigProvider, Drawer } from 'antd';
+import { Select } from './components/Select';
+import { Input } from './components/Input';
+import { Button } from './components/Button';
+import { AppRoot } from '@telegram-apps/telegram-ui';
 import { SheetModal as Modal } from './components/SheetModal';
 import ruRU from 'antd/locale/ru_RU';
 import 'dayjs/locale/ru';
@@ -36,6 +40,7 @@ import './telegram-ios.css';
 import './compact-workspace.css';
 import './compact-lists.css';
 import './desktop.css';
+import './bottom-nav.css';
 import './telegram-kit-tokens.css';
 import './telegram-kit-components.css';
 import { telegramTheme } from './lib/telegram-theme';
@@ -167,36 +172,41 @@ export function WorkspaceApp() {
 						: []),
 					{ id: 'history', label: 'История', icon: <History size={22} /> },
 					{ id: 'more', label: 'Настройки', icon: <Settings2 size={22} /> },
-				].map((n) => (
-					<button
-						key={n.id}
-						onClick={() => {
-							if (n.id === 'more') openSettings();
-							else if (n.id === 'today' && !isAdmin && active)
-								controller.openObjectSection('reports');
-							else setPage(n.id);
-						}}
-						className={
-							page === n.id ||
-							(n.id === 'today' && page === 'object') ||
-							(n.id === 'more' && ['team', 'reminders'].includes(page)) ||
-							(n.id === 'history' && page === 'changes')
-								? 'active'
-								: ''
-						}
-					>
-						{n.id === 'more' ? (
-							<Badge count={tableInbox.count} size="small" offset={[3, 0]}>
-								{n.icon}
-							</Badge>
-						) : (
-							n.icon
-						)}
-						<span>{n.label}</span>
-					</button>
-				))}
+				].map((n) => {
+					const selected =
+						page === n.id ||
+						(n.id === 'today' && page === 'object') ||
+						(n.id === 'more' && ['team', 'reminders'].includes(page)) ||
+						(n.id === 'history' && page === 'changes');
+					return (
+						<button
+							key={n.id}
+							type="button"
+							aria-current={selected ? 'page' : undefined}
+							className={selected ? 'active' : ''}
+							onClick={() => {
+								if (n.id === 'more') openSettings();
+								else if (n.id === 'today' && !isAdmin && active)
+									controller.openObjectSection('reports');
+								else setPage(n.id);
+							}}
+						>
+							<span className="bottom-nav-icon" aria-hidden>
+								{n.id === 'more' ? (
+									<Badge count={tableInbox.count} size="small" offset={[3, 0]}>
+										{n.icon}
+									</Badge>
+								) : (
+									n.icon
+								)}
+							</span>
+							<span className="bottom-nav-label">{n.label}</span>
+						</button>
+					);
+				})}
 			</nav>
 			<Drawer
+				getContainer={() => document.getElementById('miniapp-surface') ?? document.body}
 				placement="bottom"
 				height="88dvh"
 				title={replaceIndex !== null ? 'Выберите работу' : 'Добавить работу'}
@@ -215,10 +225,16 @@ export function WorkspaceApp() {
 						replaceIndex === null ? lines.flatMap((l) => (l.item_id ? [l.item_id] : [])) : []
 					}
 					onSelect={addLine}
+					onProjectMatch={(id) => {
+						setWorkPicker(false);
+						setReplaceIndex(null);
+						selectObject(id);
+					}}
 				/>
 			</Drawer>
 			<VoiceReportDrawer workspace={workspace} />
 			<Drawer
+				getContainer={() => document.getElementById('miniapp-surface') ?? document.body}
 				placement="bottom"
 				height="70dvh"
 				title="Объекты"
@@ -354,9 +370,15 @@ function ThemedWorkspace() {
 				closable: { placement: 'end', 'aria-label': 'Закрыть' },
 			}}
 		>
-			<AntApp message={{ maxCount: 2 }}>
-				<WorkspaceApp />
-			</AntApp>
+			<AppRoot
+				id="miniapp-surface"
+				appearance="light"
+				platform={document.documentElement.dataset.platform === 'apple' ? 'ios' : 'base'}
+			>
+				<AntApp message={{ maxCount: 2 }}>
+					<WorkspaceApp />
+				</AntApp>
+			</AppRoot>
 		</ConfigProvider>
 	);
 }

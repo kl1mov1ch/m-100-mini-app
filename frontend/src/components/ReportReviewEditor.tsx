@@ -1,5 +1,7 @@
 import { sortSearchOptions } from '../lib/search';
-import { Button, InputNumber, Select } from 'antd';
+import { InputNumber } from 'antd';
+import { Select } from './Select';
+import { Button } from './Button';
 import { Pencil, Trash2, Users } from 'lucide-react';
 import { forwardRef, useEffect, useImperativeHandle, useState } from 'react';
 import { ReportConfirmation } from '../ReportConfirmation';

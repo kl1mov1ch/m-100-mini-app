@@ -192,6 +192,16 @@ def suggestions(text, catalogue):
     return rows
 
 
+def grounded_suggestions(text, catalogue):
+    """Require every meaningful query term, with the usual size and unit checks."""
+    if NEGATION.search(norm(text)):
+        return []
+    words = semantic_words(text) - OPERATIONS
+    if not words:
+        return []
+    return [item for score, _, _, item in suggestions(text, catalogue) if score == 1]
+
+
 def compact(catalogue):
     return json.dumps(
         [{k: p[k] for k in ("id", "name", "unit", "section") if p.get(k)} for p in catalogue],

@@ -1,5 +1,9 @@
-import { Alert, App, Button, Input, Select, Upload } from 'antd';
-import { ChevronDown, Download, FileSearch, Settings2, Trash2, Unlink } from 'lucide-react';
+import { Alert, App, Upload } from 'antd';
+import { Select } from './Select';
+import { Input } from './Input';
+import { Button } from './Button';
+import { Download, FileSearch, Settings2, Trash2, Unlink } from 'lucide-react';
+import { ChevronDown } from './kit-icons';
 import { useId, useState } from 'react';
 import type { WorkspaceView } from '../App';
 import { FieldHelp } from './FieldHelp';

@@ -1,5 +1,8 @@
-import { App, Button, Input, Tag } from 'antd';
-import { Check, Pencil, X } from 'lucide-react';
+import { App, Tag } from 'antd';
+import { Input } from './Input';
+import { Button } from './Button';
+import { Check, Pencil } from 'lucide-react';
+import { X } from './kit-icons';
 import { useState } from 'react';
 import type { WorkspaceView } from '../App';
 import { request } from '../lib/api';

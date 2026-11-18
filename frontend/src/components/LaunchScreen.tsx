@@ -1,4 +1,5 @@
-import { Button, Spin } from 'antd';
+import { Spin } from 'antd';
+import { Button } from './Button';
 import { ArrowUpRight, RotateCw } from 'lucide-react';
 import { RequestError } from '../lib/api';
 import './launch-screen.css';

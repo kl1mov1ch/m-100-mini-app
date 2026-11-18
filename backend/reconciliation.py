@@ -6,7 +6,7 @@ from collections import Counter, defaultdict
 import httpx
 from fastapi import HTTPException
 
-from . import matcher
+from . import matcher, store
 
 
 def unit_key(value):
@@ -16,6 +16,7 @@ def unit_key(value):
 def catalogue_version(database):
     state = {
         "positions": [dict(row) for row in database.execute("SELECT * FROM positions ORDER BY id")],
+        "deleted": store.deleted_positions(database),
         "reports": [
             dict(row) for row in database.execute("SELECT date,revision FROM reports ORDER BY date")
         ],
@@ -33,6 +34,7 @@ def build_plan(database, incoming, entries=None):
     previous = [
         dict(row) for row in database.execute("SELECT * FROM positions ORDER BY source_row")
     ]
+    deleted = store.deleted_positions(database)
     referenced = {row[0] for row in database.execute("SELECT DISTINCT item_id FROM entries")}
     for row in database.execute("SELECT payload FROM audit"):
         event = json.loads(row[0])
@@ -60,6 +62,8 @@ def build_plan(database, incoming, entries=None):
         )
         if selected and selected["id"] in occupied:
             selected = None
+        if not selected and old["id"] in deleted:
+            continue
         if selected:
             occupied.add(selected["id"])
         fields = ("name", "unit", "rate", "planned")
@@ -96,6 +100,11 @@ def build_plan(database, incoming, entries=None):
         for report in database.execute("SELECT date FROM reports ORDER BY date"):
             local = local_by_day[report["date"]]
             remote = remote_by_day[report["date"]]
+            local = {
+                ident: qty
+                for ident, qty in local.items()
+                if ident not in deleted or ident in remote
+            }
             if local != remote:
                 report_conflicts.append(
                     {
@@ -123,7 +132,7 @@ def build_plan(database, incoming, entries=None):
             ).encode()
         ).hexdigest(),
         "needs_confirmation": any(row["changed"] for row in rows)
-        or len(incoming) != len(previous)
+        or len(incoming) != len(rows)
         or bool(report_conflicts),
         "rows": rows,
         "report_count": database.execute("SELECT count(*) FROM reports").fetchone()[0],

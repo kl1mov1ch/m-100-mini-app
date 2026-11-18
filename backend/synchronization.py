@@ -13,6 +13,7 @@ from .analytics_workbook import export_workbook
 from .clock import now
 from .reporting import ai_settings, get_report, history
 from .table_advice import explain_issues
+from .workbook_notes import collect_notes
 
 SYNC_LOCKS = {}
 JOURNAL_PENDING_NOTE = "Таблица подтверждена. Лист «Журнал работ» ещё не записан в Битрикс24."
@@ -143,104 +144,143 @@ async def write_journal(project):
             )
             if status == "ready":
                 store.set_setting(db, "journal_rebuild", "")
+                store.set_setting(db, "bitrix_working_seen", "1")
         return {"status": status, "message": note or "Лист «Журнал работ» проверен в Битрикс24."}
 
 
 async def send_day(project, day):
     async with table_lock(project):
-        if not workspaces.exists(project["id"]):
-            return {"ok": False, "status": "local", "message": "Объект удалён"}
-        with store.connect(project["db_path"]) as db:
-            r = get_report(db, day)
-            webhook = store.setting(db, "webhook")
-            source = store.setting(db, "source")
-            file_id = int(store.setting(db, "file_id", "0"))
-            standalone = (
-                store.setting(db, bitrix_disk.REPORT_TARGET_KEY)
-                if bitrix_disk.report_file_enabled(db)
-                else ""
+        return await _send_day(project, day, refresh_catalogue=True)
+
+
+async def _send_day(project, day, *, refresh_catalogue):
+    if not workspaces.exists(project["id"]):
+        return {"ok": False, "status": "local", "message": "Объект удалён"}
+    with store.connect(project["db_path"]) as db:
+        r = get_report(db, day)
+        webhook = store.setting(db, "webhook")
+        source = store.setting(db, "source")
+        file_id = int(store.setting(db, "file_id", "0"))
+        standalone = (
+            store.setting(db, bitrix_disk.REPORT_TARGET_KEY)
+            if bitrix_disk.report_file_enabled(db)
+            else ""
+        )
+        ps = store.positions(db)
+        retired_ids = store.deleted_positions(db)
+        if not standalone and (not webhook or source != "bitrix" or not file_id):
+            msg = "Подключите таблицу Битрикс24 для автоматической отправки"
+            db.execute(
+                "UPDATE reports SET sync_status='pending',sync_error=? WHERE date=?",
+                (msg, day),
             )
-            ps = store.positions(db)
-            if not standalone and (not webhook or source != "bitrix" or not file_id):
-                msg = "Подключите таблицу Битрикс24 для автоматической отправки"
-                db.execute(
-                    "UPDATE reports SET sync_status='pending',sync_error=? WHERE date=?",
-                    (msg, day),
-                )
-                return {"ok": False, "status": "pending", "message": msg}
-            if r["sync_status"] == "synced":
-                return {"ok": True, "status": "synced"}
-            if store.setting(db, "journal_rebuild"):
-                return {
-                    "ok": False,
-                    "status": "pending",
-                    "message": "Рабочие листы обновляются. Отчёт сохранён.",
-                }
-            baseline = json.loads(store.setting(db, "remote_days", "{}")).get(day, {})
-            mappings = json.loads(store.setting(db, "sheet_mappings", "null"))
-            crew = {
-                row["date"]: row["crew_count"]
-                for row in db.execute(
-                    "SELECT date,crew_count FROM reports WHERE sync_status='synced'"
-                )
-            }
-            settings = ai_settings(db)
-        if standalone:
-            return await send_cumulative_report(project, r, standalone)
-        try:
-            result = await bitrix.upload_day(
-                webhook, file_id, day, r["lines"], ps, r["payroll"], baseline, mappings, crew
-            )
-            issues = (result or {}).get("issues", [])
-            tips = await explain_issues(issues, settings)
-            note = ""
-            if issues:
-                first = issues[0]
-                note = first["message"] + (f" {tips[first['id']]}" if first["id"] in tips else "")
-            with store.connect(project["db_path"]) as db:
-                if get_report(db, day)["revision"] == r["revision"]:
-                    db.execute(
-                        "UPDATE reports SET sync_status='synced',sync_error=?,retry_at='',sync_attempts=0 WHERE date=?",
-                        (note, day),
-                    )
-                baselines = json.loads(store.setting(db, "remote_days", "{}"))
-                baselines[day] = {l["item_id"]: l["quantity"] for l in r["lines"]}
-                store.set_setting(db, "remote_days", json.dumps(baselines))
-                store.set_setting(db, "journal_status", "ready")
-                store.set_setting(db, "journal_note", "")
+            return {"ok": False, "status": "pending", "message": msg}
+        if r["sync_status"] == "synced":
             return {"ok": True, "status": "synced"}
-        except (ValueError, httpx.HTTPError, KeyError, TypeError) as e:
-            transient = (
-                isinstance(e, httpx.TransportError)
-                or isinstance(e, httpx.HTTPStatusError)
-                and (e.response.status_code == 429 or e.response.status_code >= 500)
-            )
-            status = "pending" if transient else "error"
-            msg = (
-                str(e)
-                if isinstance(e, ValueError)
-                else "Битрикс24 недоступен. Изменения сохранены, повторите отправку."
-            )
-            if isinstance(e, ValueError):
-                tip = await explain_issues([{"id": "sync", "message": msg}], settings)
-                if tip.get("sync"):
-                    msg += " " + tip["sync"]
-            with store.connect(project["db_path"]) as db:
-                if get_report(db, day)["revision"] == r["revision"]:
-                    attempt = r.get("sync_attempts", 0) + 1
-                    retry_at = (
-                        (
-                            datetime.fromisoformat(now())
-                            + timedelta(seconds=min(300, 5 * 2 ** min(attempt, 6)))
-                        ).isoformat()
-                        if transient
-                        else ""
+        if store.setting(db, "journal_rebuild"):
+            return {
+                "ok": False,
+                "status": "pending",
+                "message": "Рабочие листы обновляются. Отчёт сохранён.",
+            }
+        baseline = json.loads(store.setting(db, "remote_days", "{}")).get(day, {})
+        mappings = json.loads(store.setting(db, "sheet_mappings", "null"))
+        crew = {
+            row["date"]: row["crew_count"]
+            for row in db.execute("SELECT date,crew_count FROM reports WHERE sync_status='synced'")
+        }
+        settings = ai_settings(db)
+        notes = collect_notes(db, project["name"], ps)
+    if standalone:
+        return await send_cumulative_report(project, r, standalone)
+    try:
+        result = await bitrix.upload_day(
+            webhook,
+            file_id,
+            day,
+            r["lines"],
+            ps,
+            r["payroll"],
+            baseline,
+            mappings,
+            crew,
+            notes=notes,
+            **({"retired_ids": retired_ids} if retired_ids else {}),
+        )
+        issues = (result or {}).get("issues", [])
+        tips = await explain_issues(issues, settings)
+        note = ""
+        if issues:
+            first = issues[0]
+            note = first["message"] + (f" {tips[first['id']]}" if first["id"] in tips else "")
+        with store.connect(project["db_path"]) as db:
+            if get_report(db, day)["revision"] == r["revision"]:
+                db.execute(
+                    "UPDATE reports SET sync_status='synced',sync_error=?,retry_at='',sync_attempts=0 WHERE date=?",
+                    (note, day),
+                )
+            baselines = json.loads(store.setting(db, "remote_days", "{}"))
+            baselines[day] = {l["item_id"]: l["quantity"] for l in r["lines"]}
+            store.set_setting(db, "remote_days", json.dumps(baselines))
+            store.set_setting(db, "journal_status", "ready")
+            store.set_setting(db, "journal_note", "")
+        return {"ok": True, "status": "synced"}
+    except (ValueError, httpx.HTTPError, KeyError, TypeError) as e:
+        if isinstance(e, bitrix.CatalogueChanged) and refresh_catalogue:
+            from .bitrix_refresh import adopt_working_catalogue, apply_read
+
+            try:
+                with store.connect(project["db_path"]) as db:
+                    db.execute("BEGIN IMMEDIATE")
+                    adopt_working_catalogue(db, e.parsed)
+                    needs_review = apply_read(db, e.parsed)
+                    checked_at = now()
+                    store.set_setting(
+                        db,
+                        "bitrix_read_status",
+                        json.dumps(
+                            {
+                                "status": "review" if needs_review else "current",
+                                "checked_at": checked_at,
+                                "updated_at": checked_at,
+                            }
+                        ),
                     )
-                    db.execute(
-                        "UPDATE reports SET sync_status=?,sync_error=?,sync_attempts=?,retry_at=? WHERE date=?",
-                        (status, msg, attempt, retry_at, day),
-                    )
-            return {"ok": False, "status": status, "message": msg}
+            except ValueError as problem:
+                e = problem
+            else:
+                return await _send_day(project, day, refresh_catalogue=False)
+        transient = (
+            isinstance(e, httpx.TransportError)
+            or isinstance(e, httpx.HTTPStatusError)
+            and (e.response.status_code == 429 or e.response.status_code >= 500)
+        )
+        status = "pending" if transient else "error"
+        msg = (
+            str(e)
+            if isinstance(e, ValueError)
+            else "Битрикс24 недоступен. Изменения сохранены, повторите отправку."
+        )
+        if isinstance(e, ValueError):
+            tip = await explain_issues([{"id": "sync", "message": msg}], settings)
+            if tip.get("sync"):
+                msg += " " + tip["sync"]
+        with store.connect(project["db_path"]) as db:
+            if get_report(db, day)["revision"] == r["revision"]:
+                attempt = r.get("sync_attempts", 0) + 1
+                retry_at = (
+                    (
+                        datetime.fromisoformat(now())
+                        + timedelta(seconds=min(300, 5 * 2 ** min(attempt, 6)))
+                    ).isoformat()
+                    if transient
+                    else ""
+                )
+                db.execute(
+                    "UPDATE reports SET sync_status=?,sync_error=?,sync_attempts=?,retry_at=? WHERE date=?",
+                    (status, msg, attempt, retry_at, day),
+                )
+        return {"ok": False, "status": status, "message": msg}
 
 
 async def retry_pending_reports():

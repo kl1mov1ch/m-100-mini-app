@@ -1,4 +1,4 @@
-import '@ant-design/v5-patch-for-react-19';
+import '@telegram-apps/telegram-ui/dist/styles.css';
 import { renderApp } from './App';
 import { configureTelegram, initializeTelegram } from './lib/telegram';
 initializeTelegram()

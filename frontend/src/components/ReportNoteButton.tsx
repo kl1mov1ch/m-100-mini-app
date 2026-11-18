@@ -1,4 +1,4 @@
-import { Button } from 'antd';
+import { Button } from './Button';
 import { SheetModal as Modal } from './SheetModal';
 import { MessageSquareText } from 'lucide-react';
 import { useState } from 'react';

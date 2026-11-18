@@ -1,5 +1,8 @@
 import { rankedSearch } from '../lib/search';
-import { Alert, App, Button, Input, InputNumber, Select, Tabs, Tag } from 'antd';
+import { Alert, App, InputNumber, Tabs, Tag } from 'antd';
+import { Select } from './Select';
+import { Input } from './Input';
+import { Button } from './Button';
 import { confirmSheet, SheetModal as Modal } from './SheetModal';
 import { Check, FileSpreadsheet, Search, Settings2, Sparkles, TriangleAlert } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -299,21 +302,17 @@ export function TableImportModal({ workspace }: { workspace: WorkspaceView }) {
 											}))}
 										/>
 									) : (
-										<InputNumber
-											min={0}
+										<Input
+											inputMode="decimal"
 											placeholder="Новое значение"
-											value={
-												typeof values[warning.id] === 'number'
-													? (values[warning.id] as number)
-													: null
-											}
-											onChange={(value) => setValue(warning.id, value)}
+											value={values[warning.id] ?? ''}
+											onChange={(event) => setValue(warning.id, event.target.value)}
 										/>
 									)}
 									<Button
 										type="primary"
 										loading={busy}
-										disabled={values[warning.id] === undefined || values[warning.id] === null}
+										disabled={!String(values[warning.id] ?? '').trim()}
 										onClick={() => fixCell(warning, values[warning.id])}
 									>
 										Исправить

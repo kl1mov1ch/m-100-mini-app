@@ -1,4 +1,5 @@
-import { Alert, Button, Empty, InputNumber, Spin, Tag } from 'antd';
+import { Alert, Empty, InputNumber, Spin, Tag } from 'antd';
+import { Button } from '../components/Button';
 import 'dayjs/locale/ru';
 import { Check, Mic, Plus, RotateCcw, TextCursorInput, Trash2 } from 'lucide-react';
 import { useState } from 'react';
@@ -86,6 +87,7 @@ function MasterDailyReport({ workspace }: { workspace: WorkspaceView }) {
 							report?.sync_status,
 							Boolean(report?.lines.length),
 							data.config.source === 'bitrix',
+							report?.has_extra_work,
 						)}
 					/>
 				</div>
@@ -162,6 +164,9 @@ function MasterDailyReport({ workspace }: { workspace: WorkspaceView }) {
 										? ' · смета ' + nf.format(p.planned) + ' ' + unit(p.unit)
 										: ' · выберите позицию'}
 									{l.note?.trim() ? ' · с примечанием' : ''}
+									{l.deleted_at
+										? ' · удалена из сметы ' + dayjs(l.deleted_at).format('DD.MM.YYYY')
+										: ''}
 								</>
 							}
 							value={<Money value={(p?.rate || 0) * (l.quantity || 0)} />}
@@ -179,16 +184,24 @@ function MasterDailyReport({ workspace }: { workspace: WorkspaceView }) {
 								<div className="work-card-heading">
 									<button
 										className="work-name"
+										disabled={!!p?.deleted_at}
 										onClick={() => {
 											setReplaceIndex(i);
 											setWorkPicker(true);
 										}}
 									>
-										<b>{p ? 'Заменить работу' : 'Выберите работу'}</b>
+										<b>
+											{p?.deleted_at
+												? 'Удалена из сметы'
+												: p
+													? 'Заменить работу'
+													: 'Выберите работу'}
+										</b>
 										<small>{p?.section || l.reason || l.raw}</small>
 									</button>
 									<button
 										className="plain-icon"
+										hidden={!!p?.deleted_at}
 										aria-label={'Удалить работу ' + (i + 1)}
 										onClick={() =>
 											confirmRemoval(
@@ -217,6 +230,7 @@ function MasterDailyReport({ workspace }: { workspace: WorkspaceView }) {
 												min={0.01}
 												max={1e8}
 												value={l.quantity}
+												readOnly={!!p?.deleted_at}
 												placeholder="0"
 												onChange={(v) => patchLine(i, v)}
 											/>

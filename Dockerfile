@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 ca-cer
 COPY backend/requirements-lock.txt backend/requirements-lock.txt
 RUN pip install --no-cache-dir -r backend/requirements-lock.txt
 COPY backend/ backend/
-COPY docs/ai-system-prompt.md docs/ai-system-prompt.md
+COPY docs/ai-system-prompt.md docs/ai-workbook-mapping.md docs/
 COPY scripts/configure_telegram.py scripts/configure_telegram.py
 COPY scripts/data_archive.py scripts/data_archive.py
 COPY scripts/migrate_postgres.py scripts/migrate_postgres.py

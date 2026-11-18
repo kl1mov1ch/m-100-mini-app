@@ -1,7 +1,9 @@
-import { Button } from 'antd';
+import { Cell } from '@telegram-apps/telegram-ui';
+import { Button } from './Button';
 import { SheetModal as Modal } from './SheetModal';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight } from './kit-icons';
 import { useState, type ReactNode } from 'react';
+import type { reportStatus } from './SyncStatus';
 
 export type CompactRowProps = {
 	title: string;
@@ -10,7 +12,7 @@ export type CompactRowProps = {
 	meta?: ReactNode;
 	leading?: ReactNode;
 	attention?: boolean;
-	status?: 'missing' | 'pending' | 'sent';
+	status?: ReturnType<typeof reportStatus>;
 	className?: string;
 	dialog?: boolean;
 	onClick: () => void;
@@ -29,26 +31,31 @@ export function CompactRow({
 	onClick,
 }: CompactRowProps) {
 	return (
-		<button
+		<Cell
+			Component="button"
 			type="button"
 			className={`compact-row ${attention ? 'compact-row-attention' : ''} ${status ? 'compact-row-' + status : ''} ${className}`}
 			onClick={onClick}
 			title={title}
 			aria-haspopup={dialog ? 'dialog' : undefined}
+			before={leading && <span className="compact-row-leading">{leading}</span>}
+			subtitle={description && <span className="compact-row-description">{description}</span>}
+			after={
+				<span className="compact-row-end">
+					{(value != null || meta) && (
+						<span className="compact-row-aside">
+							{value != null && <strong>{value}</strong>}
+							{meta && <span>{meta}</span>}
+						</span>
+					)}
+					<ChevronRight className="compact-row-arrow" size={16} aria-hidden />
+				</span>
+			}
 		>
-			{leading && <span className="compact-row-leading">{leading}</span>}
 			<span className="compact-row-main">
 				<strong>{title}</strong>
-				{description && <span className="compact-row-description">{description}</span>}
 			</span>
-			{(value != null || meta) && (
-				<span className="compact-row-aside">
-					{value != null && <strong>{value}</strong>}
-					{meta && <span>{meta}</span>}
-				</span>
-			)}
-			<ChevronRight className="compact-row-arrow" size={16} aria-hidden />
-		</button>
+		</Cell>
 	);
 }
 

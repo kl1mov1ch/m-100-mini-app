@@ -1,4 +1,5 @@
-import { Alert, Input } from 'antd';
+import { Alert } from 'antd';
+import { Input } from './Input';
 import { SheetModal as Modal } from './SheetModal';
 import { TriangleAlert } from 'lucide-react';
 import { useState, type ReactNode } from 'react';

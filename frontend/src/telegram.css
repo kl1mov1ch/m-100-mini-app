@@ -20,16 +20,6 @@
 	.application {
 		padding-bottom: calc(92px + var(--app-safe-bottom));
 	}
-	.bottom-nav {
-		padding: 11px max(10px, var(--app-safe-right)) calc(11px + var(--app-safe-bottom))
-			max(10px, var(--app-safe-left));
-	}
-	.bottom-nav > button {
-		flex: 1 1 0;
-		min-width: 0;
-		min-height: 44px;
-		padding-inline: 4px;
-	}
 	input,
 	textarea,
 	.ant-select-selection-search-input {

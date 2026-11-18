@@ -88,9 +88,6 @@ def test_hidden_and_deleted_positions_do_not_break_history(client):
     )
     path = "/api/object/positions/"
     assert (
-        client.post(path + "excel-2", json={"action": "delete"}, headers=headers).status_code == 409
-    )
-    assert (
         client.post(path + "excel-2", json={"action": "hide"}, headers=headers).status_code == 409
     )
     with store.connect(project["db_path"]) as db:
@@ -107,16 +104,17 @@ def test_hidden_and_deleted_positions_do_not_break_history(client):
     with store.connect(project["db_path"]) as db:
         assert store.selectable_positions(db) == []
     assert (
+        client.post(path + "excel-2", json={"action": "show"}, headers=headers).status_code == 200
+    )
+    assert client.post(path + "excel-2", json={"action": "delete"}, headers=headers).is_success
+    saved = client.get(f"/api/report/{day}", headers=headers).json()
+    assert saved["lines"][0]["deleted_at"][:10] == day
+    assert saved["lines"][0]["quantity"] == 2 and saved["payroll"]["amount"] == 4
+    assert (
         client.post(
             "/api/reports", json={"date": day, "revision": 1, "lines": []}, headers=headers
         ).status_code
-        == 200
-    )
-    assert (
-        client.post(path + "excel-2", json={"action": "delete"}, headers=headers).status_code == 409
-    )
-    assert (
-        client.post(path + "excel-2", json={"action": "show"}, headers=headers).status_code == 200
+        == 409
     )
 
 
@@ -126,6 +124,9 @@ def test_delete_object_requires_owner_and_exact_name(client):
     headers = {"X-Project-Id": ident, "X-Preview-User": "9001"}
     preview = upload(client, headers, workbook())
     original = directory() / (preview["token"] + ".xlsx")
+    from pathlib import Path
+
+    database_path = Path(workspaces.project(workspaces.user("9001"), ident)["db_path"])
     assert original.is_file()
     assert (
         client.post(
@@ -144,6 +145,7 @@ def test_delete_object_requires_owner_and_exact_name(client):
         == 200
     )
     assert not original.exists()
+    assert not database_path.exists()
     assert client.get("/api/session", headers=headers).json()["projects"] == []
     assert client.get("/api/bootstrap", headers=headers).status_code == 403
 

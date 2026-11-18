@@ -1,7 +1,12 @@
+import { Segmented } from '../components/Segmented';
 import { sortSearchOptions } from '../lib/search';
-import { App, Button, Input, Segmented, Select } from 'antd';
+import { App } from 'antd';
+import { Select } from '../components/Select';
+import { Input } from '../components/Input';
+import { Button } from '../components/Button';
 import { confirmSheet, SheetModal as Modal } from '../components/SheetModal';
-import { ChevronDown, Clock3, Send } from 'lucide-react';
+import { Clock3, Send } from 'lucide-react';
+import { ChevronDown } from '../components/kit-icons';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import dayjs from '../lib/date';
 import { request } from '../lib/api';

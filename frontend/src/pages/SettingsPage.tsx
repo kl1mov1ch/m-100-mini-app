@@ -1,9 +1,12 @@
-import { Button, Input, Tag } from 'antd';
+import { Tag } from 'antd';
+import { Input } from '../components/Input';
+import { Button } from '../components/Button';
 import { ProfileCard } from '../components/ProfileCard';
 import { ProfileWebhooks } from '../components/ProfileWebhooks';
 import { FieldHelp } from '../components/FieldHelp';
 import 'dayjs/locale/ru';
-import { Bell, ChevronRight, Sparkles, Users } from 'lucide-react';
+import { Sparkles, Users } from 'lucide-react';
+import { Bell, ChevronRight } from '../components/kit-icons';
 import { useId } from 'react';
 import type { useTelegramNotifications } from '../hooks/useTelegramNotifications';
 

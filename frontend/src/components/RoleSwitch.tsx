@@ -1,5 +1,6 @@
+import { Segmented } from './Segmented';
 import { confirmSheet } from './SheetModal';
-import { App, Segmented } from 'antd';
+import { App } from 'antd';
 import { useRef, type TouchEvent } from 'react';
 import type { WorkspaceView } from '../App';
 import type { ViewMode } from '../types';

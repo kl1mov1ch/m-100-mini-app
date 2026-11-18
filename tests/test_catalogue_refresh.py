@@ -17,6 +17,129 @@ from backend.table_editing import DailyColumnChange, apply_changes
 from backend.workbook_journal import is_journal
 
 
+def test_detach_replaces_table_issues_with_unsent_report_details(client):
+    grant(client, "9001", "Мастер")
+    ident = create(client, "9001", sample=False)
+    project = workspaces.project(workspaces.user("9001"), ident)
+    with store.connect(project["db_path"]) as db:
+        for key, value in {
+            "source": "bitrix",
+            "file_id": "123",
+            "webhook": "configured",
+            "bitrix_read_status": '{"status":"review"}',
+            "bitrix_working_seen": "1",
+            "bitrix_read_issues": '[{"kind":"layout","title":"Строка перемещена"}]',
+        }.items():
+            store.set_setting(db, key, value)
+        db.execute(
+            "INSERT INTO reports(date,revision,text,updated_at,sync_status,crew_count,author_id,sync_error) "
+            "VALUES(?,1,'','','error',2,'9001','Нет доступа на запись')",
+            (today(),),
+        )
+    endpoint = "/api/profile/table-notifications"
+    before = next(item for item in client.get(endpoint).json() if item["project_id"] == ident)
+    issue = next(issue for issue in before["issues"] if issue["kind"] == "sync")
+    assert issue["author"] == "Мастер" and issue["reason"] == "Нет доступа на запись"
+
+    headers = {"X-Project-Id": ident, "X-Preview-User": "9001"}
+    assert client.post("/api/object/table/detach", headers=headers).is_success
+    after = next(item for item in client.get(endpoint).json() if item["project_id"] == ident)
+    assert after["can_check_table"] is False
+    assert [issue["kind"] for issue in after["issues"]] == ["sync"]
+    assert after["issues"][0]["reason"].startswith("Таблица отвязана")
+    with store.connect(project["db_path"]) as db:
+        assert store.setting(db, "bitrix_read_issues") == "[]"
+
+
+def test_dismissed_table_notices_are_private_and_changed_issues_return(client):
+    grant(client, "9001")
+    ident = create(client, "9001", sample=False)
+    project = workspaces.project(workspaces.user("9001"), ident)
+    headers = {"X-Preview-User": "9001"}
+    with store.connect(project["db_path"]) as db:
+        for key, value in {
+            "source": "bitrix",
+            "file_id": "123",
+            "webhook": "configured",
+            "bitrix_read_status": '{"status":"review"}',
+            "bitrix_working_seen": "1",
+            "bitrix_read_issues": '[{"kind":"layout","title":"Строка перемещена"}]',
+        }.items():
+            store.set_setting(db, key, value)
+    path = "/api/profile/table-notifications"
+    dismiss = path + f"/{ident}/dismiss"
+    item = client.get(path, headers=headers).json()[0]["issues"][0]
+    assert client.post(dismiss, json={"issue_id": item["id"]}, headers=headers).is_success
+    assert client.get(path, headers=headers).json() == []
+    assert client.get(path).json()[0]["issues"][0]["id"] == item["id"]
+    assert client.post(dismiss, json={}).is_success
+    assert client.get(path).json() == []
+    with store.connect(project["db_path"]) as db:
+        store.set_setting(
+            db, "bitrix_read_issues", '[{"kind":"layout","title":"Удалена другая работа"}]'
+        )
+    assert (
+        client.get(path, headers=headers).json()[0]["issues"][0]["title"] == "Удалена другая работа"
+    )
+
+
+def test_report_retries_with_bitrix_rates_and_preserves_remote_removed_work(client, monkeypatch):
+    grant(client, "9001")
+    ident = create(client, "9001", sample=False)
+    headers = {"X-Project-Id": ident, "X-Preview-User": "9001"}
+    project = workspaces.project(workspaces.user("9001"), ident)
+    with store.connect(project["db_path"]) as db:
+        store.set_setting(db, "webhook", "test-webhook")
+        store.set_setting(db, "file_id", "123")
+    current = workbook([("Монтаж кабеля 3х2,5", "м", 2), ("Монтаж светильника", "шт", 7)])
+    writes = []
+
+    async def download(*args):
+        return current, {"NAME": "Смета.xlsx"}
+
+    async def write(*args):
+        nonlocal current
+        current = base64.b64decode(args[2]["fileContent"][1])
+        writes.append(current)
+        return True
+
+    def change_remote(address, value):
+        book = openpyxl.load_workbook(io.BytesIO(current))
+        next(sheet for sheet in book if is_journal(sheet))[address] = value
+        stream = io.BytesIO()
+        book.save(stream)
+        return stream.getvalue()
+
+    monkeypatch.setattr(bitrix, "download_rest", download)
+    monkeypatch.setattr(bitrix, "rest", write)
+    preview = client.post("/api/imports/bitrix", headers=headers).json()
+    confirmed = client.post("/api/imports/confirm", headers=headers, json=approval(preview))
+    assert confirmed.is_success, confirmed.text
+    positions = client.get("/api/bootstrap", headers=headers).json()["positions"]
+    cable, light = [position["id"] for position in positions]
+    current = change_remote("E5", 12.5)
+    day = (date.fromisoformat(today()) - timedelta(days=2)).isoformat()
+    first = client.post(
+        "/api/reports",
+        headers=headers,
+        json={"date": day, "revision": 0, "lines": [{"item_id": cable, "quantity": 4}]},
+    )
+    assert first.is_success and first.json()["sync_status"] == "synced", first.text
+    assert first.json()["payroll"]["amount"] == 50
+    current = change_remote("B5", None)
+    second = client.post(
+        "/api/reports",
+        headers=headers,
+        json={"date": today(), "revision": 0, "lines": [{"item_id": light, "quantity": 3}]},
+    )
+    assert second.is_success and second.json()["sync_status"] == "synced", second.text
+    assert second.json()["payroll"]["amount"] == 21 and len(writes) == 3
+    historical = client.get(f"/api/report/{day}", headers=headers).json()
+    assert historical["lines"][0]["quantity"] == 4 and historical["lines"][0]["deleted_at"]
+    notice = client.get("/api/profile/table-notifications", headers=headers).json()[0]
+    assert any(item["title"] == "Работа удалена из Битрикс24" for item in notice["issues"])
+
+
 def test_admin_can_open_source_excel_without_exposing_webhook(client, monkeypatch):
     grant(client, "9001")
     grant(client, "9002")
@@ -129,23 +252,46 @@ def test_live_overrun_preserves_confirmed_report_and_position_history(client, mo
         store.set_setting(db, "webhook", "mock")
 
     attempts = []
+    remote_content = stream.getvalue()
 
     async def read(*args):
         attempts.append(True)
-        return stream.getvalue(), {"NAME": "Смета.xlsx"}
+        return remote_content, {"NAME": "Смета.xlsx"}
 
     monkeypatch.setattr(bitrix, "download_rest", read)
+    assert client.post("/api/bitrix/refresh", headers=headers).json()["status"] == "current"
+    assert all(
+        issue["kind"] == "sync"
+        for notice in client.get("/api/profile/table-notifications", headers=headers).json()
+        for issue in notice["issues"]
+    )
+    from backend.workbook_journal import format_journal
+
+    yesterday = (date.fromisoformat(today()) - timedelta(days=1)).isoformat()
+    positions = bitrix.read_workbook(content, preview["sheets"])["positions"]
+    positions[0]["planned"] = 4
+    remote_content = format_journal(
+        content,
+        positions,
+        [
+            {"item_id": "excel-2", "date": today(), "quantity": 8},
+            {"item_id": "excel-3", "date": yesterday, "quantity": 9},
+        ],
+        {},
+        [],
+    )
+    with store.connect(selected["db_path"]) as db:
+        store.set_setting(db, "bitrix_read_status", "null")
     first = client.post("/api/bitrix/refresh", headers=headers)
     assert first.status_code == 200, first.text
     assert first.json()["status"] == "review"
     assert client.post("/api/bitrix/refresh", headers=headers).json() == first.json()
-    assert len(attempts) == 1
+    assert len(attempts) == 2
     data = client.get("/api/bootstrap", headers=headers).json()
     assert data["report"]["lines"] == [line]
     assert data["positions"][0]["bitrix"]["remaining"] == -4
     assert data["positions"][0]["bitrix"]["completed"] == 8
     assert not data["positions"][0]["hidden"]
-    yesterday = (date.fromisoformat(today()) - timedelta(days=1)).isoformat()
     updated = client.get("/api/report/" + yesterday, headers=headers).json()
     assert {"item_id": "excel-3", "quantity": 9} in updated["lines"]
 
@@ -159,7 +305,7 @@ def test_live_overrun_preserves_confirmed_report_and_position_history(client, mo
     assert client.post(path, json={"action": "hide"}, headers=headers).status_code == 200
     updated = client.get("/api/bootstrap", headers=headers).json()
     assert updated["positions"][0]["hidden"]
-    assert history["can_delete"] is False
+    assert history["can_delete"] is True
     assert (
         client.post(path + "/consult", json={"question": "Почему −4?"}, headers=headers).status_code
         == 409
@@ -233,11 +379,15 @@ def test_bitrix_review_suggests_verified_values_without_editing_reports(client, 
             json.dumps({"status": "review", "checked_at": "2020-01-01T00:00:00+03:00"}),
         )
 
-    remote = openpyxl.load_workbook(io.BytesIO(content))
-    remote.active["E2"] = 8
-    remote.active["F2"] = 9
-    remote.active["H2"] = 8
-    remote.active["H3"] = "проверить"
+    from backend.workbook_journal import format_journal
+
+    positions = bitrix.read_workbook(content, preview["sheets"])["positions"]
+    positions[0]["planned"] = 92
+    generated = format_journal(
+        content, positions, [{"item_id": "excel-2", "date": today(), "quantity": 8}], {}, []
+    )
+    remote = openpyxl.load_workbook(io.BytesIO(generated))
+    remote.active["J6"] = "проверить"
     stream = io.BytesIO()
     remote.save(stream)
 
@@ -251,10 +401,9 @@ def test_bitrix_review_suggests_verified_values_without_editing_reports(client, 
     response = client.post(path, headers=headers)
     assert response.is_success, response.text
     issues = {item["kind"]: item for item in response.json()["issues"]}
-    assert issues["cell"]["cell"] == "H3"
-    assert issues["remaining"]["cell"] == "F2"
-    assert issues["remaining"]["remote"] == 9 and issues["remaining"]["suggested"] == 92
-    assert issues["remaining"]["formula"] == "=C2-E2"
+    assert "cell" in issues, response.json()
+    assert issues["cell"]["cell"] == "J6"
+    assert issues["planned"]["remote"] == 92
     assert response.json()["conflicts"]["days"] == 1
     assert response.json()["conflicts"]["positions"] == 1
 
@@ -262,7 +411,7 @@ def test_bitrix_review_suggests_verified_values_without_editing_reports(client, 
 
     async def suggest(system, text, settings):
         assert "test-webhook" not in text
-        assert any(item.get("suggested") == 92 for item in json.loads(text))
+        assert any(item.get("remote") == 92 for item in json.loads(text))
         return {"advice": "Сверьте дневной отчёт и пересчитайте остаток."}
 
     monkeypatch.setattr(matcher, "complete", suggest)
@@ -493,7 +642,7 @@ def test_daily_column_errors_are_grouped_and_fixed_in_one_action():
         assert tables.extract(updated, mappings)["warnings"] == []
 
 
-def test_bitrix_metadata_drift_does_not_block_edit_but_manual_change_refreshes_preview(
+def test_bitrix_initial_correction_stays_in_draft_and_rechecks_original_at_confirmation(
     client, monkeypatch
 ):
     grant(client, "9001")
@@ -530,32 +679,35 @@ def test_bitrix_metadata_drift_does_not_block_edit_but_manual_change_refreshes_p
             )
     current = repacked.getvalue()
     assert original != current and workbook_revision.changes(original, current) is None
-    edit = {"token": preview["token"], "edits": [{"sheet": "Монтаж", "cell": "D2", "value": 12}]}
+    edit = {
+        "token": preview["token"],
+        "edits": [{"sheet": "Монтаж", "cell": "D2", "value": "12,5"}],
+    }
     result = client.post("/api/imports/edit", json=edit, headers=headers)
     assert result.is_success, result.text
-    assert len(writes) == 1
+    assert not writes and result.json()["saved_to_source"] is False
+    assert result.json()["positions"][0]["rate"] == 12.5
+    second = {**edit, "edits": [{"sheet": "Монтаж", "cell": "C2", "value": "99"}]}
+    staged = client.post("/api/imports/edit", json=second, headers=headers)
+    assert staged.is_success and staged.json()["positions"][0]["rate"] == 12.5
 
     book = openpyxl.load_workbook(io.BytesIO(current))
     book.active["D2"].fill = PatternFill("solid", fgColor="FFFF00")
     stream = io.BytesIO()
     book.save(stream)
     current = stream.getvalue()
-    rejected = client.post("/api/imports/edit", json=edit, headers=headers)
-    assert rejected.status_code == 409 and len(writes) == 1
+    rejected = client.post("/api/imports/confirm", json=approval(staged.json()), headers=headers)
+    assert rejected.status_code == 409 and not writes
     latest = client.get("/api/imports/pending", headers=headers).json()
     assert latest["source_change"]["kind"] == "appearance"
     assert latest["token"] != edit["token"]
     edit["token"] = latest["token"]
-    assert client.post("/api/imports/edit", json=edit, headers=headers).is_success
-    assert (
-        openpyxl.load_workbook(io.BytesIO(current)).active["D2"].fill.fgColor.rgb.endswith("FFFF00")
-    )
+    corrected = client.post("/api/imports/edit", json=edit, headers=headers)
+    assert corrected.is_success
+    assert client.post(
+        "/api/imports/confirm", json=approval(corrected.json()), headers=headers
+    ).is_success
+    assert len(writes) == 1
     book = openpyxl.load_workbook(io.BytesIO(current))
-    book.active["I2"] = None
-    stream = io.BytesIO()
-    book.save(stream)
-    current = stream.getvalue()
-    assert client.post("/api/imports/edit", json=edit, headers=headers).status_code == 409
-    latest = client.get("/api/imports/pending", headers=headers).json()
-    assert latest["source_change"] == {"kind": "data", "locations": ["Монтаж · I2"]}
-    assert len(writes) == 2
+    assert book["Монтаж"]["D2"].fill.fgColor.rgb.endswith("FFFF00")
+    assert next(sheet for sheet in book if is_journal(sheet))["E5"].value == 12.5

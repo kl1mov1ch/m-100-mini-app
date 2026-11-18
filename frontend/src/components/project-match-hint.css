@@ -1,0 +1,20 @@
+.project-match-hint {
+	display: grid;
+	gap: 8px;
+	padding: 10px 12px;
+	border: 1px solid var(--ios-separator);
+	border-radius: 10px;
+	background: var(--ios-surface);
+	font-size: 13px;
+}
+
+.project-match-hint p {
+	margin: 0;
+	overflow-wrap: anywhere;
+}
+
+.project-match-hint > div {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}

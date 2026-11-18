@@ -67,13 +67,14 @@
 .import-issue-list {
 	display: flex;
 	flex-direction: column;
-	gap: 13px;
+	gap: 8px;
 }
 .table-issue {
-	border: 1px solid var(--ios-warning-line);
+	border: 1px solid var(--ios-separator);
+	border-inline-start: 3px solid var(--ios-warning-line);
 	border-radius: 12px;
-	background: var(--ios-warning-fill);
-	padding: 17px;
+	background: var(--ios-surface);
+	padding: 12px;
 }
 .table-issue.acknowledged {
 	border-color: var(--ios-separator);
@@ -96,23 +97,23 @@
 	font-weight: 600;
 	white-space: nowrap;
 	color: var(--ios-warning-text);
-	background: var(--ios-warning-line);
+	background: var(--ios-warning-fill);
 	padding: 4px 6px;
 	border-radius: 5px;
 }
 .table-issue-location {
 	font-size: 13px;
-	color: var(--ios-warning-text);
-	line-height: 1.8;
-	margin-top: 9px;
+	color: var(--ios-secondary);
+	line-height: 1.5;
+	margin-top: 5px;
 }
 .table-issue-position {
 	display: block;
 	font-size: 12px;
-	line-height: 1.8;
+	line-height: 1.5;
 	font-weight: 600;
-	color: var(--ios-warning-text);
-	margin-top: 10px;
+	color: var(--ios-label);
+	margin-top: 5px;
 }
 .table-issue > p {
 	font-size: 14px;

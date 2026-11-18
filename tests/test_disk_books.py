@@ -162,11 +162,11 @@ def test_cumulative_file_keeps_days_notes_and_retries_without_duplicate(client, 
     [(filename, content)] = files.values()
     assert filename == bitrix_disk.REPORT_FILE
     workbook = openpyxl.load_workbook(io.BytesIO(content))
-    assert workbook.sheetnames == ["Работы по дням"]
+    assert workbook.sheetnames == ["Работы по дням", "Примечания"]
     sheet = workbook.active
     dates = [cell.value.date().isoformat() for cell in sheet[4][6:]]
     assert dates == sorted(set(dates)) and dates[-2:] == [earlier, day]
-    values = {cell.value for row in sheet for cell in row if cell.value is not None}
+    values = {cell.value for tab in workbook for row in tab for cell in row if cell.value is not None}
     assert {"Доступ после 09:00", "Готов второй этаж", "Выработка", "Человек за день"} <= values
     assert "Доступ после 08:00" not in values
     assert any(

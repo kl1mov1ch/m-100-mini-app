@@ -1,4 +1,6 @@
-import { Alert, Button, Empty, Input, Spin, Tabs } from 'antd';
+import { Alert, Empty, Spin, Tabs } from 'antd';
+import { Input } from './Input';
+import { Button } from './Button';
 import { SheetModal as Modal } from './SheetModal';
 import { Settings2, Sparkles, Trash2, TriangleAlert } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -259,9 +261,6 @@ export function PositionDetails({
 									>
 										Удалить из сметы
 									</Button>
-									{history && !history.can_delete && (
-										<small>Позиция используется в истории. Удаление недоступно.</small>
-									)}
 									{error && <Alert type="warning" showIcon message={error} />}
 								</div>
 							),

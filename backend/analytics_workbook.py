@@ -18,6 +18,7 @@ from openpyxl.utils.datetime import to_excel
 from . import orm_repository, postgres, store, workspaces
 from .clock import today
 from .report_notes import notes_in_period
+from .workbook_notes import collect_notes, write_notes_sheet
 
 NAVY = "21344A"
 BLUE = "266BD3"
@@ -287,25 +288,6 @@ def chart_sheet(book, days, amounts, crews, plan, initial_credit, credit_changes
     sheet.sheet_properties.pageSetUpPr.fitToPage = True
 
 
-def write_notes_section(sheet, notes):
-    if not notes:
-        return
-    sheet.append([])
-    sheet.append(["Дата", "Объект и работа", "Примечание"])
-    band(sheet, sheet[sheet.max_row][:6], NAVY, color="FFFFFF", bold=True)
-    sheet.merge_cells(start_row=sheet.max_row, start_column=3, end_row=sheet.max_row, end_column=6)
-    for day, label, text in sorted(notes):
-        sheet.append([date.fromisoformat(day), label, text])
-        row = sheet.max_row
-        band(sheet, sheet[row][:6], "F4F8FC" if row % 2 == 0 else "FFFFFF")
-        sheet.cell(row, 1).number_format = "dd.mm.yyyy"
-        sheet.merge_cells(start_row=row, start_column=3, end_row=row, end_column=6)
-        sheet.cell(row, 3).alignment = Alignment(vertical="center", wrap_text=True)
-        sheet.row_dimensions[row].height = min(
-            250, max(28, 16 * sum(max(1, ceil(len(line) / 55)) for line in text.splitlines()))
-        )
-
-
 def export_workbook(user, data, *, with_charts=True):
     book = Workbook()
     sheet = book.active
@@ -359,15 +341,22 @@ def export_workbook(user, data, *, with_charts=True):
             names = {position["id"]: position["name"] for position in positions}
             allowed_days = {item["date"] for item in project_reports}
             with store.connect(project["db_path"]) as db:
+                work_notes.extend(
+                    collect_notes(
+                        db,
+                        project["name"],
+                        positions,
+                        start=days[0],
+                        end=days[-1],
+                        days=allowed_days,
+                    )
+                )
                 for day, note, line_notes in notes_in_period(db, days[0], days[-1]):
                     if day not in allowed_days:
                         continue
-                    if note:
-                        work_notes.append((day, project["name"], note))
                     for item_id, text in line_notes.items():
                         if item_id in names:
                             notes_by_position[item_id][day] = text
-                            work_notes.append((day, f"{project['name']} · {names[item_id]}", text))
             if project_reports:
                 sheet.append([project["name"]])
                 row = sheet.max_row
@@ -390,7 +379,11 @@ def export_workbook(user, data, *, with_charts=True):
                 initial_credit += p_credit
     else:
         sheet["A5"] = "Нет работ за выбранный период"
-    write_notes_section(sheet, work_notes)
+        for project in workspaces.visible(user):
+            if project["id"] in data["project_ids"]:
+                with store.connect(project["db_path"]) as db:
+                    work_notes.extend(collect_notes(db, project["name"], [], days=set()))
+    write_notes_sheet(book, work_notes)
     if with_charts:
         chart_sheet(book, days, amounts, crews, plan, initial_credit, credit_changes)
     output = io.BytesIO()

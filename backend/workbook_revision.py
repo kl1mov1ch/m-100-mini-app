@@ -9,6 +9,7 @@ from openpyxl.xml.functions import tostring
 
 from .workbook_expenses import is_expense_sheet
 from .workbook_journal import is_journal, manual_fill
+from .workbook_notes import MARKER as NOTES_MARKER
 
 
 def package_parts(content):
@@ -54,7 +55,9 @@ def snapshot(content, *, original_only=False):
     styles = {}
     result = {}
     for sheet in load(content):
-        if original_only and (is_journal(sheet) or is_expense_sheet(sheet)):
+        if original_only and (
+            is_journal(sheet) or is_expense_sheet(sheet) or sheet["A1"].value == NOTES_MARKER
+        ):
             continue
         values, formats = {}, {}
         for row in sheet.iter_rows():
@@ -106,6 +109,8 @@ def colors(content):
     result = {}
     fills = {}
     for sheet in load(content):
+        if sheet["A1"].value == NOTES_MARKER:
+            continue
         generated = is_journal(sheet)
         for row in sheet.iter_rows():
             colored = []

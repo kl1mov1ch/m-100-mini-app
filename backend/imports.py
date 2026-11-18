@@ -23,6 +23,7 @@ from .report_downloads import report_export
 from .synchronization import JOURNAL_PENDING_NOTE, table_lock, write_journal
 from .table_advice import explain_issues, with_tips
 from .workbook_journal import format_journal
+from .workbook_notes import collect_notes
 
 
 class ConfirmImport(BaseModel):
@@ -60,6 +61,7 @@ def remove_project_imports(project_id):
                 metadata.with_suffix(".xlsx").unlink(missing_ok=True)
                 metadata.with_suffix(".journal.xlsx").unlink(missing_ok=True)
                 metadata.with_suffix(".source.xlsx").unlink(missing_ok=True)
+                metadata.with_suffix(".journal.tmp").unlink(missing_ok=True)
                 metadata.unlink(missing_ok=True)
         except (OSError, ValueError):
             logging.getLogger(__name__).warning("Could not remove an object import")
@@ -78,7 +80,7 @@ def read_pending(token, project):
 def save_pending(meta, content):
     token = uuid.uuid4().hex
     (directory() / f"{token}.xlsx").write_bytes(content)
-    if meta.get("original"):
+    if meta.get("original") or meta.get("staged"):
         original_snapshot(token).write_bytes(content)
     (directory() / f"{token}.json").write_text(
         json.dumps(meta, ensure_ascii=False), encoding="utf-8"
@@ -162,6 +164,8 @@ async def verify_pending_remote(token, meta, content):
         )
         if not difference:
             return
+    elif meta.get("staged"):
+        content = original_snapshot(token).read_bytes()
     check_latest(content, latest, meta)
 
 
@@ -195,7 +199,8 @@ def register(app, settings, now):
                 positions, entries, crew = journal_data(db)
                 content = file.read_bytes()
                 mappings = json.loads(store.setting(db, "sheet_mappings", "null"))
-            return format_journal(content, positions, entries, crew, [], mappings)
+                notes = collect_notes(db, project["name"], positions)
+            return format_journal(content, positions, entries, crew, [], mappings, notes=notes)
 
         return report_export(
             request.state.user,
@@ -229,6 +234,9 @@ def register(app, settings, now):
             "source": source,
             "remote": remote,
             "original": original,
+            "staged": source == "bitrix"
+            and not original
+            and bitrix.read_workbook(content, generated_only=True) is None,
             "source_change": source_change,
             "warnings": analysis["warnings"],
             "sheets": analysis["sheets"],
@@ -482,6 +490,14 @@ def register(app, settings, now):
                     body.reconciliation_version,
                     body.token,
                 )
+                deleted = store.deleted_positions(db)
+                imported_ids = {position["id"] for position in data["positions"]}
+                archived = [
+                    position
+                    for position in store.positions(db)
+                    if position["id"] in deleted and position["id"] not in imported_ids
+                ]
+                archived_ids = {position["id"] for position in archived}
                 report_dates = {row[0] for row in db.execute("SELECT date FROM reports")}
                 from .reporting import get_report
 
@@ -501,6 +517,13 @@ def register(app, settings, now):
                     dict(r)
                     for r in db.execute("SELECT e.* FROM entries e JOIN reports r ON r.date=e.date")
                 ]
+                preserved.extend(
+                    dict(entry)
+                    for entry in db.execute(
+                        "SELECT e.* FROM entries e LEFT JOIN reports r ON r.date=e.date WHERE r.date IS NULL"
+                    )
+                    if entry["item_id"] in archived_ids
+                )
                 dirty = report_dates
                 remote_days = {}
                 for e in data["entries"]:
@@ -508,7 +531,7 @@ def register(app, settings, now):
                     remote[e["item_id"]] = remote.get(e["item_id"], 0) + e["quantity"]
                 db.execute("DELETE FROM entries")
                 db.execute("DELETE FROM positions")
-                for p in data["positions"]:
+                for p in [*data["positions"], *archived]:
                     store.insert_position(db, p)
                 store.restore_hidden_positions(db, data["positions"])
                 for e in data["entries"]:
@@ -530,12 +553,20 @@ def register(app, settings, now):
                             422, "Выберите, какие объёмы сохранить: из отчёта или из таблицы"
                         )
                     if resolution == "table":
+                        retained = {
+                            entry["item_id"]: entry["quantity"]
+                            for entry in preserved
+                            if entry["date"] == report_day and entry["item_id"] in archived_ids
+                        }
                         db.execute("DELETE FROM entries WHERE date=?", (report_day,))
                         db.executemany(
                             "INSERT INTO entries(item_id,date,quantity) VALUES(?,?,?)",
                             [
                                 (ident, report_day, quantity)
-                                for ident, quantity in remote_days.get(report_day, {}).items()
+                                for ident, quantity in {
+                                    **remote_days.get(report_day, {}),
+                                    **retained,
+                                }.items()
                             ],
                         )
                         db.execute(
@@ -585,12 +616,14 @@ def register(app, settings, now):
                     "remote_days": json.dumps(remote_days),
                     "import_file_path": str(
                         original_snapshot(body.token)
-                        if meta.get("original")
+                        if meta.get("original") or meta.get("staged")
                         else directory() / f"{body.token}.xlsx"
                     ),
                     "bitrix_read_status": "null",
                     "bitrix_read_positions": "{}",
                     "bitrix_read_days": "{}",
+                    "bitrix_read_issues": "[]",
+                    "bitrix_working_seen": "",
                     "connection_check": "null",
                     "bitrix_appearance": "null",
                     "bitrix_appearance_observed": "null",
@@ -598,7 +631,15 @@ def register(app, settings, now):
                     "journal_note": JOURNAL_PENDING_NOTE if meta["source"] == "bitrix" else "",
                     "journal_retry_at": "",
                     "journal_rebuild": "1"
-                    if meta["source"] == "bitrix" and meta.get("original")
+                    if meta["source"] == "bitrix"
+                    and (
+                        meta.get("original")
+                        or (
+                            meta.get("staged_edited")
+                            and (meta.get("disk_book") or store.setting(db, "webhook"))
+                            and (meta.get("remote") or {}).get("file_id")
+                        )
+                    )
                     else "",
                 }
                 if meta["source"] == "file":

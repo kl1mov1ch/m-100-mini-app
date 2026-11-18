@@ -1,4 +1,5 @@
-import { useEffect, useEffectEvent } from 'react';
+import { useEffectEvent } from './useEffectEvent';
+import { useEffect } from 'react';
 
 export function useTelegramNavigation(back: (() => void) | undefined, unsaved: boolean): void {
 	const handleBack = useEffectEvent(() => back?.());

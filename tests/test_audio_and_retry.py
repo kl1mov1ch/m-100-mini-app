@@ -27,7 +27,7 @@ def test_transient_bitrix_error_preserves_report_and_schedules_retry(client, mon
         store.set_setting(database, "webhook", "configured")
         store.set_setting(database, "file_id", "1")
 
-    async def unavailable(*args):
+    async def unavailable(*args, **kwargs):
         raise httpx.ConnectError("Temporary network error")
 
     monkeypatch.setattr("backend.bitrix.upload_day", unavailable)

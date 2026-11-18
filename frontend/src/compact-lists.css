@@ -21,9 +21,7 @@
 	gap: 10px;
 	width: 100%;
 	min-width: 0;
-	min-height: 66px;
 	margin: 0;
-	padding: 11px 12px;
 	border: 0;
 	border-radius: 0;
 	background: var(--ios-surface);
@@ -72,12 +70,17 @@
 .compact-row-aside {
 	display: grid;
 	gap: 5px;
-	max-width: 45%;
 	min-width: 0;
 	text-align: right;
 	font-variant-numeric: tabular-nums;
 	font-size: 12px;
 	line-height: 1.4;
+}
+
+.compact-row-end {
+	display: flex;
+	align-items: center;
+	gap: 8px;
 }
 
 .compact-row-aside > strong {
@@ -127,7 +130,8 @@
 	color: var(--ios-warning-text);
 }
 
-.compact-row.compact-row-pending {
+.compact-row.compact-row-pending,
+.compact-row.compact-row-extra {
 	box-shadow: inset 3px 0 #d6a537;
 }
 .compact-row.compact-row-missing {
@@ -147,7 +151,9 @@
 	color: var(--ios-success);
 }
 .sync-status.report-state-pending,
-.compact-row .sync-status.report-state-pending {
+.sync-status.report-state-extra,
+.compact-row .sync-status.report-state-pending,
+.compact-row .sync-status.report-state-extra {
 	color: var(--ios-warning-text);
 }
 .sync-status.report-state-missing,

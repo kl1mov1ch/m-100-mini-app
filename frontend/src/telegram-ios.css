@@ -44,6 +44,10 @@
 	min-height: 44px;
 	color: var(--ios-accent);
 	font-size: 15px;
+	border: 1px solid #b8c6d4;
+	border-radius: 10px;
+	background: var(--ios-surface);
+	padding-inline: 12px;
 }
 
 .role-label {
@@ -181,24 +185,6 @@ h3 {
 	box-shadow: var(--ios-group-shadow);
 }
 
-.bottom-nav {
-	background: var(--ios-surface);
-	border-color: var(--ios-separator);
-	box-shadow: 0 -2px 12px #18181a09;
-}
-
-.bottom-nav > button {
-	font-size: 11px;
-	font-weight: 500;
-	line-height: 1.15;
-}
-
-.bottom-nav > button.active svg {
-	background: none;
-	box-shadow: none;
-	stroke-width: 2.4;
-}
-
 .catalogue-position {
 	min-height: 52px;
 }
@@ -267,46 +253,39 @@ h3 {
 	font-size: 13px;
 }
 
-.ant-btn.ant-btn-default:not(:disabled, .ant-btn-dangerous) {
+.ant-btn.ant-btn-default:not(:disabled, .ant-btn-dangerous, .m100-button) {
 	background: var(--ios-fill);
 	border-color: transparent;
 	color: var(--ios-accent);
 }
 
-.ant-btn.ant-btn-default:not(:disabled, .ant-btn-dangerous):is(:hover, :active) {
+.ant-btn.ant-btn-default:not(:disabled, .ant-btn-dangerous, .m100-button):is(:hover, :active) {
 	background: var(--ios-accent-fill);
 }
 
 .ant-btn:is(.ant-btn-default, .ant-btn-dashed):not(
 		:disabled,
 		[aria-disabled='true'],
-		.ant-btn-disabled
+		.ant-btn-disabled,
+		.m100-button
 	),
 .plain-icon:enabled,
 .field-help-button:is(:hover, [aria-expanded='true']) {
 	box-shadow: var(--ios-button-shadow);
 }
 
-.ant-btn.ant-btn-primary:not(:disabled, [aria-disabled='true'], .ant-btn-disabled) {
+.ant-btn.ant-btn-primary:not(:disabled, [aria-disabled='true'], .ant-btn-disabled, .m100-button) {
 	box-shadow: var(--ios-primary-button-shadow);
 }
 
 .ant-btn:is(.ant-btn-default, .ant-btn-dashed, .ant-btn-primary):active:not(
 		:disabled,
 		[aria-disabled='true'],
-		.ant-btn-disabled
+		.ant-btn-disabled,
+		.m100-button
 	),
 .plain-icon:enabled:active {
 	box-shadow: 0 1px 2px #18181a18;
-}
-
-.ant-segmented .ant-segmented-item-label {
-	font-size: 14px;
-	font-weight: 500;
-}
-
-.ant-segmented .ant-segmented-item-selected {
-	box-shadow: 0 1px 3px #0002;
 }
 
 .ant-modal .ant-modal-content,

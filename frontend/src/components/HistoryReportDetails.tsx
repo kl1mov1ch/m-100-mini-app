@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { request } from '../lib/api';
 import { Money, nf, unit } from '../lib/format';
 import type { Data, Report } from '../types';
+import dayjs from '../lib/date';
 import { CompactWorkEditor } from './CompactRow';
 
 export function HistoryReportDetails({ project, date }: { project: string; date: string }) {
@@ -32,7 +33,13 @@ export function HistoryReportDetails({ project, date }: { project: string; date:
 						<CompactWorkEditor
 							key={line.item_id || index}
 							title={position?.name || line.raw || 'Работа'}
-							description={`${nf.format(line.quantity || 0)} ${unit(position?.unit || line.unit || 'ед.')}`}
+							description={
+								<>
+									{nf.format(line.quantity || 0)} {unit(position?.unit || line.unit || 'ед.')}
+									{line.deleted_at &&
+										' · удалена из сметы ' + dayjs(line.deleted_at).format('DD.MM.YYYY')}
+								</>
+							}
 							value={position ? <Money value={position.rate * (line.quantity || 0)} /> : '—'}
 						>
 							<dl className="report-detail-summary">
@@ -59,6 +66,12 @@ export function HistoryReportDetails({ project, date }: { project: string; date:
 									</>
 								)}
 							</dl>
+							{line.note && (
+								<section className="object-note-read">
+									<strong>Примечание к работе</strong>
+									<div>{line.note}</div>
+								</section>
+							)}
 						</CompactWorkEditor>
 					);
 				})}

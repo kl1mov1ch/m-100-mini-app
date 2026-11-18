@@ -103,16 +103,18 @@ async def fetch_public_workbook(url, proxy):
         }
 
 
-def read_workbook(content, mappings=None):
+def read_workbook(content, mappings=None, *, generated_only=False):
     from .tables import extract, grid
 
     w = grid(content)
     canonical = [mapping for sheet in w if (mapping := journal_mapping(sheet))]
+    if generated_only and not canonical:
+        return None
     if canonical or mappings:
         for journal in canonical:
             saved = next((item for item in mappings or [] if item["name"] == journal["name"]), {})
             journal["position_ids"] = saved.get("position_ids", {})
-        return extract(content, canonical or mappings, w)
+        return {**extract(content, canonical or mappings, w), "generated": bool(canonical)}
     result = {"positions": [], "entries": [], "sheet": None}
     for sheet in w:
         if is_journal(sheet):
@@ -388,6 +390,9 @@ async def upload_day(
     baseline=None,
     mappings=None,
     crew_by_day=None,
+    *,
+    notes=None,
+    retired_ids=(),
 ):
     return await upload_days(
         webhook,
@@ -397,11 +402,23 @@ async def upload_day(
         mappings,
         crew_by_day,
         {day: baseline} if baseline is not None else {},
+        notes=notes,
+        retired_ids=retired_ids,
     )
 
 
 async def upload_days(
-    webhook, file_id, reports, catalogue, mappings, crew_by_day, expected, fields=None
+    webhook,
+    file_id,
+    reports,
+    catalogue,
+    mappings,
+    crew_by_day,
+    expected,
+    fields=None,
+    *,
+    notes=None,
+    retired_ids=(),
 ):
     from .workbook_journal import format_journal
 
@@ -417,7 +434,7 @@ async def upload_days(
     )
     if damaged:
         raise ValueError(f"Проверьте столбец {damaged['column']} на листе «{damaged['sheet']}».")
-    verify_report_inputs(parsed, reports, catalogue, expected, fields)
+    verify_report_inputs(parsed, reports, catalogue, expected, fields, retired_ids=retired_ids)
     issues = []
     entries = [entry for entry in parsed["entries"] if entry["date"] not in reports]
     crew = {**(crew_by_day or {}), **parsed.get("crew_by_day", {})}
@@ -436,8 +453,8 @@ async def upload_days(
         }
         for position in parsed["positions"]
     ]
-    patched = format_journal(content, positions, entries, crew, issues)
-    verify_report_totals(patched, reports, len(catalogue))
+    patched = format_journal(content, positions, entries, crew, issues, notes=notes)
+    verify_report_totals(patched, reports, len(positions))
     latest, _ = await download_rest(webhook, file_id)
     if workbook_revision.changes(content, latest):
         raise ValueError(
@@ -467,7 +484,7 @@ async def upload_days(
     for day, report in reports.items():
         if not equal_quantities(day_values(parsed, day), line_values(report)):
             raise ValueError("Битрикс24 не подтвердил объёмы. Обновите данные перед повтором.")
-    verify_report_totals(verified, reports, len(catalogue))
+    verify_report_totals(verified, reports, len(positions))
     return {
         "ok": True,
         "file_id": file_id,
@@ -490,21 +507,36 @@ def day_values(parsed, day):
     return result
 
 
-def verify_report_inputs(parsed, reports, catalogue, expected, fields=None):
+class CatalogueChanged(ValueError):
+    def __init__(self, parsed):
+        super().__init__("Рабочая смета в Битрикс24 изменилась.")
+        self.parsed = parsed
+
+
+def verify_report_inputs(parsed, reports, catalogue, expected, fields=None, *, retired_ids=()):
     current = {position["id"]: position for position in catalogue}
     source = {position["id"]: position for position in parsed["positions"]}
+    missing_retired = (current.keys() - source.keys()) & set(retired_ids)
+    for report in reports.values():
+        if missing_retired & line_values(report).keys():
+            raise ValueError(
+                "В отчёте есть работа, удалённая из таблицы Битрикс24. Её объём сохранён в истории приложения."
+            )
+    current = {ident: row for ident, row in current.items() if ident not in missing_retired}
     if current.keys() != source.keys() or any(
         any(
             source[ident][field]
             not in (position[field], (fields or {}).get(ident, {}).get(field, position[field]))
             for field in ("planned", "rate", "unit")
         )
+        or (source[ident].get("journal_position") and source[ident]["name"] != position["name"])
         for ident, position in current.items()
     ):
-        raise ValueError("Смета изменилась. Проверьте таблицу перед отправкой отчёта.")
+        raise CatalogueChanged(parsed)
     for day, baseline in expected.items():
         remote = day_values(parsed, day)
-        if not equal_quantities(remote, baseline) and not equal_quantities(
+        comparable = {ident: qty for ident, qty in baseline.items() if ident not in missing_retired}
+        if not equal_quantities(remote, comparable) and not equal_quantities(
             remote, line_values(reports[day])
         ):
             raise ValueError("Объёмы изменились в Битрикс24. Откройте проверку различий.")
