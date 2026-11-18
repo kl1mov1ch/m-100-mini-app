@@ -1,4 +1,5 @@
-import { App, Button, Input, Modal, Select } from 'antd';
+import { App, Button, Input, Select } from 'antd';
+import { SheetModal as Modal } from './SheetModal';
 import { ExternalLink, FilePlus2, FileSpreadsheet } from 'lucide-react';
 import { useState } from 'react';
 import type { WorkspaceView } from '../App';

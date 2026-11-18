@@ -1,3 +1,4 @@
+import { confirmSheet } from '../components/SheetModal';
 import { App } from 'antd';
 import { nf, unit } from '../lib/format';
 
@@ -7,7 +8,7 @@ export function useConfirmWorkRemoval() {
 		work: { name: string; quantity?: number | null; unit?: string; saved?: boolean },
 		remove: () => void,
 	) => {
-		modal.confirm({
+		confirmSheet(modal, {
 			closable: true,
 			title: 'Убрать работу из отчёта?',
 			icon: null,

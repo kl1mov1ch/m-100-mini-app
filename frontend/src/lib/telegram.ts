@@ -41,22 +41,18 @@ export function configureTelegram(): void {
 		app.onEvent('safeAreaChanged', updateViewport);
 		app.onEvent('contentSafeAreaChanged', updateViewport);
 	}
-	const updateTheme = () => {
-		const dark = app.colorScheme === 'dark';
-		document.documentElement.dataset.theme = dark ? 'dark' : 'light';
-		const colors = app.themeParams;
+	const setLightColors = () => {
 		const tokens = getComputedStyle(root);
-		const surface = colors?.bg_color ?? tokens.getPropertyValue('--kit-bg').trim();
-		const background = colors?.secondary_bg_color ?? tokens.getPropertyValue('--kit-page').trim();
+		const surface = tokens.getPropertyValue('--kit-bg').trim();
+		const background = tokens.getPropertyValue('--kit-page').trim();
 		if (app.isVersionAtLeast('6.1')) {
-			app.setHeaderColor(colors?.header_bg_color ?? surface);
+			app.setHeaderColor(surface);
 			app.setBackgroundColor(background);
 		}
-		if (app.isVersionAtLeast('7.10'))
-			app.setBottomBarColor?.(colors?.bottom_bar_bg_color ?? surface);
+		if (app.isVersionAtLeast('7.10')) app.setBottomBarColor?.(surface);
 	};
-	updateTheme();
-	app.onEvent('themeChanged', updateTheme);
+	setLightColors();
+	app.onEvent('themeChanged', setLightColors);
 	app.expand();
 }
 

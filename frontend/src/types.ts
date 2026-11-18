@@ -8,6 +8,8 @@ export type User = {
 	projects?: number;
 	assigned_projects?: { id: string; name: string }[];
 	open_project?: { id: string; name: string } | null;
+	online?: boolean;
+	last_seen?: number | null;
 };
 export type Project = {
 	id: string;

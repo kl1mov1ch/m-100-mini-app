@@ -1,4 +1,5 @@
-import { App, Button, Empty, Input, Modal } from 'antd';
+import { App, Button, Empty, Input } from 'antd';
+import { confirmSheet, SheetModal as Modal } from './SheetModal';
 import { KeyRound, Plus, Trash2 } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import type { WorkspaceView } from '../App';
@@ -38,7 +39,7 @@ export function ProfileWebhooks({ workspace }: { workspace: WorkspaceView }) {
 		}
 	};
 	const remove = (item: DiskWebhook) =>
-		modal.confirm({
+		confirmSheet(modal, {
 			closable: true,
 			className: 'action-confirm-sheet',
 			title: 'Удалить сохранённый вебхук?',

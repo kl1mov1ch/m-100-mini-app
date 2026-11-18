@@ -37,26 +37,6 @@
 	--kit-control-radius: 8px;
 }
 
-:root[data-theme='dark'] {
-	--kit-bg: #212121;
-	--kit-text: #fff;
-	--kit-hint: #aaa;
-	--kit-accent: #2990ff;
-	--kit-accent-text: #007aff;
-	--kit-page: #0f0f0f;
-	--kit-tertiary: #2a2a2a;
-	--kit-quaternary: #2f2f2f;
-	--kit-segment-active: #2f2f2f;
-	--kit-card: #323232;
-	--kit-secondary-hint: #78797e;
-	--kit-secondary-fill: #2990ff15;
-	--kit-divider: #ffffff05;
-	--kit-outline: #ffffff10;
-	--kit-green: #32e55e;
-	--kit-destructive-fill: #f12e2e15;
-	--kit-drag-indicator: rgb(255 255 255 / 15%);
-}
-
 :root[data-platform='apple'] {
 	--kit-segment-height: 32px;
 	--kit-segment-radius: 9px;

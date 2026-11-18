@@ -1,5 +1,6 @@
 import { sortSearchOptions } from '../lib/search';
-import { App, Button, Input, Modal, Segmented, Select } from 'antd';
+import { App, Button, Input, Segmented, Select } from 'antd';
+import { confirmSheet, SheetModal as Modal } from '../components/SheetModal';
 import { ChevronDown, Clock3, Send } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import dayjs from '../lib/date';
@@ -308,7 +309,7 @@ export function RemindersPage({ workspace }: { workspace: WorkspaceView }) {
 	};
 	const send = () => {
 		const requestId = crypto.randomUUID();
-		modal.confirm({
+		confirmSheet(modal, {
 			closable: true,
 			title: 'Отправить в Telegram?',
 			content: (

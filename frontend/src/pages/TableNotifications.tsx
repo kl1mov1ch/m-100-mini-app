@@ -1,4 +1,5 @@
-import { Alert, App as AntApp, Badge, Button, Modal } from 'antd';
+import { Alert, App as AntApp, Badge, Button } from 'antd';
+import { SheetModal as Modal } from '../components/SheetModal';
 import { Bell, ChevronRight, RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { WorkspaceView } from '../App';
@@ -29,6 +30,13 @@ type TableNotice = {
 
 const path = '/profile/table-notifications';
 const numbers = new Intl.NumberFormat('ru-BY', { maximumFractionDigits: 4 });
+const issueGroups = [
+	{ title: 'Смета и расценки', kinds: ['planned', 'rate', 'remaining'] },
+	{ title: 'Объёмы в отчётах', kinds: ['report'] },
+	{ title: 'Листы и ячейки', kinds: ['layout', 'cell'] },
+	{ title: 'Подключение', kinds: ['connection'] },
+	{ title: 'Ошибки отправки', kinds: ['sync'] },
+];
 
 export function useTableNotifications(userId?: string, role?: string) {
 	const [notices, setNotices] = useState<TableNotice[]>([]);
@@ -142,58 +150,107 @@ export function TableNotifications({
 					{inbox.error && <Alert type="error" message={inbox.error} />}
 					{!inbox.notices.length && !inbox.error && <p>Нет открытых замечаний по таблицам.</p>}
 					{inbox.notices.map((notice) => (
-						<section key={notice.project_id} className="table-notice-card">
-							<h3>{notice.project_name}</h3>
+						<details key={notice.project_id} className="table-notice-card">
+							<summary>
+								<strong>{notice.project_name}</strong>
+								<Badge count={notice.issues.length} />
+							</summary>
 							{feedback[notice.project_id] && (
 								<Alert
 									type={feedback[notice.project_id].error ? 'error' : 'info'}
 									message={feedback[notice.project_id].text}
 								/>
 							)}
-							<ul>
-								{notice.issues.map((issue, index) => (
-									<li key={index}>
-										<strong>{issue.title}</strong>
-										{issue.position && <span>{issue.position}</span>}
-										<small>
-											{[
-												issue.sheet,
-												issue.cell || (issue.row ? 'Строка ' + issue.row : ''),
-												issue.date,
-											]
-												.filter(Boolean)
-												.join(' · ')}
-										</small>
-										{typeof issue.local === 'number' && (
-											<span>
-												В приложении {numbers.format(issue.local)} {issue.unit}
-											</span>
-										)}
-										{typeof issue.remote === 'number' && (
-											<span>
-												В таблице {numbers.format(issue.remote)} {issue.unit}
-											</span>
-										)}
-										{issue.advice && <small>{issue.advice}</small>}
-									</li>
-								))}
-							</ul>
-							<Button
-								type="primary"
-								icon={<RefreshCw size={16} />}
-								loading={loading === notice.project_id}
-								disabled={
-									loading !== null ||
-									(!!notice.version && workspace.project === notice.project_id && workspace.dirty)
-								}
-								onClick={() => void refresh(notice)}
-							>
-								{notice.version ? 'Загрузить из таблицы' : 'Проверить таблицу'}
-							</Button>
+							{issueGroups.map(({ title, kinds }) => {
+								const issues = notice.issues.filter((issue) => kinds.includes(issue.kind));
+								if (!issues.length) return null;
+								return (
+									<details className="table-notice-group" key={title}>
+										<summary>
+											{title}
+											<span>{issues.length}</span>
+										</summary>
+										<ul>
+											{issues.map((issue, index) => (
+												<li key={index}>
+													<strong>{issue.title}</strong>
+													{issue.position && <span>{issue.position}</span>}
+													<small>
+														{[
+															issue.sheet,
+															issue.cell || (issue.row ? 'Строка ' + issue.row : ''),
+															issue.date,
+														]
+															.filter(Boolean)
+															.join(' · ')}
+													</small>
+													{typeof issue.local === 'number' && (
+														<span>
+															В приложении {numbers.format(issue.local)} {issue.unit}
+														</span>
+													)}
+													{typeof issue.remote === 'number' && (
+														<span>
+															В таблице {numbers.format(issue.remote)} {issue.unit}
+														</span>
+													)}
+													{typeof issue.suggested === 'number' && issue.kind === 'remaining' && (
+														<span>
+															Расчётный остаток {numbers.format(issue.suggested)} {issue.unit}
+														</span>
+													)}
+													{issue.advice && !['planned', 'rate', 'report'].includes(issue.kind) && (
+														<small>{issue.advice}</small>
+													)}
+													{issue.kind === 'sync' && issue.date && !workspace.isAdmin && (
+														<Button
+															type="link"
+															onClick={() => {
+																setOpen(false);
+																workspace.openHistoryReport(notice.project_id, issue.date!);
+															}}
+														>
+															Открыть отчёт
+														</Button>
+													)}
+												</li>
+											))}
+										</ul>
+									</details>
+								);
+							})}
+							<div className="table-notice-actions">
+								<Button
+									type="primary"
+									icon={<RefreshCw size={16} />}
+									loading={loading === notice.project_id}
+									disabled={
+										loading !== null ||
+										(!!notice.version && workspace.project === notice.project_id && workspace.dirty)
+									}
+									onClick={() => void refresh(notice)}
+								>
+									{notice.version ? 'Применить данные Битрикс24' : 'Проверить таблицу'}
+								</Button>
+								{!workspace.isAdmin &&
+									notice.issues.some(({ kind }) =>
+										['layout', 'cell', 'remaining'].includes(kind),
+									) && (
+										<Button
+											onClick={() => {
+												setOpen(false);
+												workspace.selectObject(notice.project_id);
+												workspace.openObjectSection('table');
+											}}
+										>
+											Открыть таблицу проекта
+										</Button>
+									)}
+							</div>
 							{notice.version && workspace.project === notice.project_id && workspace.dirty && (
 								<small>Сначала сохраните текущий отчёт.</small>
 							)}
-						</section>
+						</details>
 					))}
 				</div>
 			</Modal>

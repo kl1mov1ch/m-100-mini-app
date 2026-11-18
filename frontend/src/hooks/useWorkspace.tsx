@@ -1,3 +1,4 @@
+import { confirmSheet } from '../components/SheetModal';
 import { App as AntApp } from 'antd';
 import 'dayjs/locale/ru';
 import { createRef, useEffect, useEffectEvent, useRef, useState } from 'react';
@@ -7,6 +8,12 @@ import { previewUser, request, RequestError } from '../lib/api';
 import { calculateAmount, mergeWorkQuantities } from '../lib/calculation';
 import { ReportReviewEditor, type ReportReviewHandle } from '../components/ReportReviewEditor';
 import { Money } from '../lib/format';
+import {
+	pruneFormDrafts,
+	readFormDraft,
+	removeFormDraft,
+	writeFormDraft,
+} from '../lib/form-drafts';
 import { downloadReport } from '../lib/report-download';
 import { ReportConfirmation } from '../ReportConfirmation';
 import { estimateBalance } from '../lib/position-volume';
@@ -32,6 +39,17 @@ import type {
 } from '../types';
 import { useAudioInput } from './useAudioInput';
 import { useTelegramNavigation } from './useTelegramNavigation';
+
+type ReportDraft = {
+	revision: number;
+	lines: Line[];
+	crew: number;
+	text: string;
+	note: string;
+};
+
+type MemberDraft = { id: string; name: string; role: string };
+
 export function useWorkspace() {
 	const { message, modal } = AntApp.useApp();
 	const [releaseNavigation] = useState(takeReleaseNavigation);
@@ -75,7 +93,7 @@ export function useWorkspace() {
 	const parsedEditVersion = useRef(0);
 	const matchRequest = useRef<AbortController | null>(null);
 	const [projectOpen, setProjectOpen] = useState(false),
-		[objectForm, setObjectForm] = useState(false),
+		[objectForm, setObjectFormOpen] = useState(false),
 		[projectName, setProjectName] = useState(''),
 		[projectOwner, setProjectOwner] = useState<string>();
 	const [users, setUsers] = useState<User[]>([]),
@@ -83,6 +101,8 @@ export function useWorkspace() {
 		[userId, setUserId] = useState(''),
 		[userName, setUserName] = useState(''),
 		[userRole, setUserRole] = useState('master');
+	const [editingUser, setEditingUser] = useState<string | null>(null);
+	const reportEditorKey = useRef<string | null>(null);
 	const [url, setUrl] = useState(''),
 		[webhookId, setWebhookId] = useState<string>(),
 		[aiKey, setAiKey] = useState(''),
@@ -99,14 +119,12 @@ export function useWorkspace() {
 	const sessionVersion = useRef(0);
 	const active = session?.projects.find((p) => p.id === project);
 	const openProjectId = (page === 'object' || page === 'today') && active ? active.id : null;
-	const tracksOpenProject = useRef(false);
 	const sessionUserId = session?.user.telegram_id;
 	useEffect(() => {
-		if (!sessionUserId || (!openProjectId && !tracksOpenProject.current)) return;
+		if (!sessionUserId) return;
 		const controller = new AbortController();
 		const publish = () => {
 			if (document.visibilityState !== 'visible') return;
-			tracksOpenProject.current = !!openProjectId;
 			void request(
 				'/session/open-project',
 				{ project_id: openProjectId },
@@ -115,7 +133,7 @@ export function useWorkspace() {
 			).catch(() => {});
 		};
 		publish();
-		const timer = openProjectId ? window.setInterval(publish, 25000) : undefined;
+		const timer = window.setInterval(publish, 25000);
 		document.addEventListener('visibilitychange', publish);
 		return () => {
 			controller.abort();
@@ -127,6 +145,64 @@ export function useWorkspace() {
 	const positions = allPositions.filter((position) => !position.hidden && !position.extra);
 	const byId = Object.fromEntries(allPositions.map((p) => [p.id, p]));
 	const isAdmin = session?.user.role === 'admin';
+	const quickDraftKey =
+		sessionUserId && !isAdmin ? `quick:${sessionUserId}:${project}:${day}` : null;
+	const [loadedQuickDraft, setLoadedQuickDraft] = useState<string | null>(null);
+	useEffect(() => {
+		setFreeText(quickDraftKey ? (readFormDraft<string>(quickDraftKey) ?? '') : '');
+		setLoadedQuickDraft(quickDraftKey);
+	}, [quickDraftKey]);
+	useEffect(() => {
+		if (!quickDraftKey || loadedQuickDraft !== quickDraftKey) return;
+		if (freeText) writeFormDraft(quickDraftKey, freeText);
+		else removeFormDraft(quickDraftKey);
+	}, [quickDraftKey, loadedQuickDraft, freeText]);
+	const memberDraftKey = `member:${sessionUserId}:${editingUser || 'new'}`;
+	const objectDraftKey = `object:${sessionUserId}:${session?.user.role}`;
+	const setObjectForm = (open: boolean) => {
+		if (open && sessionUserId) {
+			const draft = readFormDraft<{ name: string; owner?: string }>(objectDraftKey);
+			setProjectName(draft?.name ?? '');
+			setProjectOwner(draft?.owner);
+		}
+		setObjectFormOpen(open);
+	};
+	const reportKey = (id: string, date: string) => `report:${sessionUserId}:${id}:${date}`;
+	const openUserForm = (user?: User) => {
+		const draft = readFormDraft<MemberDraft>(
+			`member:${sessionUserId}:${user?.telegram_id || 'new'}`,
+		);
+		setEditingUser(user?.telegram_id ?? null);
+		setUserId(user?.telegram_id ?? draft?.id ?? '');
+		setUserName(draft?.name ?? user?.name ?? '');
+		setUserRole(draft?.role ?? user?.role ?? 'master');
+		setUserForm(true);
+	};
+	useEffect(() => {
+		pruneFormDrafts();
+		const timer = window.setInterval(pruneFormDrafts, 60 * 60 * 1000);
+		return () => window.clearInterval(timer);
+	}, []);
+	useEffect(() => {
+		if (sessionUserId && objectForm)
+			writeFormDraft(objectDraftKey, { name: projectName, owner: projectOwner });
+	}, [sessionUserId, objectDraftKey, objectForm, projectName, projectOwner]);
+	useEffect(() => {
+		if (sessionUserId && isAdmin && userForm)
+			writeFormDraft(memberDraftKey, { id: userId, name: userName, role: userRole });
+	}, [sessionUserId, isAdmin, userForm, memberDraftKey, userId, userName, userRole]);
+
+	const loadReportEditor = (id: string, saved: Report) => {
+		const key = reportKey(id, saved.date);
+		const draft = sessionUserId && !isAdmin ? readFormDraft<ReportDraft>(key) : undefined;
+		const restored = draft?.revision === saved.revision ? draft : undefined;
+		reportEditorKey.current = key;
+		setReport(saved);
+		setLines(restored?.lines ?? saved.lines);
+		setCrew(restored?.crew ?? saved.crew_count);
+		setReportText(restored?.text ?? saved.text ?? '');
+		setDayNote(restored?.note ?? saved.day_note ?? '');
+	};
 	const audioInput = useAudioInput(
 		project,
 		JSON.stringify([day, page, isAdmin]),
@@ -207,11 +283,7 @@ export function useWorkspace() {
 			r &&
 			(!onlyIfClean || (!editorState.current.dirty && editorState.current.day === day))
 		) {
-			setReport(r);
-			setLines(r.lines);
-			setCrew(r.crew_count);
-			setReportText(r.text || '');
-			setDayNote(r.day_note || '');
+			loadReportEditor(id, r);
 			if (!isAdmin && d.config.pending_import && !onlyIfClean) {
 				const p = await request<ImportPreview>('/imports/pending', undefined, id);
 				if (p && version === selectionVersion.current) {
@@ -243,7 +315,6 @@ export function useWorkspace() {
 		selectionVersion.current++;
 		setPreview(null);
 		setTextOpen(false);
-		setFreeText('');
 		setWebhookId(undefined);
 		if (!session?.projects.some((p) => p.id === project)) {
 			setData(null);
@@ -329,12 +400,8 @@ export function useWorkspace() {
 			const r = await request<Report>('/report/' + value, undefined, project);
 			if (version !== selectionVersion.current) return;
 			setDay(value);
-			setReport(r);
 			setEstimateReport(r);
-			setLines(r.lines);
-			setCrew(r.crew_count);
-			setReportText(r.text || '');
-			setDayNote(r.day_note || '');
+			loadReportEditor(project, r);
 		} catch (e) {
 			message.error((e as Error).message);
 		}
@@ -421,6 +488,21 @@ export function useWorkspace() {
 		crew !== report?.crew_count ||
 		reportText !== report?.text;
 	editorState.current = { project, day, dirty: !!report && dirty };
+	const currentDraftKey = reportKey(project, day);
+	useEffect(() => {
+		if (!sessionUserId || isAdmin || !report || reportEditorKey.current !== currentDraftKey) return;
+		if (dirty) {
+			writeFormDraft(currentDraftKey, {
+				revision: report.revision,
+				lines,
+				crew,
+				text: reportText,
+				note: dayNote,
+			});
+		} else if (readFormDraft<ReportDraft>(currentDraftKey)?.revision === report.revision) {
+			removeFormDraft(currentDraftKey);
+		}
+	}, [sessionUserId, isAdmin, report, currentDraftKey, dirty, lines, crew, reportText, dayNote]);
 	const refreshBitrix = async (force = false) => {
 		if (
 			isAdmin ||
@@ -590,6 +672,7 @@ export function useWorkspace() {
 			setReport(r);
 			setLines(r.lines);
 			setDayNote(r.day_note || '');
+			removeFormDraft(reportKey(project, day));
 			if (r.changed === false) message.info('Изменений нет');
 			else if (r.notes_only) message.success('Примечания сохранены');
 			else if (r.sync_status === 'synced')
@@ -618,7 +701,7 @@ export function useWorkspace() {
 			!deltaIds.length &&
 			nextCrew === report.crew_count &&
 			nextText === report.text;
-		const reviewModal = modal.confirm({
+		const reviewModal = confirmSheet(modal, {
 			closable: true,
 			title: active ? 'Отчёт · ' + active.name : 'Общий отчёт за день',
 			icon: null,
@@ -678,6 +761,7 @@ export function useWorkspace() {
 					setCrew(saved.crew_count);
 					setReportText(saved.text || '');
 					setDayNote(saved.day_note || '');
+					removeFormDraft(reportKey(project, day));
 					if (freeform) {
 						setTextOpen(false);
 						setFreeText('');
@@ -774,7 +858,7 @@ export function useWorkspace() {
 			const restoredLines = Object.fromEntries(
 				preview.target.lines.map((line) => [line.item_id, line.quantity]),
 			);
-			modal.confirm({
+			confirmSheet(modal, {
 				closable: true,
 				title: 'Вернуть отчёт к началу дня?',
 				icon: null,
@@ -859,6 +943,7 @@ export function useWorkspace() {
 			});
 			await loadSession();
 			setProject(p.id);
+			removeFormDraft(objectDraftKey);
 			setObjectForm(false);
 			setProjectName('');
 			if (isAdmin) setPage('objects');
@@ -881,6 +966,7 @@ export function useWorkspace() {
 				name: userName,
 				role: userRole,
 			});
+			removeFormDraft(memberDraftKey);
 			setUserForm(false);
 			await loadUsers();
 			message.success('Доступ обновлён');
@@ -1203,6 +1289,8 @@ export function useWorkspace() {
 		setUsers,
 		userForm,
 		setUserForm,
+		openUserForm,
+		editingUser,
 		userId,
 		setUserId,
 		userName,

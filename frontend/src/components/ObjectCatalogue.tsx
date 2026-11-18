@@ -1,4 +1,5 @@
-import { Button, Empty, Input, Modal, Select } from 'antd';
+import { Button, Empty, Input, Select } from 'antd';
+import { SheetModal as Modal } from './SheetModal';
 import { ChevronDown, Search, SlidersHorizontal } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import type { WorkspaceView } from '../App';

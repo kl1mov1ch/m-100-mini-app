@@ -411,9 +411,14 @@ def test_resolve_conflict_in_either_direction_and_reject_changed_snapshot(client
     conflict = review()
     assert conflict["deleted"] == 1
     inbox = "/api/profile/table-notifications"
+    with store.connect(project["db_path"]) as db:
+        issues = json.loads(store.setting(db, "bitrix_read_issues"))
+        issues.append({"kind": "appearance", "title": "Изменена заливка ячеек"})
+        store.set_setting(db, "bitrix_read_issues", json.dumps(issues))
     notices = client.get(inbox, headers=headers).json()
     assert len(notices) == 1 and notices[0]["project_id"] == ident
     assert any(issue["kind"] == "report" and issue["remote"] == 0 for issue in notices[0]["issues"])
+    assert all(issue["kind"] != "appearance" for issue in notices[0]["issues"])
     admin_notice = next(
         notice for notice in client.get(inbox).json() if notice["project_id"] == ident
     )

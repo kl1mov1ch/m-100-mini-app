@@ -123,7 +123,11 @@ def table_notice(db, project, user):
     if store.setting(db, "source") != "bitrix":
         return None
     status = freshness(db)
-    issues = list(review_issues(db) or []) if status and status["status"] == "review" else []
+    issues = (
+        [issue for issue in review_issues(db) or [] if issue["kind"] != "appearance"]
+        if status and status["status"] == "review"
+        else []
+    )
     conflict = (
         conflict_state(db, issues)[0]
         if issues and user["role"] == "master" and user["telegram_id"] == project["owner_id"]

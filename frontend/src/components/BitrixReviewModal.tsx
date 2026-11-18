@@ -1,4 +1,5 @@
-import { Alert, App, Button, Collapse, Modal, Spin } from 'antd';
+import { Alert, App, Button, Collapse, Spin } from 'antd';
+import { confirmSheet, SheetModal as Modal } from './SheetModal';
 import { Sparkles, TriangleAlert } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { WorkspaceView } from '../App';
@@ -127,23 +128,24 @@ export function BitrixReviewModal({
 			setSaving(false);
 		}
 	};
-	const replace = (direction: 'app' | 'table') => {
-		if (!conflicts || saving) return;
-		modal.confirm({
+	const applyBitrix = () => {
+		if (!conflicts || saving || workspace.dirty) return;
+		confirmSheet(modal, {
 			closable: true,
-			title: direction === 'app' ? 'Заменить в приложении?' : 'Заменить в таблице?',
-			content:
-				direction === 'app'
-					? `Приложение примет значения из Битрикс24.${conflicts.deleted ? ' Пустые объёмы станут нулевыми.' : ''}${workspace.dirty ? ' Текущий черновик будет закрыт.' : ''}`
-					: `Значения из приложения заменят данные на рабочем листе Битрикс24.${workspace.dirty ? ' Текущий черновик будет закрыт.' : ''}`,
-			okText: 'Заменить',
+			title: 'Применить данные Битрикс24?',
+			content: `Смета и отчёты в приложении обновятся по таблице.${conflicts.deleted ? ' Пустые объёмы станут нулевыми.' : ''}`,
+			okText: 'Применить',
 			cancelText: 'Отмена',
 			async onOk() {
 				setSaving(true);
 				try {
-					await request('/bitrix/reconcile', { direction, version: conflicts.version }, project);
+					await request(
+						'/bitrix/reconcile',
+						{ direction: 'app', version: conflicts.version },
+						project,
+					);
 					await refresh();
-					message.success(direction === 'app' ? 'Отчёты обновлены' : 'Таблица обновлена');
+					message.success('Данные Битрикс24 применены');
 					close();
 				} catch (error) {
 					setError((error as Error).message);
@@ -203,12 +205,15 @@ export function BitrixReviewModal({
 										.filter(Boolean)
 										.join(' · ')}
 								</b>
-								<Button type="primary" loading={saving} onClick={() => replace('app')}>
-									Заменить в приложении
+								<Button
+									type="primary"
+									loading={saving}
+									disabled={workspace.dirty}
+									onClick={applyBitrix}
+								>
+									Применить данные Битрикс24
 								</Button>
-								<Button disabled={!conflicts.can_write || saving} onClick={() => replace('table')}>
-									Заменить в таблице
-								</Button>
+								{workspace.dirty && <small>Сначала сохраните текущий отчёт.</small>}
 							</>
 						)}
 						{appearance && (

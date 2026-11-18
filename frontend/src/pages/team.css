@@ -1,0 +1,75 @@
+.team-projects {
+	display: grid;
+	gap: 8px;
+}
+
+.compact-work-content .team-member {
+	padding: 12px;
+}
+
+.compact-work-content .team-member .team-actions {
+	justify-content: flex-start;
+}
+
+.compact-work-content .team-member .team-actions .ant-btn:first-child {
+	flex: 0 1 auto;
+}
+
+.team-member > div > div {
+	flex-wrap: wrap;
+}
+
+.team-projects h3,
+.team-projects p,
+.team-project-list {
+	margin: 0;
+}
+
+.team-projects h3 {
+	font-size: 14px;
+}
+
+.team-project-list {
+	padding: 0;
+	list-style: none;
+	border: 1px solid var(--kit-divider);
+	border-radius: var(--kit-control-radius);
+}
+
+.team-project-list li + li {
+	border-top: 1px solid var(--kit-divider);
+}
+
+.team-project-link {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	width: 100%;
+	min-width: 0;
+	min-height: 44px;
+	padding: 8px 10px;
+	border: 0;
+	background: transparent;
+	color: var(--ios-accent);
+	text-align: left;
+	overflow-wrap: anywhere;
+	cursor: pointer;
+}
+
+.team-project-link svg {
+	flex: none;
+}
+
+.member-form-sheet .member-form-fields {
+	gap: 8px;
+}
+
+.member-form-fields :is(.ant-select, .ant-input) {
+	width: 100%;
+	min-width: 0;
+}
+
+.member-form-fields small {
+	color: var(--ios-tertiary);
+}

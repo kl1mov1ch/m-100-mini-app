@@ -1,5 +1,6 @@
 import { rankedSearch } from '../lib/search';
-import { Alert, App, Button, Input, InputNumber, Modal, Select, Tabs, Tag } from 'antd';
+import { Alert, App, Button, Input, InputNumber, Select, Tabs, Tag } from 'antd';
+import { confirmSheet, SheetModal as Modal } from './SheetModal';
 import { Check, FileSpreadsheet, Search, Settings2, Sparkles, TriangleAlert } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { WorkspaceView } from '../App';
@@ -137,7 +138,7 @@ export function TableImportModal({ workspace }: { workspace: WorkspaceView }) {
 			remove: ['Убрать колонку?', 'Дата и её объёмы исчезнут с листа.'],
 			restore: ['Восстановить объёмы?', 'Заполним ячейки по сохранённым данным за эту дату.'],
 		}[strategy];
-		modal.confirm({
+		confirmSheet(modal, {
 			closable: true,
 			title: action[0],
 			content: `${sheet} · ${column} · ${dayjs(date).format('DD.MM.YYYY')}. ${action[1]}`,

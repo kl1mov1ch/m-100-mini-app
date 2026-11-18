@@ -1,4 +1,5 @@
-import { Alert, Button, Empty, Input, Modal, Spin, Tabs } from 'antd';
+import { Alert, Button, Empty, Input, Spin, Tabs } from 'antd';
+import { SheetModal as Modal } from './SheetModal';
 import { Settings2, Sparkles, Trash2, TriangleAlert } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { WorkspaceView } from '../App';

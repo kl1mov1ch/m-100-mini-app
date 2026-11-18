@@ -1,4 +1,5 @@
-import { Button, Modal } from 'antd';
+import { Button } from 'antd';
+import { SheetModal as Modal } from './SheetModal';
 import { ChevronRight } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 
@@ -59,7 +60,7 @@ export function CompactWorkEditor({
 	modalTitle,
 	...props
 }: Omit<CompactRowProps, 'onClick'> & {
-	children: ReactNode;
+	children: ReactNode | ((close: () => void) => ReactNode);
 	hint?: string;
 	footer?: ReactNode;
 	modalClassName?: string;
@@ -94,7 +95,9 @@ export function CompactWorkEditor({
 						)
 					}
 				>
-					<div className="compact-work-content">{children}</div>
+					<div className="compact-work-content">
+						{typeof children === 'function' ? children(() => setOpen(false)) : children}
+					</div>
 					{hint && <p className="compact-work-hint">{hint}</p>}
 				</Modal>
 			)}

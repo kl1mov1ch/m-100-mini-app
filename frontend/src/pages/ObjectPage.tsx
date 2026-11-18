@@ -1,4 +1,5 @@
-import { Alert, App, Button, Empty, Modal, Segmented, Spin } from 'antd';
+import { Alert, App, Button, Empty, Segmented, Spin } from 'antd';
+import { SheetModal as Modal } from '../components/SheetModal';
 import { NotebookPen } from 'lucide-react';
 import { useState } from 'react';
 import type { WorkspaceView } from '../App';

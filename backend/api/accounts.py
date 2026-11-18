@@ -34,10 +34,7 @@ def update_open_project(request: Request, body: OpenProjectBody):
     key = OPEN_PROJECT_PREFIX + user["telegram_id"]
     if body.project_id:
         workspaces.project(user, body.project_id)
-        workspaces.set_shared({key: json.dumps({"id": body.project_id, "seen": int(time())})})
-    else:
-        with workspaces.registry() as db:
-            db.execute("DELETE FROM shared_settings WHERE key=?", (key,))
+    workspaces.set_shared({key: json.dumps({"id": body.project_id, "seen": int(time())})})
     return {"ok": True}
 
 
@@ -112,17 +109,23 @@ def users(request: Request):
             projects[row["owner_id"]].append(item)
             by_id[row["id"]] = (item, row["owner_id"])
         opened = {}
+        last_seen = {}
+        now = int(time())
         for row in db.execute(
             "SELECT key,value FROM shared_settings WHERE key LIKE ?", (OPEN_PROJECT_PREFIX + "%",)
         ):
             state = json.loads(row["value"])
-            if time() - state["seen"] < OPEN_PROJECT_TTL and state["id"] in by_id:
-                opened[row["key"][len(OPEN_PROJECT_PREFIX) :]] = by_id[state["id"]]
+            ident = row["key"][len(OPEN_PROJECT_PREFIX) :]
+            last_seen[ident] = state["seen"]
+            if now - state["seen"] < OPEN_PROJECT_TTL and state["id"] in by_id:
+                opened[ident] = by_id[state["id"]]
     for account in accounts:
         ident = account["telegram_id"]
         current, owner = opened.get(ident, (None, None))
         account["assigned_projects"] = projects[ident]
         account["open_project"] = current if owner == ident or account["role"] == "admin" else None
+        account["last_seen"] = last_seen.get(ident)
+        account["online"] = ident in last_seen and now - last_seen[ident] < OPEN_PROJECT_TTL
     return accounts
 
 

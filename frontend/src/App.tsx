@@ -1,9 +1,9 @@
-import { App as AntApp, Badge, Button, ConfigProvider, Drawer, Input, Modal, Select } from 'antd';
+import { App as AntApp, Badge, Button, ConfigProvider, Drawer, Input, Select } from 'antd';
+import { SheetModal as Modal } from './components/SheetModal';
 import ruRU from 'antd/locale/ru_RU';
 import 'dayjs/locale/ru';
 import { Building2, History, Plus, Settings2 } from 'lucide-react';
 import { createRoot } from 'react-dom/client';
-import { useEffect, useState } from 'react';
 import { TableImportModal } from './components/TableImportModal';
 import { VoiceReportDrawer } from './components/VoiceReportDrawer';
 import { LaunchScreen } from './components/LaunchScreen';
@@ -76,6 +76,7 @@ export function WorkspaceApp() {
 		users,
 		userForm,
 		setUserForm,
+		editingUser,
 		userId,
 		setUserId,
 		userName,
@@ -286,34 +287,49 @@ export function WorkspaceApp() {
 				</div>
 			</Modal>
 			<Modal
-				title="Доступ к приложению"
+				title={editingUser ? 'Настройки пользователя' : 'Добавить пользователя'}
+				className="member-form-sheet"
 				open={userForm}
 				onCancel={() => setUserForm(false)}
 				okText="Сохранить"
 				cancelText="Отмена"
 				confirmLoading={busy}
+				cancelButtonProps={{ type: 'text' }}
 				onOk={grant}
 				okButtonProps={{ disabled: !userName.trim() || !/^\d+$/.test(userId) }}
 			>
-				<div className="form-fields">
-					<label>Telegram ID</label>
+				<div className="form-fields member-form-fields">
+					<label htmlFor="member-telegram-id">Telegram ID</label>
 					<Input
+						id="member-telegram-id"
 						inputMode="numeric"
 						value={userId}
+						readOnly={!!editingUser}
 						onChange={(e) => setUserId(e.target.value.replace(/\D/g, ''))}
 						placeholder="Числовой ID пользователя"
 					/>
-					<label>Имя</label>
-					<Input value={userName} onChange={(e) => setUserName(e.target.value)} />
-					<label>Роль</label>
+					<label htmlFor="member-name">Имя</label>
+					<Input
+						id="member-name"
+						value={userName}
+						maxLength={100}
+						onChange={(e) => setUserName(e.target.value)}
+					/>
+					<label htmlFor="member-role">Роль</label>
 					<Select
+						id="member-role"
 						value={userRole}
 						onChange={setUserRole}
 						options={[
-							{ value: 'master', label: 'Мастер — только свои объекты' },
-							{ value: 'admin', label: 'Администратор — все объекты' },
+							{ value: 'master', label: 'Мастер' },
+							{ value: 'admin', label: 'Администратор' },
 						]}
 					/>
+					<small>
+						{userRole === 'admin'
+							? 'Просмотр всех объектов и управление доступом'
+							: 'Работа только с назначенными объектами'}
+					</small>
 				</div>
 			</Modal>
 			{!isAdmin && <TableImportModal workspace={workspace} />}
@@ -325,18 +341,10 @@ export function renderApp() {
 }
 
 function ThemedWorkspace() {
-	const [, setThemeVersion] = useState(0);
-	const telegram = window.Telegram?.WebApp;
-	useEffect(() => {
-		if (!telegram?.initData) return;
-		const refreshTheme = () => setThemeVersion((version) => version + 1);
-		telegram.onEvent('themeChanged', refreshTheme);
-		return () => telegram.offEvent('themeChanged', refreshTheme);
-	}, [telegram]);
 	return (
 		<ConfigProvider
 			locale={ruRU}
-			theme={telegramTheme(telegram?.colorScheme === 'dark')}
+			theme={telegramTheme()}
 			modal={{
 				closeIcon: <TelegramIcon name="close" size={20} />,
 				closable: { 'aria-label': 'Закрыть' },

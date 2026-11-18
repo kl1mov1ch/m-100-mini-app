@@ -1,3 +1,4 @@
+import { confirmSheet } from './SheetModal';
 import { App, Segmented } from 'antd';
 import { useRef, type TouchEvent } from 'react';
 import type { WorkspaceView } from '../App';
@@ -19,7 +20,7 @@ export function RoleSwitch({
 		if (mode === session.view_mode || switchingRole || busy || confirming.current) return;
 		if ((report && dirty) || freeText.trim() || unsaved) {
 			confirming.current = true;
-			modal.confirm({
+			confirmSheet(modal, {
 				closable: true,
 				title: 'Переключить режим?',
 				content: 'Несохранённые изменения в текущем режиме будут сброшены.',

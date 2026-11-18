@@ -1,4 +1,5 @@
-import { Alert, Empty, Modal, Spin } from 'antd';
+import { Alert, Empty, Spin } from 'antd';
+import { SheetModal as Modal } from './SheetModal';
 import { useEffect, useState } from 'react';
 import { request } from '../lib/api';
 import { Money } from '../lib/format';

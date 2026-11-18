@@ -1,5 +1,4 @@
 .table-notifications,
-.table-notice-card,
 .table-notice-card ul,
 .table-notice-card li {
 	display: grid;
@@ -12,7 +11,31 @@
 	border-radius: var(--kit-control-radius);
 }
 
-.table-notice-card h3,
+.table-notice-card summary {
+	cursor: pointer;
+	overflow-wrap: anywhere;
+}
+
+.table-notice-card summary > :last-child {
+	margin-inline-start: 8px;
+}
+
+.table-notice-card[open] > :not(summary) {
+	margin-top: 10px;
+}
+
+.table-notice-group {
+	padding: 8px;
+	background: var(--kit-tertiary);
+	border-radius: var(--kit-control-radius);
+}
+
+.table-notice-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+
 .table-notice-card ul {
 	margin: 0;
 }
@@ -35,4 +58,9 @@
 
 .table-notice-card small:empty {
 	display: none;
+}
+
+.table-notice-card li > .ant-btn-link {
+	justify-self: start;
+	padding-inline: 0;
 }

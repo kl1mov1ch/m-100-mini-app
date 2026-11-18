@@ -1,6 +1,7 @@
+import { confirmSheet } from '../components/SheetModal';
 import { App, Button, Tag } from 'antd';
 import 'dayjs/locale/ru';
-import { Plus, Settings2, Trash2, TriangleAlert } from 'lucide-react';
+import { ChevronRight, Plus, Settings2, Trash2, TriangleAlert } from 'lucide-react';
 import { useEffect, useEffectEvent } from 'react';
 
 import type { WorkspaceView } from '../App';
@@ -9,9 +10,12 @@ import { countLabel } from '../lib/format';
 import { TelegramAvatar } from '../components/TelegramAvatar';
 import { request } from '../lib/api';
 import type { User } from '../types';
+import dayjs from '../lib/date';
+import './team.css';
+
 export function TeamPage({ workspace }: { workspace: WorkspaceView }) {
 	const { modal, message } = App.useApp();
-	const { users, setUserForm, setUserId, setUserName, setUserRole, loadUsers, session } = workspace;
+	const { users, openUserForm, loadUsers, selectObject, session } = workspace;
 	const refresh = useEffectEvent(() => {
 		if (document.visibilityState === 'visible') void loadUsers(true);
 	});
@@ -24,7 +28,7 @@ export function TeamPage({ workspace }: { workspace: WorkspaceView }) {
 		};
 	}, []);
 	const remove = (user: User) =>
-		modal.confirm({
+		confirmSheet(modal, {
 			closable: true,
 			title: 'Удалить пользователя?',
 			icon: <TriangleAlert color="#a66b00" size={21} />,
@@ -49,16 +53,7 @@ export function TeamPage({ workspace }: { workspace: WorkspaceView }) {
 				<div>
 					<h1>Команда</h1>
 				</div>
-				<Button
-					type="primary"
-					icon={<Plus size={17} />}
-					onClick={() => {
-						setUserId('');
-						setUserName('');
-						setUserRole('master');
-						setUserForm(true);
-					}}
-				>
+				<Button type="primary" icon={<Plus size={17} />} onClick={() => openUserForm()}>
 					Добавить
 				</Button>
 			</div>
@@ -71,9 +66,9 @@ export function TeamPage({ workspace }: { workspace: WorkspaceView }) {
 							u.open_project
 								? 'Открыт · ' + u.open_project.name
 								: u.enabled
-									? u.role === 'admin'
-										? 'Администратор'
-										: 'Мастер'
+									? u.online
+										? 'В приложении'
+										: 'Не в сети'
 									: 'Доступ отключён'
 						}
 						value={countLabel(u.projects || 0, 'объект', 'объекта', 'объектов')}
@@ -87,72 +82,107 @@ export function TeamPage({ workspace }: { workspace: WorkspaceView }) {
 							/>
 						}
 					>
-						<section className="team-card work-detail">
-							<TelegramAvatar
-								userId={u.telegram_id}
-								name={u.name}
-								source={u.avatar_url}
-								size={42}
-							/>
-							<div>
-								<b>{u.name}</b>
-								<small>
-									{u.telegram_id === 'local-admin'
-										? 'Администратор'
-										: `Telegram ID ${u.telegram_id}`}
-								</small>
-								<div>
-									<Tag color={u.enabled ? 'blue' : 'default'}>
-										{u.enabled
-											? u.role === 'admin'
-												? 'Администратор'
-												: 'Мастер'
-											: 'Доступ отключён'}
-									</Tag>
-									<small>{countLabel(u.projects || 0, 'объект', 'объекта', 'объектов')}</small>
-								</div>
-							</div>
-							{u.telegram_id !== 'local-admin' && (
-								<div className="team-actions">
-									<Button
-										type="text"
-										aria-label={'Изменить доступ ' + u.name}
-										icon={<Settings2 size={18} />}
-										onClick={() => {
-											setUserId(u.telegram_id);
-											setUserName(u.name);
-											setUserRole(u.role);
-											setUserForm(true);
-										}}
-									>
-										Изменить доступ
-									</Button>
-									{u.telegram_id !== session.user.telegram_id && (
-										<Button
-											type="text"
-											danger
-											aria-label={'Удалить пользователя ' + u.name}
-											icon={<Trash2 size={18} />}
-											onClick={() => remove(u)}
+						{(close) => {
+							const openProject = (id: string) => {
+								close();
+								selectObject(id);
+							};
+							return (
+								<>
+									<section className="team-card work-detail team-member">
+										<TelegramAvatar
+											userId={u.telegram_id}
+											name={u.name}
+											source={u.avatar_url}
+											size={42}
 										/>
-									)}
-								</div>
-							)}
-						</section>
-						<div className="object-panel">
-							<h3>Сейчас открыт</h3>
-							<p>{u.open_project?.name || 'Нет открытого объекта'}</p>
-							<h3>Назначенные объекты</h3>
-							{u.assigned_projects?.length ? (
-								<ul className="compact-list">
-									{u.assigned_projects.map((project) => (
-										<li key={project.id}>{project.name}</li>
-									))}
-								</ul>
-							) : (
-								<p>Объекты не назначены</p>
-							)}
-						</div>
+										<div>
+											<b>{u.name}</b>
+											<small>
+												{u.telegram_id === 'local-admin'
+													? 'Администратор'
+													: `Telegram ID ${u.telegram_id}`}
+											</small>
+											<div>
+												<Tag color={u.enabled ? 'blue' : 'default'}>
+													{u.enabled
+														? u.role === 'admin'
+															? 'Администратор'
+															: 'Мастер'
+														: 'Доступ отключён'}
+												</Tag>
+												<Tag color={u.online ? 'green' : 'default'}>
+													{u.online ? 'В сети' : 'Не в сети'}
+												</Tag>
+											</div>
+											{!u.online && !!u.last_seen && (
+												<small>
+											Последняя активность {dayjs(u.last_seen * 1000).format('DD.MM · HH:mm')}
+												</small>
+											)}
+										</div>
+										{u.telegram_id !== 'local-admin' && (
+											<div className="team-actions">
+												<Button
+													type="text"
+													aria-label={'Изменить доступ ' + u.name}
+													icon={<Settings2 size={18} />}
+													onClick={() => {
+														close();
+														openUserForm(u);
+													}}
+												>
+													Изменить доступ
+												</Button>
+												{u.telegram_id !== session.user.telegram_id && (
+													<Button
+														type="text"
+														danger
+														aria-label={'Удалить пользователя ' + u.name}
+														icon={<Trash2 size={18} />}
+														onClick={() => remove(u)}
+													/>
+												)}
+											</div>
+										)}
+									</section>
+									<div className="team-projects">
+										{u.open_project && (
+											<>
+												<h3>Сейчас открыт</h3>
+												<button
+													type="button"
+													className="team-project-link"
+													onClick={() => openProject(u.open_project!.id)}
+												>
+													<span>{u.open_project.name}</span>
+													<ChevronRight size={16} aria-hidden />
+												</button>
+											</>
+										)}
+										<h3>Назначенные объекты</h3>
+										{u.assigned_projects?.length ? (
+											<ul className="team-project-list">
+												{u.assigned_projects.map((project) => (
+													<li key={project.id}>
+														<button
+															type="button"
+															className="team-project-link"
+															onClick={() => openProject(project.id)}
+														>
+															<span>{project.name}</span>
+															<ChevronRight size={16} aria-hidden />
+														</button>
+													</li>
+												))}
+											</ul>
+										) : (
+											<p>Объекты не назначены</p>
+										)}
+									</div>
+								</>
+							);
+						}}
 					</CompactWorkEditor>
 				))}
 			</div>

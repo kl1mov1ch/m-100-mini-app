@@ -57,12 +57,15 @@ def test_admin_can_see_assigned_and_recently_open_projects(client, monkeypatch):
         )
 
     assert user_info()["open_project"] == {"id": current, "name": "Второй"}
+    assert user_info()["online"] is True and user_info()["last_seen"] == 1000
     assert {project["id"] for project in user_info()["assigned_projects"]} == {assigned, current}
     monkeypatch.setattr(accounts, "time", lambda: 1000 + accounts.OPEN_PROJECT_TTL)
     assert user_info()["open_project"] is None
+    assert user_info()["online"] is False
     assert client.post(endpoint, json={"project_id": assigned}, headers=headers).status_code == 200
     assert client.post(endpoint, json={"project_id": None}, headers=headers).status_code == 200
     assert user_info()["open_project"] is None
+    assert user_info()["online"] is True
 
 
 def test_master_isolation_including_uploads(client):

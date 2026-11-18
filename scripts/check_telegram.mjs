@@ -29,8 +29,8 @@ globalThis.document = {
 globalThis.getComputedStyle = () => ({
 	getPropertyValue: (key) =>
 		({
-			'--kit-bg': document.documentElement.dataset.theme === 'dark' ? '#212121' : '#fff',
-			'--kit-page': document.documentElement.dataset.theme === 'dark' ? '#0f0f0f' : '#efeff4',
+			'--kit-bg': '#fff',
+			'--kit-page': '#efeff4',
 		})[key] || '',
 });
 const telegram = await import(
@@ -61,9 +61,10 @@ assert.equal(expanded, true);
 assert.equal(document.documentElement.dataset.platform, 'apple');
 assert.equal(properties.get('background'), '#efeff4');
 window.Telegram.WebApp.colorScheme = 'dark';
+window.Telegram.WebApp.themeParams = { bg_color: '#212121', secondary_bg_color: '#0f0f0f' };
 handlers.get('themeChanged')();
-assert.equal(properties.get('header'), '#212121');
-assert.equal(properties.get('background'), '#0f0f0f');
+assert.equal(properties.get('header'), '#fff');
+assert.equal(properties.get('background'), '#efeff4');
 assert.equal(properties.get('--app-height'), '800px');
 assert.equal(properties.get('--app-safe-top'), '56px');
 assert.equal(properties.get('--app-safe-bottom'), '20px');

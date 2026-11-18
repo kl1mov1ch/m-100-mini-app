@@ -1,17 +1,14 @@
 :root {
 	color-scheme: light;
 	--ios-font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif;
-	--ios-background: var(--tg-theme-secondary-bg-color, var(--kit-page));
-	--ios-surface: var(--tg-theme-section-bg-color, var(--tg-theme-bg-color, var(--kit-bg)));
+	--ios-background: var(--kit-page);
+	--ios-surface: var(--kit-bg);
 	--ios-fill: var(--kit-tertiary);
-	--ios-separator: var(--tg-theme-section-separator-color, var(--kit-divider));
-	--ios-label: var(--tg-theme-text-color, var(--kit-text));
-	--ios-secondary: var(--tg-theme-subtitle-text-color, var(--kit-hint));
-	--ios-tertiary: var(--tg-theme-hint-color, var(--kit-hint));
-	--ios-accent: var(
-		--tg-theme-accent-text-color,
-		var(--tg-theme-link-color, var(--kit-accent-text))
-	);
+	--ios-separator: var(--kit-divider);
+	--ios-label: var(--kit-text);
+	--ios-secondary: var(--kit-hint);
+	--ios-tertiary: var(--kit-hint);
+	--ios-accent: var(--kit-accent-text);
 	--ios-accent-fill: var(--kit-secondary-fill);
 	--ios-success: var(--kit-green);
 	--ios-success-fill: color-mix(in srgb, var(--kit-green) 10%, var(--ios-surface));
@@ -19,7 +16,7 @@
 	--ios-warning-text: #805d16;
 	--ios-warning-fill: #fffbf0;
 	--ios-warning-line: #e7d49e;
-	--ios-danger: var(--tg-theme-destructive-text-color, var(--kit-destructive));
+	--ios-danger: var(--kit-destructive);
 	--ios-danger-fill: var(--kit-destructive-fill);
 	--ios-danger-line: color-mix(in srgb, var(--kit-destructive) 25%, var(--ios-surface));
 	--ios-group-radius: var(--kit-control-radius);
@@ -29,13 +26,6 @@
 	font-family: var(--ios-font);
 	color: var(--ios-label);
 	background: var(--ios-background);
-}
-
-:root[data-theme='dark'] {
-	color-scheme: dark;
-	--ios-warning-text: #ffcd68;
-	--ios-warning-fill: #392e1e;
-	--ios-warning-line: #624e2c;
 }
 
 .application {

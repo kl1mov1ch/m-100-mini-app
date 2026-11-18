@@ -1,4 +1,5 @@
-import { Button, Modal } from 'antd';
+import { Button } from 'antd';
+import { SheetModal as Modal } from './SheetModal';
 import { CircleHelp, ExternalLink, Info } from 'lucide-react';
 import { useState } from 'react';
 import { openExternalLink } from '../lib/telegram';

@@ -91,6 +91,7 @@ function MasterDailyReport({ workspace }: { workspace: WorkspaceView }) {
 				</div>
 				<div className="report-date-actions">
 					<ReportNoteButton
+						userId={session.user.telegram_id}
 						key={day}
 						project={project}
 						scope={`day-note:${day}`}
@@ -232,6 +233,7 @@ function MasterDailyReport({ workspace }: { workspace: WorkspaceView }) {
 								{p && balance && <WorkEstimate balance={balance} unit={p.unit} />}
 								{p && (
 									<ReportNoteButton
+										userId={session.user.telegram_id}
 										key={`${day}:${p.id}`}
 										project={project}
 										scope={`work-note:${day}:${p.id}`}
