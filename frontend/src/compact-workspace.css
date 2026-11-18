@@ -191,13 +191,6 @@
 	min-width: 0;
 	margin-inline: auto;
 }
-.report-entry-methods h3 {
-	margin: 0 0 6px;
-	text-align: center;
-	font-size: 14px;
-	font-weight: 500;
-	line-height: 20px;
-}
 .report-toolbar {
 	display: grid;
 	grid-template-columns: repeat(3, minmax(0, 1fr));

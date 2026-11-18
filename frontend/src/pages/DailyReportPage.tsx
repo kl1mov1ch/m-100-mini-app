@@ -115,7 +115,6 @@ function MasterDailyReport({ workspace }: { workspace: WorkspaceView }) {
 			</div>
 			<DailyEarnings workspace={workspace} />
 			<div className="report-entry-methods" role="group" aria-label="Добавить работу">
-				<h3>Добавить работу</h3>
 				<div className="report-toolbar">
 					<Button
 						type="text"
