@@ -7,7 +7,7 @@ import { SheetModal as Modal } from './components/SheetModal';
 import ruRU from 'antd/locale/ru_RU';
 import 'dayjs/locale/ru';
 import { Building2, History, Plus, Settings } from 'lucide-react';
-import { useLayoutEffect, useRef } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { TableImportModal } from './components/TableImportModal';
 import { VoiceReportDrawer } from './components/VoiceReportDrawer';
@@ -51,6 +51,8 @@ import { useAppRelease } from './hooks/useAppRelease';
 import { useTelegramNotifications } from './hooks/useTelegramNotifications';
 import type { HistoryRow, Project, Session } from './types';
 export type WorkspaceView = ReturnType<typeof useWorkspace> & {
+	evenSpacing: boolean;
+	setEvenSpacing: (value: boolean) => void;
 	session: Session;
 	projects: Project[];
 	todayRow: HistoryRow | undefined;
@@ -58,6 +60,13 @@ export type WorkspaceView = ReturnType<typeof useWorkspace> & {
 export function WorkspaceApp() {
 	useInputVisibility();
 	const controller = useWorkspace();
+	const [evenSpacing, applySpacing] = useState(
+		() => localStorage.getItem('m100-even-spacing') === '1',
+	);
+	const setEvenSpacing = (value: boolean) => {
+		applySpacing(value);
+		localStorage.setItem('m100-even-spacing', value ? '1' : '0');
+	};
 	const {
 		session,
 		data,
@@ -140,9 +149,9 @@ export function WorkspaceApp() {
 			(controller.summaryProject === 'all' || p.id === controller.summaryProject),
 	);
 	const todayRow = data?.history.find((h) => h.date === session.today);
-	const workspace = { ...controller, session, projects, todayRow };
+	const workspace = { ...controller, session, projects, todayRow, evenSpacing, setEvenSpacing };
 	return (
-		<div className="application">
+		<div className="application" data-even-spacing={evenSpacing}>
 			<div className="workspace">
 				{isAdmin && page === 'today' && (
 					<div className="context-bar">

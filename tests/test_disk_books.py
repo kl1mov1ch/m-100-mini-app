@@ -6,7 +6,7 @@ import httpx
 import openpyxl
 from test_workspaces import client, create, grant  # noqa: F401 - pytest fixture
 
-from backend import bitrix, bitrix_disk, imports, matcher, store, workspaces
+from backend import bitrix, bitrix_disk, matcher, store, workspaces
 from backend.clock import today
 
 
@@ -34,6 +34,13 @@ def disk(monkeypatch):
             entry = {"ID": 21, "TYPE": "folder", "NAME": body["data"]["NAME"]}
             folder[21] = entry
             return entry
+        if method == "disk.folder.addFolder":
+            folder[22] = {"ID": 22, "TYPE": "folder", "NAME": body["data"]["NAME"]}
+            return folder[22]
+        if method == "disk.file.getExternalLink":
+            return "https://demo.bitrix24.by/~Example"
+        if method == "disk.folder.getChildren" and body["id"] == 21 and 22 in folder:
+            return [folder[22]]
         if method == "disk.folder.getChildren":
             return [
                 details(ident)
@@ -75,48 +82,154 @@ def owner(client, sample=True):
     return project, headers, hook
 
 
-def test_create_blank_disk_book_and_connect_after_review(client, monkeypatch):  # noqa: F811
-    async def no_journal(*args):
-        return {}
-
-    monkeypatch.setattr(imports, "write_journal", no_journal)
-    files, calls, _ = disk(monkeypatch)
-    project, headers, hook = owner(client, sample=False)
-    with store.connect(workspaces.project(workspaces.user("1850"), project)["db_path"]) as db:
-        store.set_setting(db, "source", "file")
-    target = {"name": "Новая смета.xlsx", "webhook_id": hook}
-    created = client.post("/api/bitrix/disk-book", headers=headers, json=target)
-    assert created.status_code == 200, created.text
-    ident = created.json()["id"]
-    assert client.post("/api/bitrix/disk-book", headers=headers, json=target).json()["id"] == ident
+def test_create_disk_book_connects_and_retries_without_duplicates(client, monkeypatch):  # noqa: F811
+    files, calls, fail = disk(monkeypatch)
+    project, headers, hook = owner(client)
+    day = today()
+    report = {
+        "date": day,
+        "revision": 0,
+        "lines": [{"item_id": "excel-17", "quantity": 2}],
+        "crew_count": 3,
+        "day_note": "Смена завершена",
+    }
+    assert client.post("/api/reports", headers=headers, json=report).is_success
+    target = {"name": "Новая смета.xlsx", "work_type": "Монтаж", "webhook_id": hook}
+    endpoint = "/api/bitrix/disk-book"
+    fail.add("Отчётность проекта.xlsx")
+    assert client.post(endpoint, headers=headers, json=target).status_code == 502
+    created = client.post(endpoint, headers=headers, json=target)
+    assert created.is_success, created.text
+    item = created.json()
+    assert item["folder_name"] == "Новая смета" and item["work_type"] == "Монтаж"
+    assert item["share_url"] == "https://demo.bitrix24.by/~Example"
+    assert client.post(endpoint, headers=headers, json=target).json() == item
     assert calls.count("disk.folder.uploadFile") == 1
-    blank = client.post("/api/imports/disk-book", headers=headers)
-    assert (
-        blank.status_code == 422
-        and client.get("/api/bootstrap", headers=headers).json()["config"]["source"] == "file"
+    workbook = openpyxl.load_workbook(io.BytesIO(files[item["id"]][1]))
+    assert workbook.properties.identifier == "M-100:" + project
+    assert any(c.data_type == "f" for row in workbook.active for c in row)
+    parsed = bitrix.read_workbook(files[item["id"]][1], generated_only=True)
+    assert any(p["id"] == "excel-17" for p in parsed["positions"])
+    assert any(
+        e["item_id"] == "excel-17" and e["date"] == day and e["quantity"] == 2
+        for e in parsed["entries"]
     )
+    assert parsed["crew_by_day"][day] == 3
+    assert "Примечания" in workbook.sheetnames
+    config = client.get("/api/bootstrap", headers=headers).json()["config"]
+    assert (config["source"], config["file_id"], config["journal_status"]) == (
+        "bitrix",
+        item["id"],
+        "ready",
+    )
+    assert client.post("/api/bitrix/check", headers=headers).json()["structure_valid"]
+    edited = client.post(
+        "/api/reports",
+        headers=headers,
+        json={**report, "revision": 1, "lines": [{"item_id": "excel-17", "quantity": 3}]},
+    )
+    assert edited.is_success and edited.json()["sync_status"] == "synced", edited.text
+    after = bitrix.read_workbook(files[item["id"]][1], generated_only=True)
+    assert any(e["item_id"] == "excel-17" and e["quantity"] == 3 for e in after["entries"])
 
-    workbook = openpyxl.load_workbook(io.BytesIO(files[ident][1]))
-    workbook.active.append(["Установка решётки Ø160", "шт.", 20, 15, "Вентиляция"])
-    data = io.BytesIO()
-    workbook.save(data)
-    files[ident] = (target["name"], data.getvalue())
-    response = client.post("/api/imports/disk-book", headers=headers)
-    assert response.status_code == 200, response.text
-    preview = response.json()
-    assert client.get("/api/bootstrap", headers=headers).json()["config"]["source"] == "file"
-    confirm = client.post(
+
+def test_new_project_has_dated_empty_journal_when_public_links_disabled(client, monkeypatch):  # noqa: F811
+    files, _, _ = disk(monkeypatch)
+    original = bitrix.rest
+
+    async def restricted(webhook, method, body):
+        if method == "disk.file.getExternalLink":
+            raise ValueError("ACCESS_DENIED")
+        return await original(webhook, method, body)
+
+    monkeypatch.setattr(bitrix, "rest", restricted)
+    _, headers, hook = owner(client, sample=False)
+    result = client.post(
+        "/api/bitrix/disk-book", headers=headers, json={"name": "Школа", "webhook_id": hook}
+    )
+    assert result.is_success, result.text
+    meta = result.json()
+    assert meta["share_url"] == ""
+    content = files[meta["id"]][1]
+    parsed = bitrix.read_workbook(content, generated_only=True)
+    assert parsed["positions"] == [] and parsed["entries"] == []
+    assert (
+        openpyxl.load_workbook(io.BytesIO(content)).active["J3"].value.date().isoformat() == today()
+    )
+    assert client.post("/api/bitrix/check", headers=headers).json()["structure_valid"]
+
+
+def test_uploaded_estimate_keeps_original_sheets_and_work_ids(client, monkeypatch):  # noqa: F811
+    from test_workspaces import make_workbook
+
+    files, _, _ = disk(monkeypatch)
+    _, headers, hook = owner(client, sample=False)
+    original = make_workbook(False, True)
+    upload = client.post(
+        "/api/imports/upload", headers=headers, files={"file": ("Смета.xlsx", original)}
+    )
+    assert upload.is_success, upload.text
+    preview = upload.json()
+    confirmed = client.post(
         "/api/imports/confirm",
         headers=headers,
         json={
             "token": preview["token"],
             "sheets": preview["sheets"],
-            "acknowledged": [warning["id"] for warning in preview["warnings"]],
+            "acknowledged": [w["id"] for w in preview["warnings"]],
         },
     )
-    assert confirm.status_code == 200, confirm.text
-    config = client.get("/api/bootstrap", headers=headers).json()["config"]
-    assert config["source"] == "bitrix" and config["file_id"] == ident
+    assert confirmed.is_success, confirmed.text
+    created = client.post(
+        "/api/bitrix/disk-book", headers=headers, json={"name": "Школа", "webhook_id": hook}
+    )
+    assert created.is_success, created.text
+    content = files[created.json()["id"]][1]
+    saved = openpyxl.load_workbook(io.BytesIO(content))
+    source = openpyxl.load_workbook(io.BytesIO(original))
+    for sheet in source:
+        assert tuple(saved[sheet.title].values) == tuple(sheet.values)
+    parsed = bitrix.read_workbook(content, generated_only=True)
+
+    def catalogue(rows):
+        return {(r["id"], r["name"], r["rate"], r["planned"]) for r in rows}
+
+    assert catalogue(parsed["positions"]) == catalogue(preview["positions"])
+
+
+def test_foreign_file_stays_untouched(client, monkeypatch):  # noqa: F811
+    files, calls, _ = disk(monkeypatch)
+    _, headers, hook = owner(client)
+    before = io.BytesIO()
+    openpyxl.Workbook().save(before)
+    files[77] = ("Отчётность проекта.xlsx", before.getvalue())
+    created = client.post(
+        "/api/bitrix/disk-book", headers=headers, json={"name": "Школа", "webhook_id": hook}
+    )
+    assert created.status_code == 409
+    assert files[77][1] == before.getvalue() and "disk.file.uploadVersion" not in calls
+    assert client.get("/api/bootstrap", headers=headers).json()["config"]["source"] != "bitrix"
+
+
+def test_share_link_is_checked_against_connected_file(client, monkeypatch):  # noqa: F811
+    files, _, _ = disk(monkeypatch)
+    _, headers, hook = owner(client, sample=False)
+    meta = client.post(
+        "/api/bitrix/disk-book", headers=headers, json={"name": "Магазин", "webhook_id": hook}
+    ).json()
+    ident = meta["id"]
+
+    async def public(url):
+        return files[ident][1], {"file_id": ident if url.endswith("correct") else ident + 1}
+
+    monkeypatch.setattr(bitrix, "fetch_public", public)
+    endpoint = "/api/bitrix/disk-book/share-link"
+    link = "https://bitrix24public.com/demo.bitrix24.by/sheet/"
+    assert client.post(endpoint, headers=headers, json={"url": link + "other"}).status_code == 422
+    assert (
+        client.post(endpoint, headers=headers, json={"url": link + "correct"}).json()["share_url"]
+        == link + "correct"
+    )
 
 
 def test_cumulative_file_keeps_days_notes_and_retries_without_duplicate(client, monkeypatch):  # noqa: F811
@@ -166,7 +279,9 @@ def test_cumulative_file_keeps_days_notes_and_retries_without_duplicate(client, 
     sheet = workbook.active
     dates = [cell.value.date().isoformat() for cell in sheet[4][6:]]
     assert dates == sorted(set(dates)) and dates[-2:] == [earlier, day]
-    values = {cell.value for tab in workbook for row in tab for cell in row if cell.value is not None}
+    values = {
+        cell.value for tab in workbook for row in tab for cell in row if cell.value is not None
+    }
     assert {"Доступ после 09:00", "Готов второй этаж", "Выработка", "Человек за день"} <= values
     assert "Доступ после 08:00" not in values
     assert any(

@@ -13,7 +13,8 @@ import { reportStatus, Status } from '../components/SyncStatus';
 import { Money, countLabel, nf, shortName, unit } from '../lib/format';
 import { DailyEarnings } from '../components/DailyEarnings';
 import { AdminDailyReport } from '../components/AdminDailyReport';
-import { QuickReportComposer } from '../components/QuickReportComposer';
+import { SheetModal } from '../components/SheetModal';
+import { Input } from '../components/Input';
 import { ReportDraftFields } from '../components/ReportDraftFields';
 import { WorkEstimate, WorkOverruns } from '../components/WorkEstimate';
 import { CompactWorkEditor } from '../components/CompactRow';
@@ -132,6 +133,7 @@ function MasterDailyReport({ workspace }: { workspace: WorkspaceView }) {
 						size="small"
 						type="primary"
 						icon={<TextCursorInput size={17} />}
+						aria-haspopup="dialog"
 						aria-expanded={textVisible}
 						onClick={() => setTextVisible((visible) => !visible)}
 						disabled={!positions.length}
@@ -149,9 +151,38 @@ function MasterDailyReport({ workspace }: { workspace: WorkspaceView }) {
 					</Button>
 				</div>
 			</div>
-			{textVisible && <QuickReportComposer workspace={workspace} inline />}
+			<SheetModal
+				open={textVisible}
+				title="Выполненные работы"
+				onCancel={() => setTextVisible(false)}
+				footer={
+					<Button
+						type="primary"
+						block
+						disabled={!workspace.freeText.trim() || parsing}
+						onClick={() => {
+							setTextVisible(false);
+							void workspace.matchReportText();
+						}}
+					>
+						Применить
+					</Button>
+				}
+			>
+				<label className="report-text-input">
+					Что сделали за смену?
+					<Input.TextArea
+						autoSize={{ minRows: 3, maxRows: 7 }}
+						maxLength={8000}
+						value={workspace.freeText}
+						onChange={(e) => workspace.setFreeText(e.target.value)}
+						placeholder="Например: проложили 12 м воздуховода, работали втроём"
+					/>
+				</label>
+			</SheetModal>
 			<ReportDraftFields workspace={workspace} showSubmit={false} />
 			<WorkOverruns items={workBalances} confirmed={!!report?.revision && !dirty} />
+			{lines.length > 0 && <h3 className="shift-works-heading">Работы за смену</h3>}
 			<div className="work-list compact-list">
 				{lines.map((l, i) => {
 					const p = l.item_id ? byId[l.item_id] : null;

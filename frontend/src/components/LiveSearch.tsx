@@ -86,7 +86,14 @@ export function LiveSearch({
 	useEffect(() => () => searchRequest.current?.abort(), [project]);
 	useEffect(() => {
 		const query = q.trim();
-		if (query.length < 3 || !onProjectMatch || (!approximate && positions.length)) return;
+		if (
+			loading ||
+			result ||
+			query.length < 3 ||
+			!onProjectMatch ||
+			(!approximate && positions.length)
+		)
+			return;
 		const controller = new AbortController();
 		const timer = window.setTimeout(() => {
 			void request<SearchResult>(
@@ -104,8 +111,9 @@ export function LiveSearch({
 			window.clearTimeout(timer);
 			controller.abort();
 		};
-	}, [project, q, approximate, positions.length, Boolean(onProjectMatch)]);
+	}, [project, q, approximate, positions.length, Boolean(onProjectMatch), loading, result]);
 	const searchByMeaning = async () => {
+		if (loading) return;
 		const id = ++seq.current;
 		const controller = new AbortController();
 		searchRequest.current = controller;

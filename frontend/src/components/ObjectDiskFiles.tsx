@@ -15,6 +15,7 @@ export function ObjectDiskFiles({ workspace }: { workspace: WorkspaceView }) {
 	const { project, active, data, diskWebhooks, importDiskBook, setData, setPage } = workspace;
 	const [mode, setMode] = useState<'book' | 'report'>();
 	const [name, setName] = useState('');
+	const [workType, setWorkType] = useState('Основные работы');
 	const [webhook, setWebhook] = useState<string>();
 	const [saving, setSaving] = useState(false);
 	const [publishing, setPublishing] = useState(false);
@@ -26,7 +27,8 @@ export function ObjectDiskFiles({ workspace }: { workspace: WorkspaceView }) {
 	const report = config.bitrix_report_file;
 	const load = (next: 'book' | 'report') => {
 		setMode(next);
-		setName(active?.name || '');
+		setName(book?.folder_name || active?.name || '');
+		setWorkType(book?.work_type || 'Основные работы');
 		const selected = next === 'report' ? config.bitrix_report_webhook_id : book?.webhook_id;
 		setWebhook(selected || (diskWebhooks.length === 1 ? diskWebhooks[0].id : undefined));
 	};
@@ -34,20 +36,13 @@ export function ObjectDiskFiles({ workspace }: { workspace: WorkspaceView }) {
 		setSaving(true);
 		try {
 			if (mode === 'book') {
-				const file = await request<DiskFile & { webhook_id: string }>(
+				await request(
 					'/bitrix/disk-book',
-					{ name, webhook_id: webhook },
+					{ name, work_type: workType, webhook_id: webhook },
 					project,
 				);
-				setData((current) =>
-					current?.project?.id === project
-						? {
-								...current,
-								config: { ...current.config, bitrix_project_book: file },
-							}
-						: current,
-				);
-				message.success('Excel создан на Диске');
+				await workspace.refresh(true);
+				message.success('Рабочая книга проверена и подключена');
 			} else {
 				const target = await request<{ webhook_id: string | null }>(
 					'/bitrix/report-files',
@@ -111,22 +106,27 @@ export function ObjectDiskFiles({ workspace }: { workspace: WorkspaceView }) {
 	if (connected && canWriteSheet) return null;
 	return (
 		<section className="disk-files">
-			<h3>Битрикс24.Диск</h3>
+			<h3>Рабочая книга на Диске</h3>
 			{!connected &&
 				(book ? (
 					<div className="disk-file">
 						<strong title={book.name}>{book.name}</strong>
-						<small>Заполните книгу на Диске, затем проверьте её перед подключением.</small>
+						<small>
+							Можно перенести текущую смету в новую книгу или импортировать заполненный ранее файл.
+						</small>
 						<div>
 							{fileLink(book)}
+							<Button type="primary" onClick={() => load('book')}>
+								Создать из данных объекта
+							</Button>
 							<Button onClick={importDiskBook} loading={workspace.busy}>
-								Проверить и подключить
+								Импортировать прежнюю книгу
 							</Button>
 						</div>
 					</div>
 				) : (
-					<Button icon={<FilePlus2 size={17} />} onClick={() => load('book')}>
-						Создать пустой Excel
+					<Button type="text" icon={<FilePlus2 size={17} />} onClick={() => load('book')}>
+						Создать рабочую книгу
 					</Button>
 				))}
 			{report && (
@@ -135,7 +135,7 @@ export function ObjectDiskFiles({ workspace }: { workspace: WorkspaceView }) {
 					<div>{fileLink(report)}</div>
 				</div>
 			)}
-			<Button icon={<FileSpreadsheet size={17} />} onClick={() => load('report')}>
+			<Button type="text" icon={<FileSpreadsheet size={17} />} onClick={() => load('report')}>
 				{config.bitrix_report_webhook_id ? 'Настройки книги отчётов' : 'Отчёты на Диск'}
 			</Button>
 			{config.bitrix_report_webhook_id && (
@@ -146,25 +146,40 @@ export function ObjectDiskFiles({ workspace }: { workspace: WorkspaceView }) {
 			<Modal
 				className="disk-files-dialog"
 				open={!!mode}
-				title={mode === 'book' ? 'Создать пустой Excel' : 'Книга отчётов на Диске'}
+				title={mode === 'book' ? 'Создать рабочую книгу' : 'Книга отчётов на Диске'}
 				confirmLoading={saving}
 				okText={mode === 'book' ? 'Создать' : 'Сохранить'}
 				cancelText="Отмена"
 				onCancel={() => !saving && setMode(undefined)}
 				onOk={() => void save()}
-				okButtonProps={{ disabled: mode === 'book' && (!name.trim() || !webhook) }}
+				okButtonProps={{
+					disabled: mode === 'book' && (!name.trim() || !workType.trim() || !webhook),
+				}}
 			>
 				<div className="object-connection-form">
 					{mode === 'book' ? (
-						<label>
-							Название книги
-							<Input
-								aria-label="Название книги"
-								value={name}
-								maxLength={120}
-								onChange={(event) => setName(event.target.value)}
-							/>
-						</label>
+						<>
+							<label>
+								Название папки проекта
+								<Input
+									aria-label="Название папки проекта"
+									value={name}
+									maxLength={120}
+									onChange={(event) => setName(event.target.value)}
+								/>
+							</label>
+							<label>
+								Вид работ
+								<Input
+									value={workType}
+									maxLength={100}
+									onChange={(e) => setWorkType(e.target.value)}
+								/>
+							</label>
+							<p>
+								На Диске будет создан файл «Отчётность проекта.xlsx» в папке выбранного вида работ.
+							</p>
+						</>
 					) : (
 						<p>
 							После подтверждения отчёта приложение обновляет одну книгу со всеми днями объекта.

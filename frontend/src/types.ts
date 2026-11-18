@@ -184,7 +184,14 @@ export type DiskFile = { id: number; name: string; url: string };
 export type Config = {
 	today: string;
 	object_note?: string;
-	bitrix_project_book?: (DiskFile & { webhook_id: string }) | null;
+	bitrix_project_book?:
+		| (DiskFile & {
+				webhook_id: string;
+				folder_name?: string;
+				work_type?: string;
+				share_url?: string;
+		  })
+		| null;
 	bitrix_report_webhook_id?: string;
 	bitrix_report_file?: DiskFile | null;
 	mode: string;

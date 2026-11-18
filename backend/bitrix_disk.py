@@ -2,13 +2,19 @@ import base64
 import io
 import json
 import re
-from urllib.parse import urlparse
+from pathlib import Path
+from urllib.parse import urljoin, urlparse
+from zipfile import BadZipFile
 
 import openpyxl
 from openpyxl.styles import Alignment, Font, PatternFill
 from starlette.concurrency import run_in_threadpool
 
 from . import bitrix, store
+from .clock import today
+from .workbook_expenses import with_expenses
+from .workbook_journal import format_journal
+from .workbook_notes import collect_notes
 
 TEMPLATE_KEY = "bitrix_project_book"
 REPORT_TARGET_KEY = "bitrix_report_webhook_id"
@@ -25,39 +31,107 @@ def book_name(value):
     return name + ".xlsx"
 
 
-def starter_workbook(project_id):
-    book = openpyxl.Workbook()
-    book.properties.identifier = "M-100:" + project_id
-    sheet = book.active
-    sheet.title = "Смета"
-    sheet.append(
-        [
-            "Наименование работы",
-            "Единица измерения",
-            "Плановый объём",
-            "Расценка за единицу",
-            "Раздел",
-        ]
+def project_snapshot(db, project):
+    positions = store.positions(db)
+    return {
+        "positions": positions,
+        "entries": [
+            dict(row)
+            for row in db.execute("SELECT item_id,date,quantity FROM entries ORDER BY date,item_id")
+        ],
+        "crew": {
+            row["date"]: row["crew_count"]
+            for row in db.execute("SELECT date,crew_count FROM reports")
+        },
+        "notes": collect_notes(db, project["name"], positions),
+        "expenses": json.loads(store.setting(db, "extra_expenses", "[]")),
+        "original": store.setting(db, "import_file_path"),
+        "mappings": json.loads(store.setting(db, "sheet_mappings", "null")),
+    }
+
+
+def project_workbook(project_id, snapshot):
+    path = Path(snapshot["original"] or ".")
+    if path.is_file() and path.parent.resolve() == (store.base_path().parent / "imports").resolve():
+        base = path.read_bytes()
+    else:
+        book = openpyxl.Workbook()
+        sheet = book.active
+        sheet.title = "Смета"
+        sheet.append(
+            [
+                "Наименование работы",
+                "Единица измерения",
+                "Плановый объём",
+                "Расценка за единицу",
+                "Раздел",
+            ]
+        )
+        for pos in snapshot["positions"]:
+            sheet.append([pos[key] for key in ("name", "unit", "planned", "rate", "section")])
+            for col in (1, 2, 5):
+                sheet.cell(sheet.max_row, col).data_type = "s"
+        for cell, width in zip(sheet[1], (52, 21, 18, 23, 28), strict=True):
+            sheet.column_dimensions[cell.column_letter].width = width
+            cell.fill = PatternFill("solid", fgColor="21344A")
+            cell.font = Font(color="FFFFFF", bold=True)
+            cell.alignment = Alignment(vertical="center", wrap_text=True)
+        sheet.freeze_panes = "B2"
+        stream = io.BytesIO()
+        book.save(stream)
+        book.close()
+        base = stream.getvalue()
+    crew = snapshot["crew"].copy()
+    if not crew and not snapshot["entries"]:
+        crew[today()] = None
+    content = format_journal(
+        base,
+        snapshot["positions"],
+        snapshot["entries"],
+        crew,
+        [],
+        snapshot["mappings"],
+        notes=snapshot["notes"],
+        project_id=project_id,
     )
-    for cell, width in zip(sheet[1], (52, 21, 18, 23, 28), strict=True):
-        sheet.column_dimensions[cell.column_letter].width = width
-        cell.fill = PatternFill("solid", fgColor="21344A")
-        cell.font = Font(color="FFFFFF", bold=True)
-        cell.alignment = Alignment(vertical="center", wrap_text=True)
-    sheet.row_dimensions[1].height = 30
-    sheet.freeze_panes = "B2"
-    stream = io.BytesIO()
-    book.save(stream)
-    return stream.getvalue()
+    return with_expenses(content, snapshot["expenses"]) if snapshot["expenses"] else content
+
+
+async def ensure_folder(webhook, parent, kind, name):
+    row = await find_child(webhook, parent, name, kind)
+    if row is None:
+        row = await bitrix.rest(
+            webhook, f"disk.{kind}.addFolder", {"id": parent, "data": {"NAME": name}}
+        )
+    elif str(row.get("TYPE", "")).lower() != "folder":
+        raise ValueError("На Диске уже есть файл с названием папки. Выберите другое имя.")
+    return int(row["ID"])
+
+
+def share_link(value, webhook):
+    if not isinstance(value, str):
+        return ""
+    link = urlparse(value)
+    portal = urlparse(webhook).hostname
+    if link.scheme != "https" or link.username or link.password or link.query or link.fragment:
+        return ""
+    if link.netloc == portal and re.fullmatch(r"/~[A-Za-z0-9]+/?", link.path):
+        return value
+    if link.netloc == "bitrix24public.com" and link.path.startswith(f"/{portal}/"):
+        return value
+    return ""
 
 
 def public_file(meta, webhook):
-    parsed = urlparse(meta.get("DETAIL_URL") or "")
+    portal = urlparse(webhook)
+    detail = meta.get("DETAIL_URL") or ""
+    parsed = urlparse(urljoin(f"https://{portal.netloc}/", detail)) if detail else urlparse("")
     url = (
         parsed.geturl()
         if (
             parsed.scheme == "https"
-            and parsed.netloc == urlparse(webhook).netloc
+            and parsed.netloc == portal.netloc
+            and not parsed.path.startswith("/rest/")
             and not parsed.query
             and not parsed.fragment
         )
@@ -127,7 +201,10 @@ def saved_template(db):
 
 
 def workbook_belongs_to(content, project_id):
-    book = openpyxl.load_workbook(io.BytesIO(content), read_only=True)
+    try:
+        book = openpyxl.load_workbook(io.BytesIO(content), read_only=True)
+    except (BadZipFile, OSError, KeyError):
+        return False
     try:
         return book.properties.identifier == "M-100:" + project_id
     finally:

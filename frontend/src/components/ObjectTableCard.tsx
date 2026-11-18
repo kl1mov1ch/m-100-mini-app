@@ -20,7 +20,12 @@ export function ObjectTableCard({ workspace }: { workspace: WorkspaceView }) {
 		return null;
 	const config = data.config;
 	const check = config.connection_check;
-	const original = config.detail_url || config.public_url;
+	const original =
+		config.detail_url ||
+		config.public_url ||
+		(config.bitrix_project_book?.id === config.file_id
+			? config.bitrix_project_book.share_url
+			: undefined);
 	return (
 		<section className="object-table-card">
 			<div className="object-table-card-top">

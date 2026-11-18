@@ -5,6 +5,7 @@ from urllib.parse import urlparse
 import httpx
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
+from starlette.concurrency import run_in_threadpool
 
 from .. import (
     bitrix,
@@ -16,7 +17,7 @@ from .. import (
     workbook_revision,
     workspaces,
 )
-from ..bitrix_refresh import freshness, refresh_project, review_issues
+from ..bitrix_refresh import entries_by_day, freshness, refresh_project, review_issues
 from ..clock import now
 from ..report_conflicts import ConflictResolution, conflict_state, resolve
 from ..reporting import ai_settings, get_report, safe_config
@@ -28,6 +29,7 @@ router = APIRouter()
 
 
 class DiskBookRequest(BaseModel):
+    work_type: str = Field(default="Основные работы", min_length=1, max_length=100)
     name: str = Field(min_length=1, max_length=120)
     webhook_id: str = Field(pattern=r"^[a-f0-9]{32}$")
 
@@ -41,28 +43,100 @@ async def create_disk_book(request: Request, body: DiskBookRequest):
     project = owned_object(request)
     webhook = profile_webhooks.webhook_url(project["owner_id"], body.webhook_id)
     try:
-        name = bitrix_disk.book_name(body.name)
+        folder_name = bitrix_disk.book_name(body.name)[:-5]
+        work_type = bitrix_disk.book_name(body.work_type)[:-5]
+        filename = "Отчётность проекта.xlsx"
         async with table_lock(project):
             with store.connect() as db:
+                previous = bitrix_disk.saved_template(db) or {}
                 if store.setting(db, "source") == "bitrix":
+                    if (
+                        previous.get("folder_name"),
+                        previous.get("work_type"),
+                        previous.get("webhook_id"),
+                        str(previous.get("id")),
+                    ) == (folder_name, work_type, body.webhook_id, store.setting(db, "file_id")):
+                        return previous
                     raise HTTPException(409, "К объекту уже подключена рабочая таблица")
-            folder = await bitrix_disk.object_folder(webhook, project)
-            item = await bitrix_disk.find_child(webhook, folder, name, "folder")
-            if item:
-                content, _ = await bitrix.download_rest(webhook, int(item["ID"]))
-                if not bitrix_disk.workbook_belongs_to(content, project["id"]):
-                    raise HTTPException(409, "Файл с таким названием уже есть. Укажите другое имя.")
-            else:
-                item = await bitrix_disk.upload_new(
-                    webhook, folder, name, bitrix_disk.starter_workbook(project["id"])
+                if store.setting(db, "pending_import_token"):
+                    raise HTTPException(409, "Сначала завершите проверку загруженной сметы.")
+                snapshot = bitrix_disk.project_snapshot(db, project)
+            content = await run_in_threadpool(bitrix_disk.project_workbook, project["id"], snapshot)
+            storage = await bitrix_disk.personal_storage(webhook)
+            root = await bitrix_disk.ensure_folder(webhook, storage, "storage", folder_name)
+            folder = await bitrix_disk.ensure_folder(webhook, root, "folder", work_type)
+            item = await bitrix_disk.find_child(webhook, folder, filename, "folder")
+            if item and str(item.get("TYPE", "")).lower() == "folder":
+                raise HTTPException(409, "Имя файла отчётности уже занято папкой.")
+            if item is None:
+                item = await bitrix_disk.upload_new(webhook, folder, filename, content)
+            ident = int(item["ID"])
+            verified, meta = await bitrix.download_rest(webhook, ident)
+            if not bitrix_disk.workbook_belongs_to(verified, project["id"]):
+                raise HTTPException(
+                    409,
+                    "В этой папке уже есть другая отчётность. Укажите другое название папки или вида работ.",
                 )
-            meta = await bitrix.rest(webhook, "disk.file.get", {"id": int(item["ID"])})
-            saved = {**bitrix_disk.public_file(meta, webhook), "webhook_id": body.webhook_id}
-            if saved["name"] != name:
-                raise ValueError("Битрикс24 сохранил книгу с другим названием")
+            if await run_in_threadpool(workbook_revision.changes, content, verified):
+                raise HTTPException(
+                    409,
+                    "Содержимое книги на Диске отличается от проекта. Существующий файл сохранён. Подключите его по ссылке для сверки или выберите другую папку.",
+                )
+            parsed = await run_in_threadpool(bitrix.read_workbook, verified, generated_only=True)
+            if parsed is None or {p["id"] for p in parsed["positions"]} != {
+                p["id"] for p in snapshot["positions"]
+            }:
+                raise ValueError("Проверка рабочего журнала не подтвердила все позиции объекта")
+            try:
+                external = await bitrix.rest(webhook, "disk.file.getExternalLink", {"id": ident})
+            except (ValueError, httpx.HTTPError):
+                external = ""
+            saved = {
+                **bitrix_disk.public_file(meta, webhook),
+                "webhook_id": body.webhook_id,
+                "folder_name": folder_name,
+                "work_type": work_type,
+                "share_url": bitrix_disk.share_link(external, webhook),
+            }
             with store.connect() as db:
-                store.set_setting(
-                    db, bitrix_disk.TEMPLATE_KEY, json.dumps(saved, ensure_ascii=False)
+                db.execute("BEGIN IMMEDIATE")
+                if store.setting(db, "source") == "bitrix":
+                    raise HTTPException(409, "Подключение объекта изменилось. Обновите страницу.")
+                if snapshot != bitrix_disk.project_snapshot(db, project) or store.setting(
+                    db, "pending_import_token"
+                ):
+                    raise HTTPException(
+                        409,
+                        "Данные объекта изменились во время создания. Рабочая книга не подключена. Проверьте изменения в объекте.",
+                    )
+                values = {
+                    bitrix_disk.TEMPLATE_KEY: json.dumps(saved, ensure_ascii=False),
+                    "source": "bitrix",
+                    "source_name": filename,
+                    "file_id": str(ident),
+                    "webhook": webhook,
+                    "webhook_profile_id": body.webhook_id,
+                    "public_url": "",
+                    "table_detail_url": saved["url"],
+                    "last_import": now(),
+                    "journal_status": "ready",
+                    "journal_note": "",
+                    "journal_retry_at": "",
+                    "journal_rebuild": "",
+                    "bitrix_working_seen": "1",
+                    "bitrix_read_issues": "[]",
+                    "bitrix_read_status": "null",
+                    "bitrix_read_positions": "{}",
+                    "bitrix_read_days": "{}",
+                    "bitrix_appearance": "null",
+                    "bitrix_appearance_observed": "null",
+                    "connection_check": "null",
+                    "remote_days": json.dumps(entries_by_day(parsed["entries"])),
+                }
+                for key, value in values.items():
+                    store.set_setting(db, key, value)
+                db.execute(
+                    "UPDATE reports SET sync_status='synced',sync_error='',sync_attempts=0,retry_at=''"
                 )
             return saved
     except ValueError as error:
@@ -71,6 +145,50 @@ async def create_disk_book(request: Request, body: DiskBookRequest):
         raise HTTPException(
             502, "Диск не подтвердил сохранение книги. Повторите с тем же названием."
         ) from error
+
+
+class ShareLink(BaseModel):
+    url: str = Field(min_length=1, max_length=2048)
+
+
+@router.post("/api/bitrix/disk-book/share-link")
+async def save_share_link(request: Request, body: ShareLink):
+    project = owned_object(request)
+    async with table_lock(project):
+        with store.connect() as db:
+            book = bitrix_disk.saved_template(db) or {}
+            webhook = store.setting(db, "webhook")
+            ident = int(store.setting(db, "file_id", "0"))
+            if store.setting(db, "source") != "bitrix" or not webhook or book.get("id") != ident:
+                raise HTTPException(409, "Сначала подключите рабочую книгу")
+        try:
+            url = bitrix_disk.share_link(body.url.strip(), webhook)
+            if not url:
+                raise ValueError("Ссылка ведёт на другой портал")
+            if urlparse(url).hostname == urlparse(webhook).hostname:
+                expected = await bitrix.rest(webhook, "disk.file.getExternalLink", {"id": ident})
+                if url != expected:
+                    raise ValueError("Ссылка ведёт к другому файлу")
+            else:
+                content, public = await bitrix.fetch_public(bitrix.validate_public(url))
+                public_id = public.get("file_id")
+                if public_id and int(public_id) != ident:
+                    raise ValueError("Ссылка ведёт к другому файлу")
+                if not public_id:
+                    remote, _ = await bitrix.download_rest(webhook, ident)
+                    if not bitrix_disk.workbook_belongs_to(content, project["id"]) or (
+                        await run_in_threadpool(workbook_revision.changes, remote, content)
+                    ):
+                        raise ValueError("Не удалось подтвердить книгу объекта")
+        except (ValueError, httpx.HTTPError) as error:
+            raise HTTPException(
+                422,
+                "Проверьте публичную ссылку на Excel: портал и файл должны совпадать с подключённой книгой.",
+            ) from error
+        with store.connect() as db:
+            book["share_url"] = url
+            store.set_setting(db, bitrix_disk.TEMPLATE_KEY, json.dumps(book, ensure_ascii=False))
+        return book
 
 
 @router.post("/api/bitrix/report-files")

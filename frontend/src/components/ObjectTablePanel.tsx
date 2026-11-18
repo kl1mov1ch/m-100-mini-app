@@ -9,6 +9,8 @@ import type { WorkspaceView } from '../App';
 import { FieldHelp } from './FieldHelp';
 import { ObjectTableCard } from './ObjectTableCard';
 import { ObjectDiskFiles } from './ObjectDiskFiles';
+import { request } from '../lib/api';
+import { openExternalLink } from '../lib/telegram';
 import { downloadReport } from '../lib/report-download';
 import './object-table-panel.css';
 
@@ -25,6 +27,20 @@ export function ObjectTablePanel({
 }) {
 	const [configuring, setConfiguring] = useState(false);
 	const webhookFieldId = useId();
+	const [manualLink, setManualLink] = useState('');
+	const [checkingLink, setCheckingLink] = useState(false);
+	const saveShareLink = async () => {
+		setCheckingLink(true);
+		try {
+			await request('/bitrix/disk-book/share-link', { url: manualLink }, workspace.project);
+			await workspace.loadData(workspace.project, true);
+			setManualLink('');
+		} catch (failure) {
+			message.error((failure as Error).message);
+		} finally {
+			setCheckingLink(false);
+		}
+	};
 	const { message } = App.useApp();
 	const {
 		data,
@@ -60,7 +76,15 @@ export function ObjectTablePanel({
 	return (
 		<section className="object-panel table-panel">
 			<div className="object-panel-heading">
-				<h2>Таблица</h2>
+				<h2>Таблица проекта</h2>
+				<Button
+					type="text"
+					size="small"
+					aria-pressed={workspace.evenSpacing}
+					onClick={() => workspace.setEvenSpacing(!workspace.evenSpacing)}
+				>
+					{workspace.evenSpacing ? 'Обычные отступы' : 'Выровнять отступы'}
+				</Button>
 			</div>
 			{connected ? (
 				<>
@@ -128,6 +152,44 @@ export function ObjectTablePanel({
 				)}
 			</div>
 			<ObjectDiskFiles workspace={workspace} />
+			{connected && config.bitrix_project_book?.id === config.file_id && (
+				<section className="disk-files">
+					<h3>Доступ для просмотра</h3>
+					{config.bitrix_project_book.share_url ? (
+						<Button
+							type="text"
+							href={config.bitrix_project_book.share_url}
+							onClick={(e) => openExternalLink(e, config.bitrix_project_book!.share_url!)}
+						>
+							Открыть публичную ссылку
+						</Button>
+					) : (
+						<>
+							<p>
+								В Битрикс24 откройте файл Excel, выберите «Поделиться» и включите просмотр по
+								ссылке. Вставьте публичную ссылку на таблицу. Если доступ ограничен, обратитесь к
+								администратору портала.
+							</p>
+							<label>
+								Публичная ссылка на Excel
+								<Input
+									value={manualLink}
+									onChange={(e) => setManualLink(e.target.value)}
+									placeholder="https://bitrix24public.com/…"
+								/>
+							</label>
+							<Button
+								type="text"
+								disabled={!manualLink.trim()}
+								loading={checkingLink}
+								onClick={() => void saveShareLink()}
+							>
+								Проверить и сохранить ссылку
+							</Button>
+						</>
+					)}
+				</section>
+			)}
 			{configuring && (
 				<div className="object-connection-form table-settings-form">
 					<label>

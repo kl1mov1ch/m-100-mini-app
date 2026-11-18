@@ -101,12 +101,15 @@ def format_journal(
     *,
     named_groups=False,
     notes=None,
+    project_id=None,
 ):
     from .workbook_calculation import cache_formulas
     from .workbook_expenses import write_summary
     from .workbook_notes import write_notes_sheet
 
     book = openpyxl.load_workbook(io.BytesIO(content))
+    if project_id is not None:
+        book.properties.identifier = "M-100:" + project_id
     journals = [sheet for sheet in book if is_journal(sheet)]
     source_by_title = {sheet.title: sheet["C2"].value or sheet.title for sheet in journals}
     source_ranges = {}

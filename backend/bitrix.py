@@ -114,7 +114,15 @@ def read_workbook(content, mappings=None, *, generated_only=False):
         for journal in canonical:
             saved = next((item for item in mappings or [] if item["name"] == journal["name"]), {})
             journal["position_ids"] = saved.get("position_ids", {})
-        return {**extract(content, canonical or mappings, w), "generated": bool(canonical)}
+        owned_empty = bool(
+            canonical
+            and str(w.properties.identifier or "").startswith("M-100:")
+            and all(not sheet["rows"] for sheet in canonical)
+        )
+        return {
+            **extract(content, canonical or mappings, w, allow_empty=owned_empty),
+            "generated": bool(canonical),
+        }
     result = {"positions": [], "entries": [], "sheet": None}
     for sheet in w:
         if is_journal(sheet):

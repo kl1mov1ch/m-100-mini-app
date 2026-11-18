@@ -246,7 +246,9 @@ div:has(> label.journal-field) {
 }
 
 .ant-modal.work-picker-sheet .ant-modal-content {
-	max-height: min(44dvh, calc(var(--visible-height, 100dvh) - 8px));
+	height: 70vh;
+	height: 70dvh;
+	max-height: calc(var(--visible-height, 100dvh) - var(--app-safe-top, 0px) - 8px);
 }
 
 .work-picker-sheet .live-search-controls {
@@ -315,4 +317,83 @@ div:has(> label.journal-field) {
 	.notification-schedule-switch[aria-checked='true']
 	.notification-switch-track::after {
 	transform: translateX(20px);
+}
+
+/* The form lives in a grid cell that can be narrower than a saved URL. */
+.table-panel,
+.table-panel :is(.object-connection-form, .table-setup-actions, .disk-files, .disk-file) {
+	grid-template-columns: minmax(0, 1fr);
+	min-width: 0;
+}
+.table-panel :is(.object-connection-form, label, .ant-select, .ant-input, .object-panel-actions) {
+	box-sizing: border-box;
+	min-width: 0;
+	max-width: 100%;
+}
+.table-panel .ant-select {
+	width: 100%;
+}
+.table-panel .object-panel-heading {
+	gap: 8px;
+	flex-wrap: wrap;
+}
+.table-panel .object-panel-actions,
+.table-panel .object-table-card-actions {
+	flex-wrap: wrap;
+}
+.table-panel .disk-file strong,
+.table-panel .object-table-card-top b {
+	white-space: normal;
+	overflow-wrap: anywhere;
+}
+.table-panel .disk-files p {
+	margin: 0;
+	line-height: 1.45;
+}
+.shift-works-heading {
+	margin: 12px 0 4px;
+	font-size: 16px;
+}
+.report-text-input {
+	display: grid;
+	gap: 8px;
+	min-width: 0;
+}
+.work-list .compact-row > div:has(.compact-row-main) {
+	flex: 1 1 0;
+	min-width: 0;
+}
+.work-list .compact-row > div:has(.compact-row-end) {
+	flex: 0 0 auto;
+	max-width: 47%;
+	min-width: 0;
+}
+.work-list .compact-row-main > strong,
+.work-list .compact-row-aside > span {
+	white-space: normal;
+	overflow-wrap: anywhere;
+}
+.work-list .compact-row-aside > strong {
+	overflow: visible;
+}
+.work-list .compact-row-aside .money {
+	max-width: 100%;
+	white-space: normal;
+	overflow-wrap: anywhere;
+}
+.application[data-even-spacing='true']
+	:is(
+		.object-page,
+		.object-panel,
+		.table-setup-actions,
+		.disk-files,
+		.object-connection-form,
+		.report-entry-methods,
+		.form-fields
+	) {
+	gap: 12px;
+}
+.application[data-even-spacing='true']
+	:is(.object-panel, .table-settings-form, .disk-file, .quick-report-composer) {
+	padding: 12px;
 }

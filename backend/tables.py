@@ -410,7 +410,7 @@ def discover(content, *, original=False, workbook=None):
     return sheets, warnings
 
 
-def extract(content, sheets, workbook=None):
+def extract(content, sheets, workbook=None, *, allow_empty=False):
     w = workbook if workbook is not None else grid(content)
     positions = []
     entries = []
@@ -675,7 +675,7 @@ def extract(content, sheets, workbook=None):
                     "message": f"Лист «{s.title}»: выполненный объём указан без дат. Он будет учтён как начальный остаток, без назначения фиктивного дня.",
                 }
             )
-    if not positions:
+    if not positions and not allow_empty:
         raise ValueError(
             "Рабочие позиции не найдены. Проверьте строку заголовков и назначение столбцов."
         )
