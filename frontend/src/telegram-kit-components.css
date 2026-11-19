@@ -359,26 +359,60 @@ div:has(> label.journal-field) {
 	gap: 8px;
 	min-width: 0;
 }
-.work-list .compact-row > div:has(.compact-row-main) {
+.compact-row > div:has(.compact-row-main) {
 	flex: 1 1 0;
 	min-width: 0;
 }
-.work-list .compact-row > div:has(.compact-row-end) {
+.compact-row > div:has(.compact-row-end) {
 	flex: 0 0 auto;
 	max-width: 47%;
 	min-width: 0;
 }
-.work-list .compact-row-main > strong,
-.work-list .compact-row-aside > span {
+.compact-row-main > strong,
+.compact-row-aside > span {
 	white-space: normal;
 	overflow-wrap: anywhere;
 }
-.work-list .compact-row-aside > strong {
+.compact-row-aside > strong {
 	overflow: visible;
 }
-.work-list .compact-row-aside .money {
+.compact-row-aside .money {
 	max-width: 100%;
 	white-space: normal;
+	overflow-wrap: anywhere;
+}
+.compact-row .compact-row-description,
+.compact-row .compact-row-aside > strong,
+.compact-row .sync-status {
+	white-space: normal;
+	overflow-wrap: anywhere;
+}
+.compact-row .compact-row-end,
+.compact-row .compact-row-aside {
+	max-width: 100%;
+}
+.object-heading > h1,
+.page-title h1,
+.settings-menu b,
+.settings-menu small,
+.search-option .option-content > b {
+	min-width: 0;
+	white-space: normal;
+	overflow-wrap: anywhere;
+}
+.search-option .option-content > b {
+	display: block;
+}
+.page-title {
+	flex-wrap: wrap;
+	row-gap: 8px;
+}
+.table-notice-line > :first-child,
+.change-summary,
+.draft-work-heading,
+.work-name,
+.import-position-title {
+	min-width: 0;
 	overflow-wrap: anywhere;
 }
 .application[data-even-spacing='true']
@@ -396,4 +430,57 @@ div:has(> label.journal-field) {
 .application[data-even-spacing='true']
 	:is(.object-panel, .table-settings-form, .disk-file, .quick-report-composer) {
 	padding: 12px;
+}
+
+/* Allow totals to choose their row from the formatted amount's actual width. */
+.daily-earnings {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-start;
+}
+.daily-earnings > :is(.earnings-total, .daily-team-summary) {
+	flex: 1 1 max-content;
+	max-width: 100%;
+}
+.daily-earnings > .daily-team-summary {
+	padding-inline-start: 0;
+	border-inline-start: 0;
+}
+.daily-earnings > :is(.rounding-note, .earnings-review) {
+	flex-basis: 100%;
+}
+.report-detail-summary > div {
+	flex: 1 1 max-content;
+	min-width: min(72px, 100%);
+	max-width: 100%;
+}
+:is(.daily-earnings, .report-detail-summary) .money {
+	display: inline;
+	white-space: normal;
+	overflow-wrap: anywhere;
+}
+:is(.daily-earnings, .report-detail-summary) .currency {
+	margin-inline-start: 0.2em;
+}
+:is(.work-list, .history-report-works) {
+	container-type: inline-size;
+}
+@container (max-width: 520px) {
+	:is(.work-list, .history-report-works) .compact-row {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr);
+		gap: 6px;
+	}
+	:is(.work-list, .history-report-works) .compact-row > div:has(.compact-row-end) {
+		width: 100%;
+		max-width: none;
+	}
+	:is(.work-list, .history-report-works) .compact-row-end {
+		width: 100%;
+		justify-content: space-between;
+	}
+	:is(.work-list, .history-report-works) .compact-row-aside {
+		text-align: start;
+		gap: 2px;
+	}
 }

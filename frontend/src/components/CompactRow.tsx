@@ -33,6 +33,7 @@ export function CompactRow({
 	return (
 		<Cell
 			Component="button"
+			multiline
 			type="button"
 			className={`compact-row ${attention ? 'compact-row-attention' : ''} ${status ? 'compact-row-' + status : ''} ${className}`}
 			onClick={onClick}
